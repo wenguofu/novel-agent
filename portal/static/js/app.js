@@ -1210,6 +1210,8 @@ const App = {
             if (v) chapters = v.chapters || [];
         }
 
+        var nextChNum = chapters.length > 0 ? (parseInt(chapters[chapters.length-1].name.replace('ch-','')) + 1) : 1;
+        var genBtn = '<div class="mt-12 flex gap-8"><button class="btn btn-sm btn-success" onclick="App._aiGenerateChapterOutlines(\'' + novel + '\',\'' + vol + '\', ' + nextChNum + ', 5)">🤖 生成后5章危机/关卡</button></div>';
         var chListHtml = chapters.length > 0
             ? '<div class="chapter-list" style="max-height:50vh">' + chapters.map(function(ch) {
                 var wb = ch.words >= 2500 ? 'good' : ch.words >= 1500 ? 'warn' : 'low';
@@ -1229,10 +1231,16 @@ const App = {
             '<div id="outlineEditor" style="display:none"><textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px">' + content.replace(/</g, '&lt;').replace(/&/g, '&amp;') + '</textarea></div>' +
             '</div>';
 
-        var footer = '<button class="btn btn-primary" onclick="App._saveOutline(\'' + novel + '\',\'' + vol + '\')">💾 保存</button><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button>';
+        var nextVol = 'vol-' + String(parseInt(volNum) + 1).padStart(2, '0');
+        var footer = '' +
+            '<button class="btn btn-primary" onclick="App._saveOutline(\'' + novel + '\',\'' + vol + '\')">💾 保存</button>' +
+            '<button class="btn btn-success" onclick="App._aiGenerateOutline(\'' + novel + '\',\'' + vol + '\')">🤖 AI 生成本卷大纲</button>' +
+            '<button class="btn btn-secondary" onclick="App._aiGenerateOutline(\'' + novel + '\',\'' + nextVol + '\')">📐 AI 生成下一卷大纲</button>' +
+            '<button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button>';
         var modal = this.modal('📐 ' + vol, body, footer, '800px');
         modal._novel = novel; modal._vol = vol; modal._content = content;
         modal._chHtml = chListHtml;
+        modal._renderedOutline = App.renderMarkdown(content);
     },
 
     _switchOulineTab(tab, t) {
@@ -1241,11 +1249,11 @@ const App = {
         tab.classList.add('active');
         var container = modal.querySelector('#oultineTabContent');
         if (t === 'outline') {
-            container.innerHTML = '<div class="reader-content" id="outlineViewer" style="max-height:55vh">' + document.getElementById('outlineViewer')?.innerHTML || modal._content + '</div>';
+            container.innerHTML = '<div class="reader-content" style="max-height:55vh">' + (modal._renderedOutline || App.renderMarkdown(modal._content || '')) + '</div>';
         } else if (t === 'chapters') {
             container.innerHTML = modal._chHtml;
         } else if (t === 'edit') {
-            container.innerHTML = '<div id="outlineEditor"><textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px">' + (modal._content||'').replace(/</g, '&lt;') + '</textarea></div>';
+            container.innerHTML = '<textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px">' + (modal._content||'').replace(/</g, '&lt;').replace(/&/g, '&amp;') + '</textarea>';
         }
     },
 
@@ -1263,6 +1271,110 @@ const App = {
             viewer.querySelector('.reader-content').innerHTML = this.renderMarkdown(previewContent);
             viewer.style.display = 'block';
             editor.style.display = 'none';
+        }
+    },
+
+    async _aiGenerateChapterOutlines(novel, vol, startCh, count) {
+        var modal = document.querySelector('.modal');
+        var notice = document.createElement('div');
+        notice.className = 'stream-indicator mt-8';
+        notice.innerHTML = '<div class="stream-dot"></div><span>🤖 AI 正在生成第 ' + startCh + '-' + (startCh+count-1) + ' 章坎/关卡...</span>';
+        modal.querySelector('.modal-body').appendChild(notice);
+
+        var novelResp = await API.getNovel(novel);
+        var genre = novelResp.success ? (novelResp.novel.genre_bible_content || '') : '';
+        var outlineResp = await API.readOutline(novel, vol);
+        var outline = outlineResp.success ? outlineResp.content : '';
+        var chapters = [];
+        for (var i = startCh; i < startCh + count; i++) {
+            var ch = 'ch-' + String(i).padStart(4, '0');
+            try {
+                var chResp = await API.readChapter(novel, vol + '/' + ch);
+                if (chResp.success) chapters.push({num: i, content: chResp.content.substring(0, 500)});
+            } catch(e) {}
+        }
+
+        var chContext = chapters.map(function(c){ return '第' + c.num + '章预览：' + c.content; }).join('\n');
+        var resp = await fetch('/api/ai/chat', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                messages: [{role:'user', content: '请为后续 ' + count + ' 章生成危机关卡。\n卷纲：' + outline.substring(0, 2000) + '\n最近章节：' + chContext + '\n\n每章输出一个危机，格式：## ch-XXXX\n**危机描述**: ...\n**关键冲突**: ...\n**读者钩子**: ...'}],system: '你是一个网文编辑。为每章设计危机关卡。返回markdown格式。',
+                temperature: 0.8, max_tokens: 2048,
+            })
+        }).then(function(r){return r.json();});
+
+        if (resp.success) {
+            // Save each chapter's danger_issue
+            var lines = resp.content.split('\n');
+            var currentCh = '', currentBody = [];
+            for (var j = 0; j < lines.length; j++) {
+                var m = lines[j].match(/^##\s*ch-(\d+)/i);
+                if (m) {
+                    if (currentCh && currentBody.length > 0) {
+                        var chPadded = String(parseInt(currentCh)).padStart(4, '0');
+                        API.writeFile(novel, 'outline/danger_issue_' + vol + '/danger_issue_' + chPadded + '.md', currentBody.join('\n'));
+                    }
+                    currentCh = m[1]; currentBody = [lines[j]];
+                } else if (currentCh) {
+                    currentBody.push(lines[j]);
+                }
+            }
+            if (currentCh && currentBody.length > 0) {
+                var chPadded = String(parseInt(currentCh)).padStart(4, '0');
+                API.writeFile(novel, 'outline/danger_issue_' + vol + '/danger_issue_' + chPadded + '.md', currentBody.join('\n'));
+            }
+            notice.innerHTML = '<span style="color:var(--success)">✅ ' + count + ' 章坎已生成</span>';
+            App.toast('✅ 危机关卡已生成', 'success');
+        } else {
+            notice.innerHTML = '<span style="color:var(--danger)">❌ ' + (resp.error||'失败') + '</span>';
+        }
+    },
+
+    async _aiGenerateOutline(novel, vol) {
+        var modal = document.querySelector('.modal');
+        var notice = document.createElement('div');
+        notice.className = 'stream-indicator mt-8';
+        notice.innerHTML = '<div class="stream-dot"></div><span>🤖 AI 正在生成 ' + vol + ' 大纲...</span>';
+        modal.querySelector('.modal-body').appendChild(notice);
+
+        // Get novel context
+        var novelResp = await API.getNovel(novel);
+        var genre = novelResp.success ? (novelResp.novel.genre_bible_content || '') : '';
+        var chars = novelResp.success ? (novelResp.novel.characters_content || '') : '';
+        var prevOutlines = '';
+        var volNum = parseInt(vol.replace('vol-', ''));
+        // Load previous volume outline for context
+        if (volNum > 1) {
+            var prevVol = 'vol-' + String(volNum - 1).padStart(2, '0');
+            try {
+                var prevResp = await API.readOutline(novel, prevVol);
+                if (prevResp.success) prevOutlines = prevResp.content;
+            } catch(e) {}
+        }
+
+        var resp = await fetch('/api/ai/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                messages: [{role:'user', content: '请为小说生成 ' + vol + ' 的详细章纲。\\n\\n类型设定：' + genre.substring(0, 2000) + '\\n人物档案：' + chars.substring(0, 1000) + '\\n上一卷大纲：' + prevOutlines.substring(0, 1500) + '\\n\\n请生成完整的卷纲，包含每章的章纲标题和简要内容描述。格式为markdown。'}],
+                system: '你是一个专业的网文编辑。请生成详细的卷纲，包含每章标题和简要内容描述。',
+                temperature: 0.7, max_tokens: 4096,
+            })
+        }).then(function(r){return r.json();});
+
+        if (resp.success) {
+            // Save the outline
+            await API.editOutline(novel, vol, resp.content);
+            // Update modal content
+            modal._content = resp.content;
+            modal._renderedOutline = App.renderMarkdown(resp.content);
+            notice.innerHTML = '<span style="color:var(--success)">✅ 大纲已生成并保存</span>';
+            // Refresh the outline view
+            var container = modal.querySelector('#oultineTabContent');
+            if (container) container.innerHTML = '<div class="reader-content" style="max-height:55vh">' + modal._renderedOutline + '</div>';
+            App.toast('✅ ' + vol + ' 大纲已生成', 'success');
+        } else {
+            notice.innerHTML = '<span style="color:var(--danger)">❌ 生成失败: ' + (resp.error||'') + '</span>';
         }
     },
 
