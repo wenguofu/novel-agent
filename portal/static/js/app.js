@@ -380,9 +380,7 @@ const App = {
 
         // Show brief loading state (crucial for AI steps, instant for select)
         var loadMsg = index >= 4 ? '🤖 AI 正在生成推荐...' : '加载选项...';
-        if (stepType !== 'input') {
-            container.innerHTML = '<div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:' + ((index+1)/total*100) + '%"></div></div><span class="wizard-progress-text">' + (index+1) + ' / ' + total + ' · ' + stepLabel + '</span></div><div class="card"><div class="loading" style="padding:30px"><div class="spinner"></div><span>' + loadMsg + '</span></div></div>';
-        }
+        container.innerHTML = '<div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:' + ((index+1)/total*100) + '%"></div></div><span class="wizard-progress-text">' + (index+1) + ' / ' + total + ' · ' + stepLabel + '</span></div><div class="card"><div class="loading" style="padding:30px"><div class="spinner"></div><span>' + loadMsg + '</span></div></div>';
         // Call API first to know step type
         const resp = await API.wizardStep({ step_index: index, selections: w.selections });
         w.loading = false;
