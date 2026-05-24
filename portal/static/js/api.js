@@ -4,89 +4,45 @@ const API = {
     base: '',
 
     async request(method, path, body = null) {
-        const opts = {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-        };
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) opts.body = JSON.stringify(body);
-
         const resp = await fetch(`${this.base}${path}`, opts);
         const data = await resp.json();
         return data;
     },
 
     // ── Novels ──
-    listNovels() {
-        return this.request('GET', '/api/novels');
-    },
-
-    getNovel(name) {
-        return this.request('GET', `/api/novels/${encodeURIComponent(name)}`);
-    },
-
-    createNovel(data) {
-        return this.request('POST', '/api/novels/create', data);
-    },
-
-    readFile(novelName, path) {
-        return this.request('GET', `/api/novels/${encodeURIComponent(novelName)}/file?path=${encodeURIComponent(path)}`);
-    },
-
-    readChapter(novelName, chRef) {
-        return this.request('GET', `/api/novels/${encodeURIComponent(novelName)}/chapters/${encodeURIComponent(chRef)}`);
-    },
-
-    readReview(novelName, chRef) {
-        return this.request('GET', `/api/novels/${encodeURIComponent(novelName)}/reviews/${encodeURIComponent(chRef)}`);
-    },
-
-    getStatus(novelName) {
-        return this.request('GET', `/api/novels/${encodeURIComponent(novelName)}/status`);
-    },
-
-    readOutline(novelName, volRef) {
-        return this.request('GET', `/api/novels/${encodeURIComponent(novelName)}/outline/${encodeURIComponent(volRef)}`);
-    },
+    listNovels() { return this.request('GET', '/api/novels'); },
+    getNovel(name) { return this.request('GET', `/api/novels/${encodeURIComponent(name)}`); },
+    createNovel(data) { return this.request('POST', '/api/novels/create', data); },
+    readFile(novel, path) { return this.request('GET', `/api/novels/${encodeURIComponent(novel)}/file?path=${encodeURIComponent(path)}`); },
+    writeFile(novel, path, content) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/file/write`, { path, content }); },
+    readChapter(novel, ref) { return this.request('GET', `/api/novels/${encodeURIComponent(novel)}/chapters/${encodeURIComponent(ref)}`); },
+    editChapter(novel, ref, content) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/chapters/${encodeURIComponent(ref)}/edit`, { content }); },
+    readReview(novel, ref) { return this.request('GET', `/api/novels/${encodeURIComponent(novel)}/reviews/${encodeURIComponent(ref)}`); },
+    getStatus(novel) { return this.request('GET', `/api/novels/${encodeURIComponent(novel)}/status`); },
+    readOutline(novel, vol) { return this.request('GET', `/api/novels/${encodeURIComponent(novel)}/outline/${encodeURIComponent(vol)}`); },
+    editOutline(novel, vol, content) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/outline/${encodeURIComponent(vol)}/edit`, { content }); },
 
     // ── Writing ──
-    generateChapter(novelName, data) {
-        return this.request('POST', `/api/novels/${encodeURIComponent(novelName)}/generate-chapter`, data);
-    },
-
-    reviewChapter(novelName, data) {
-        return this.request('POST', `/api/novels/${encodeURIComponent(novelName)}/review-chapter`, data);
-    },
+    generateChapter(novel, data) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/generate-chapter`, data); },
+    reviewChapter(novel, data) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/review-chapter`, data); },
 
     // ── AI ──
-    aiChat(data) {
-        return this.request('POST', '/api/ai/chat', data);
-    },
+    aiChat(data) { return this.request('POST', '/api/ai/chat', data); },
+    aiStream(data) { return this.request('POST', '/api/ai/stream', data); },
 
     // ── Scripts ──
-    runScript(novelName, data) {
-        return this.request('POST', `/api/novels/${encodeURIComponent(novelName)}/run-script`, data);
-    },
+    runScript(novel, data) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/run-script`, data); },
 
     // ── Status ──
-    updateStatus(novelName, content) {
-        return this.request('POST', `/api/novels/${encodeURIComponent(novelName)}/update-status`, { content });
-    },
+    updateStatus(novel, content) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/update-status`, { content }); },
 
     // ── Config ──
-    getConfig() {
-        return this.request('GET', '/api/config');
-    },
-
-    saveConfig(data) {
-        return this.request('POST', '/api/config/save', data);
-    },
-
-    testConfig() {
-        return this.request('POST', '/api/config/test');
-    },
+    getConfig() { return this.request('GET', '/api/config'); },
+    saveConfig(data) { return this.request('POST', '/api/config/save', data); },
+    testConfig() { return this.request('POST', '/api/config/test'); },
 
     // ── Templates ──
-    getTemplates() {
-        return this.request('GET', '/api/templates');
-    },
+    getTemplates() { return this.request('GET', '/api/templates'); },
 };
