@@ -910,8 +910,55 @@ const App = {
         this.streamAbort = null;
     },
 
-    _buildSystemPrompt(novel, data) {
-        return `你是一个专业的长篇网文写作Agent。请输出完整的章节正文，以"# 章节标题"开头。\\n\\n写作约束：\\n- 每章不少于2500字，不使用真实地名人名\\n- **禁止**"不是...而是..."句式（≤1次）、禁止连续简单判断句\\n- 对话用动作自然衔接，禁止"XX说：+对话"的生硬格式\\n- show don't tell，关键情节用场景呈现\\n- 段落2-3句以上，对话占比30-50%\\n- 必须有悬念/钩子结尾\\n卷：${data.volume}\\n章节：第 ${data.chapter_num} 章\\n${data.style ? '风格：' + data.style : ''}\\n${data.instructions ? '指示：' + data.instructions : ''}`;
+    async _buildSystemPrompt(novel, data) {
+        // Load outline + danger_issue context for script-enforced adherence
+        var contextExtra = '';
+        try {
+            var volNum = data.volume.replace('vol-', '');
+            var outlineResp = await API.readOutline(novel, 'vol-' + volNum);
+            if (outlineResp.success && outlineResp.content) {
+                // Extract relevant chapter section from outline
+                var chNum = parseInt(data.chapter_num);
+                var lines = outlineResp.content.split('\n');
+                var inSection = false, sectionLines = [];
+                for (var i = 0; i < lines.length; i++) {
+                    var l = lines[i];
+                    if (l.match(new RegExp('ch-0*' + chNum + '|第' + chNum + '章|第 ' + chNum + ' 章'))) {
+                        inSection = true; sectionLines.push(l); continue;
+                    }
+                    if (inSection) {
+                        if (l.match(/ch-0*\d+|第\s*\d+\s*章/) && !l.match(new RegExp('ch-0*' + chNum))) break;
+                        sectionLines.push(l);
+                    }
+                }
+                if (sectionLines.length > 0) {
+                    contextExtra += '\n## 📐 卷纲要求（脚本强制，必须遵守）\n' + sectionLines.join('\n').substring(0, 1500) + '\n';
+                } else {
+                    contextExtra += '\n## 📐 本卷大纲参考\n' + outlineResp.content.substring(0, 2000) + '\n';
+                }
+            }
+            // Load danger_issue for this chapter
+            var chPadded = String(data.chapter_num).padStart(4, '0');
+            try {
+                var diResp = await API.readFile(novel, 'outline/danger_issue_' + data.volume + '/danger_issue_' + chPadded + '.md');
+                if (diResp.success && diResp.content) {
+                    contextExtra += '\n## ⚠️ 本章危机/关卡要求（脚本强制，必须体现）\n' + diResp.content.substring(0, 1000) + '\n';
+                }
+            } catch(e) {}
+        } catch(e) {}
+
+        return '你是一个专业的长篇网文写作Agent。请输出完整的章节正文，以"# 章节标题"开头。\n\n' +
+            '## ⚠️ 脚本强制约束（必须遵守，不可跳过）\n' +
+            '- 每章不少于2500字，不使用真实地名人名\n' +
+            '- **禁止**"不是...而是..."句式（≤1次）、禁止连续简单判断句\n' +
+            '- 对话用动作自然衔接，禁止"XX说：+对话"的生硬格式\n' +
+            '- show don\'t tell，关键情节用场景呈现，段落2-3句以上\n' +
+            '- **必须严格遵循大纲/卷纲/危机要求**：如果大纲指定了本章内容，必须完整覆盖\n' +
+            '- 必须有悬念/钩子结尾\n' +
+            contextExtra +
+            '\n卷：' + data.volume + '\n章节：第 ' + data.chapter_num + ' 章\n' +
+            (data.style ? '风格：' + data.style + '\n' : '') +
+            (data.instructions ? '指示：' + data.instructions + '\n' : '');
     },
 
     async _saveStreamedChapter(novel, volume, chNum) {
