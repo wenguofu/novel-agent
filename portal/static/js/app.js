@@ -353,7 +353,18 @@ const App = {
             return;
         }
         this._wizard = { step: 0, selections: {}, loading: false };
-        mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">✨ 创建新书</h1><p class="page-subtitle">先确定方向，再由 AI 深度推荐</p></div><div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:8px 16px;background:var(--bg-card);border-radius:var(--radius-lg);border:1px solid var(--border-default)"><span style="font-size:13px;color:var(--text-tertiary)">📍</span><span style="font-size:12px;color:var(--text-secondary)">第1步：输入书名 → 选择题材大类 → 选择细分方向 → 确定篇幅 → 然后 AI 深度推荐主角、卖点、世界观、风格</span></div></div><div id="wizardStep"></div>`;
+        mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">✨ 创建新书</h1><p class="page-subtitle">4 步人工选择 + 4 步 AI 推荐</p></div></div>
+            <div class="wizard-flow-hint">
+                <span class="wiz-flow-step manual">✏️ 书名</span> →
+                <span class="wiz-flow-step manual">📋 题材</span> →
+                <span class="wiz-flow-step manual">📋 细分</span> →
+                <span class="wiz-flow-step manual">📋 篇幅</span> →
+                <span class="wiz-flow-step ai">🤖 主角</span> →
+                <span class="wiz-flow-step ai">🤖 卖点</span> →
+                <span class="wiz-flow-step ai">🤖 世界观</span> →
+                <span class="wiz-flow-step ai">🎨 风格</span>
+            </div>
+            <div id="wizardStep"></div>`;
         await this._loadWizardStep(0);
     },
 
@@ -367,6 +378,11 @@ const App = {
         const total = this.STEP_IDS.length;
         const stepLabel = this.STEP_IDS[index] ? (['书名','题材','细分','篇幅','主角','卖点','世界观','风格'][index]) : '';
 
+        // Show brief loading state (crucial for AI steps, instant for select)
+        var loadMsg = index >= 4 ? '🤖 AI 正在生成推荐...' : '加载选项...';
+        if (stepType !== 'input') {
+            container.innerHTML = '<div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:' + ((index+1)/total*100) + '%"></div></div><span class="wizard-progress-text">' + (index+1) + ' / ' + total + ' · ' + stepLabel + '</span></div><div class="card"><div class="loading" style="padding:30px"><div class="spinner"></div><span>' + loadMsg + '</span></div></div>';
+        }
         // Call API first to know step type
         const resp = await API.wizardStep({ step_index: index, selections: w.selections });
         w.loading = false;

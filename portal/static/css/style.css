@@ -1788,6 +1788,17 @@ a:hover { color: var(--accent-hover); }
   font-size: 11px;
   font-weight: 500;
 }
+
+/* ─── Wizard flow hint ─────────────────────────────────────────────── */
+.wizard-flow-hint {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-bottom: 16px; padding: 10px 16px;
+  background: var(--bg-card); border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default); font-size: 12px;
+}
+.wiz-flow-step { padding: 3px 10px; border-radius: var(--radius-full); font-weight: 500; }
+.wiz-flow-step.manual { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-default); }
+.wiz-flow-step.ai { background: var(--accent-soft); color: var(--accent); }
 .wizard-progress-fill.ai-glow {
   box-shadow: 0 0 8px var(--accent-glow);
 }
