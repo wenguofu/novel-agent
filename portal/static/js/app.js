@@ -42,6 +42,7 @@ const App = {
                 case 'review': await this._renderReview(mc, params); break;
                 case 'chapters': await this._renderChapters(mc, params); break;
                 case 'outlines': await this._renderOutlines(mc); break;
+                case 'config': await this._renderConfig(mc); break;
                 case 'settings': await this._renderSettings(mc); break;
                 default: mc.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🤷</div><div class="empty-state-title">页面不存在</div></div>';
             }
@@ -1271,6 +1272,90 @@ const App = {
         resp.success ? (this.toast('✅ 大纲已保存', 'success'), document.querySelectorAll('.modal-overlay').forEach(m => m.remove()), this._loadOutlines()) : this.toast(resp.error, 'error');
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  CONFIG MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════
+
+    async _renderConfig(mc) {
+        mc.innerHTML = '<div class="page-header"><div><h1 class="page-title">🛠️ 配置管理</h1><p class="page-subtitle">禁用词 · 合规规则 · 别名 · 风格预设</p></div></div>' +
+            '<div class="tab-bar" id="cfgTabs">' +
+            '<span class="tab-item active" data-t="banned" onclick="App._switchCfgTab(this,\'banned\')">🚫 禁用词</span>' +
+            '<span class="tab-item" data-t="rules" onclick="App._switchCfgTab(this,\'rules\')">📋 合规规则</span>' +
+            '<span class="tab-item" data-t="alias" onclick="App._switchCfgTab(this,\'alias\')">📝 别名表</span>' +
+            '<span class="tab-item" data-t="styles" onclick="App._switchCfgTab(this,\'styles\')">🎨 风格预设</span>' +
+            '</div>' +
+            '<div id="cfgContent"></div>';
+        this._loadCfgTab('banned');
+    },
+
+    async _switchCfgTab(el, tab) {
+        document.querySelectorAll('#cfgTabs .tab-item').forEach(function(t) { t.classList.remove('active'); });
+        el.classList.add('active');
+        this._loadCfgTab(tab);
+    },
+
+    async _loadCfgTab(tab) {
+        var tables = {banned:'banned_words', rules:'compliance_rules', alias:'alias_registry', styles:'style_presets'};
+        var table = tables[tab];
+        if (!table) return;
+        var ct = document.getElementById('cfgContent');
+        ct.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+        var resp = await fetch('/api/config-db/' + table).then(function(r) { return r.json(); });
+        if (!resp.success) { ct.innerHTML = '<div class="code-block error">' + (resp.error||'') + '</div>'; return; }
+
+        var rows = resp.rows || [];
+        var html = '';
+
+        if (tab === 'banned') {
+            html = '<div class="card"><div class="form-row mb-12"><input class="form-input" id="cfgNewWord" placeholder="禁用词"><input class="form-input" id="cfgNewCat" placeholder="分类（国家/城市/产品）"><input class="form-input" id="cfgNewRep" placeholder="替换词"><select class="form-select" id="cfgNewSev"><option value="error">error</option><option value="warn">warn</option></select><button class="btn btn-primary btn-sm" onclick="App._cfgAdd(\'banned\')">+ 添加</button></div>' +
+                '<div>' + rows.map(function(r) {
+                    return '<div class="chapter-item"><span class="ch-num">' + (r.severity==='error'?'🔴':'🟡') + '</span><span class="ch-title"><strong>' + r.word + '</strong> → ' + (r.replacement||'(无)') + '</span><span class="ch-meta">' + (r.category||'') + '</span><button class="btn btn-sm btn-secondary" onclick="App._cfgDel(\'banned\',' + r.id + ')" style="font-size:11px;padding:2px 8px">🗑</button></div>';
+                }).join('') + '</div></div>';
+        } else if (tab === 'rules') {
+            html = '<div class="card"><div class="form-row mb-12"><input class="form-input" id="cfgNewKey" placeholder="规则键"><input class="form-input" id="cfgNewVal" placeholder="规则值"><input class="form-input" id="cfgNewCat" placeholder="分类"><button class="btn btn-primary btn-sm" onclick="App._cfgAdd(\'rules\')">+ 添加</button></div>' +
+                '<div>' + rows.map(function(r) {
+                    return '<div class="chapter-item"><span class="ch-num">📋</span><span class="ch-title"><strong>' + r.rule_key + '</strong>: ' + r.rule_value + '</span><span class="ch-meta">' + (r.category||'') + '</span><button class="btn btn-sm btn-secondary" onclick="App._cfgDel(\'rules\',' + r.id + ')" style="font-size:11px;padding:2px 8px">🗑</button></div>';
+                }).join('') + '</div></div>';
+        } else if (tab === 'alias') {
+            html = '<div class="card"><div class="form-row mb-12"><input class="form-input" id="cfgNewReal" placeholder="真实名称"><input class="form-input" id="cfgNewAlias" placeholder="别名"><input class="form-input" id="cfgNewCat" placeholder="分类"><button class="btn btn-primary btn-sm" onclick="App._cfgAdd(\'alias\')">+ 添加</button></div>' +
+                '<div>' + rows.map(function(r) {
+                    return '<div class="chapter-item"><span class="ch-num">📝</span><span class="ch-title"><strong>' + r.real_name + '</strong> → ' + r.alias + '</span><span class="ch-meta">' + (r.category||'') + '</span><button class="btn btn-sm btn-secondary" onclick="App._cfgDel(\'alias\',' + r.id + ')" style="font-size:11px;padding:2px 8px">🗑</button></div>';
+                }).join('') + '</div></div>';
+        } else if (tab === 'styles') {
+            html = '<div class="card"><div class="form-row mb-12"><input class="form-input" id="cfgNewName" placeholder="风格名称"><input class="form-input" id="cfgNewDesc" placeholder="描述"><textarea class="form-textarea mt-8" id="cfgNewPrompt" rows="3" placeholder="风格提示词"></textarea><button class="btn btn-primary btn-sm mt-8" onclick="App._cfgAdd(\'styles\')">+ 添加</button></div>' +
+                '<div>' + rows.map(function(r) {
+                    return '<div class="chapter-item"><span class="ch-num">' + (r.is_active?'✅':'⏸') + '</span><span class="ch-title"><strong>' + r.name + '</strong>: ' + (r.description||'') + '</span><button class="btn btn-sm btn-secondary" onclick="App._cfgDel(\'styles\',' + r.id + ')" style="font-size:11px;padding:2px 8px">🗑</button></div>';
+                }).join('') + '</div></div>';
+        }
+        ct.innerHTML = html;
+    },
+
+    async _cfgAdd(tab) {
+        var tables = {banned:'banned_words', rules:'compliance_rules', alias:'alias_registry', styles:'style_presets'};
+        var table = tables[tab];
+        var body = {};
+        if (tab === 'banned') {
+            body = {word:document.getElementById('cfgNewWord')?.value, category:document.getElementById('cfgNewCat')?.value, replacement:document.getElementById('cfgNewRep')?.value, severity:document.getElementById('cfgNewSev')?.value};
+        } else if (tab === 'rules') {
+            body = {rule_key:document.getElementById('cfgNewKey')?.value, rule_value:document.getElementById('cfgNewVal')?.value, category:document.getElementById('cfgNewCat')?.value};
+        } else if (tab === 'alias') {
+            body = {real_name:document.getElementById('cfgNewReal')?.value, alias:document.getElementById('cfgNewAlias')?.value, category:document.getElementById('cfgNewCat')?.value};
+        } else if (tab === 'styles') {
+            body = {name:document.getElementById('cfgNewName')?.value, description:document.getElementById('cfgNewDesc')?.value, prompt:document.getElementById('cfgNewPrompt')?.value};
+        }
+        var resp = await fetch('/api/config-db/' + table, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(function(r){return r.json();});
+        if (resp.success) { this.toast('✅ 已添加', 'success'); this._loadCfgTab(tab); }
+        else { this.toast(resp.error||'添加失败', 'error'); }
+    },
+
+    async _cfgDel(tab, id) {
+        var tables = {banned:'banned_words', rules:'compliance_rules', alias:'alias_registry', styles:'style_presets'};
+        var table = tables[tab];
+        var resp = await fetch('/api/config-db/' + table + '/' + id, {method:'DELETE'}).then(function(r){return r.json();});
+        if (resp.success) { this.toast('✅ 已删除', 'success'); this._loadCfgTab(tab); }
+        else { this.toast(resp.error||'删除失败', 'error'); }
+    },
     // ═══════════════════════════════════════════════════════════════════
     //  SETTINGS
     // ═══════════════════════════════════════════════════════════════════

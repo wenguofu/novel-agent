@@ -13,6 +13,8 @@ import httpx
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
+import sqlite3 as _sqlite3
+
 from config import (
     DEEPSEEK_API_BASE,
     DEEPSEEK_API_KEY,
@@ -1316,6 +1318,91 @@ def api_wizard_step():
         "allow_custom": step.get("allow_custom", False),
         "is_last": step_index == len(WIZARD_STEPS) - 1,
     })
+
+
+# ─── Config DB ──────────────────────────────────────────────────────────────
+
+def get_config_db():
+    conn = _sqlite3.connect(CONFIG_DB_PATH)
+    conn.row_factory = _sqlite3.Row
+    return conn
+
+@app.route("/api/config-db/<table>")
+def api_config_list(table):
+    allowed = {"banned_words", "compliance_rules", "alias_registry", "style_presets"}
+    if table not in allowed:
+        return jsonify({"success": False, "error": "无效表名"}), 400
+    cat = request.args.get("category", "")
+    try:
+        conn = get_config_db()
+        if cat and table == "banned_words":
+            rows = conn.execute("SELECT * FROM banned_words WHERE category=? ORDER BY id", (cat,)).fetchall()
+        elif cat and table == "compliance_rules":
+            rows = conn.execute("SELECT * FROM compliance_rules WHERE category=? ORDER BY id", (cat,)).fetchall()
+        else:
+            rows = conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall()
+        conn.close()
+        return jsonify({"success": True, "rows": [dict(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/config-db/<table>", methods=["POST"])
+def api_config_add(table):
+    allowed = {"banned_words", "compliance_rules", "alias_registry", "style_presets"}
+    if table not in allowed:
+        return jsonify({"success": False, "error": "无效表名"}), 400
+    data = request.json or {}
+    try:
+        conn = get_config_db()
+        if table == "banned_words":
+            conn.execute("INSERT INTO banned_words (word,category,replacement,severity) VALUES (?,?,?,?)",
+                (data["word"], data.get("category","通用"), data.get("replacement",""), data.get("severity","error")))
+        elif table == "compliance_rules":
+            conn.execute("INSERT INTO compliance_rules (rule_key,rule_value,description,category) VALUES (?,?,?,?)",
+                (data["rule_key"], data["rule_value"], data.get("description",""), data.get("category","general")))
+        elif table == "alias_registry":
+            conn.execute("INSERT INTO alias_registry (real_name,alias,category,notes) VALUES (?,?,?,?)",
+                (data["real_name"], data["alias"], data.get("category","地名"), data.get("notes","")))
+        elif table == "style_presets":
+            conn.execute("INSERT INTO style_presets (name,description,prompt,is_active) VALUES (?,?,?,?)",
+                (data["name"], data.get("description",""), data["prompt"], data.get("is_active",1)))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "已添加"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/config-db/<table>/<int:row_id>", methods=["PUT", "DELETE"])
+def api_config_manage(table, row_id):
+    allowed = {"banned_words", "compliance_rules", "alias_registry", "style_presets"}
+    if table not in allowed:
+        return jsonify({"success": False, "error": "无效表名"}), 400
+    try:
+        conn = get_config_db()
+        if request.method == "DELETE":
+            conn.execute(f"DELETE FROM {table} WHERE id=?", (row_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已删除"})
+        else:
+            data = request.json or {}
+            if table == "banned_words":
+                conn.execute("UPDATE banned_words SET word=?,category=?,replacement=?,severity=? WHERE id=?",
+                    (data["word"], data.get("category",""), data.get("replacement",""), data.get("severity","error"), row_id))
+            elif table == "compliance_rules":
+                conn.execute("UPDATE compliance_rules SET rule_key=?,rule_value=?,description=?,category=? WHERE id=?",
+                    (data["rule_key"], data["rule_value"], data.get("description",""), data.get("category",""), row_id))
+            elif table == "alias_registry":
+                conn.execute("UPDATE alias_registry SET real_name=?,alias=?,category=?,notes=? WHERE id=?",
+                    (data["real_name"], data["alias"], data.get("category",""), data.get("notes",""), row_id))
+            elif table == "style_presets":
+                conn.execute("UPDATE style_presets SET name=?,description=?,prompt=?,is_active=? WHERE id=?",
+                    (data["name"], data.get("description",""), data["prompt"], data.get("is_active",1), row_id))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ─── Templates ──────────────────────────────────────────────────────────────
