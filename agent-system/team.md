@@ -23,9 +23,10 @@ delivery:
 
 | # | Agent | 文件 | 参与的工作流 |
 |:---|:---|:---|:---|
+| 0 | 写作助手 Agent | `team/agent-assistant.md` | 所有工作流（用户交互层） |
 | 1 | 总主编剧 Agent | `team/agent-chief-writer.md` | 新书, 新卷 |
 | 2 | 类型规则 Agent | `team/agent-genre-rules.md` | 新书, 新卷 |
-| 3 | 世界观设定 Agent | `team/agent-world-settings.md` | 新书 |
+| 3 | 世界观设定 Agent | `team/agent-world-settings.md` | 新书, **单章, 续写/批量** |
 | 4 | 人物 Agent | `team/agent-characters.md` | 新书, 单章 |
 | 5 | 长线剧情 Agent | `team/agent-long-plot.md` | 新书, 新卷 |
 | 6 | 章节规划 Agent | `team/agent-chapter-planner.md` | 单章, 续写/批量 |
@@ -39,11 +40,18 @@ delivery:
 
 | 工作流 | 加载的 Agent | 脚本辅助 |
 |:---|:---|:---|
-| 创建新书 | 1, 2, 3, 4, 9 | - |
-| 创建新卷 | 1, 2, 5 | - |
-| 创建单章 | 6, 7, 8, 9, 10, 11 | `analyze_chapter.py`, `check_compliance.py`, `detect_forbidden_patterns.py` |
-| 续写/批量 | 6, 7, 8, 9, 10, 11 | `verify_continuity.py` |
-| 审稿 | 8, 9, 11 | `analyze_chapter.py`, `check_compliance.py` |
-| 查询状态 | 10 | - |
+| 创建新书 | 0, 1, 2, 3, 4, 9 | `stage_gate.py`, `agent_tracker.py` |
+| 创建新卷 | 0, 1, 2, 5 | `stage_gate.py`, `agent_tracker.py` |
+| 创建单章 | 0, 2, 3, 4, 6, 7, 8, 9, 10, 11 | `stage_gate.py`, `agent_tracker.py`, `rag_context.py`, `analyze_chapter.py`, `check_compliance.py`, `detect_forbidden_patterns.py`, `validate_review.py`, `rag_index.py` |
+| 续写/批量 | 0, 2, 3, 4, 6, 7, 8, 9, 10, 11 | `verify_continuity.py`, `rag_context.py`, `analyze_chapter.py`, `rag_index.py` |
+| 审稿 | 0, 8, 9, 11 | `analyze_chapter.py`, `check_compliance.py`, `detect_forbidden_patterns.py`, `validate_review.py` |
+| 查询状态 | 0, 10 | - |
 
 > **Agent 定义见 `team/` 目录。工作流定义见 `workflows/` 目录。辅助脚本见 `scripts/` 目录。**
+
+## 审稿升级路径
+
+编辑审稿 Agent 维护 `revision_count` 计数器：
+- 同章节连续 3 次「修改」结论 → 升级至写作助手 Agent
+- 同章节连续 2 次「重写」结论 → 升级至写作助手 Agent
+- 写作助手 Agent 将僵局详情呈现给用户决策

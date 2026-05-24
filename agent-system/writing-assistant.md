@@ -85,10 +85,16 @@
 
 | 脚本 | 功能 | 调用时机 |
 |:---|:---|:---|
-| `scripts/analyze_chapter.py` | 字数统计 + 结构检查 | 正文写作后、审稿前 |
-| `scripts/detect_forbidden_patterns.py` | 禁词/禁式检测 | 正文写作后、审稿前 |
-| `scripts/check_compliance.py` | 合规名称检查 | 审稿时、合规检查时 |
-| `scripts/verify_continuity.py` | 批量章节连续性校验 | 批量写作完成后 |
+| `agent-system/scripts/analyze_chapter.py` | 字数+结构+禁式+人物+重复检测 | 正文写作后、审稿前 |
+| `agent-system/scripts/detect_forbidden_patterns.py` | 禁词/禁式检测 | 正文写作后、审稿前 |
+| `agent-system/scripts/check_compliance.py` | 合规名称检查 | 审稿时、合规检查时 |
+| `agent-system/scripts/verify_continuity.py` | 批量章节连续性校验 | 批量写作完成后 |
+| `agent-system/scripts/stage_gate.py` | 阶段门控 (阻止越级) | 每阶段开始前/完成后 |
+| `agent-system/scripts/agent_tracker.py` | Agent 执行完整性检查 | 每阶段产出后 |
+| `agent-system/scripts/validate_review.py` | 审稿评分卡验证 | 编辑审稿完成后 |
+| `agent-system/scripts/rhythm_check.py` | 节奏规则扫描 | 每5章或新卷前 |
+| `agent-system/scripts/rag_context.py` | RAG 语义记忆注入 | 章节规划/写作前 |
+| `agent-system/scripts/rag_index.py` | RAG 索引增量更新 | 每章完成后 |
 
 ## 质量检查清单
 

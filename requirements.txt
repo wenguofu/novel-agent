@@ -1,0 +1,13 @@
+# novel-agent 依赖
+# pip install -r requirements.txt
+
+# RAG 向量检索
+chromadb>=1.5.0
+sentence-transformers>=3.0.0
+PySocks>=1.7.0
+
+# 合规检查
+# (stdlib only — 无额外依赖)
+
+# 节奏检查
+# (stdlib only — 无额外依赖)

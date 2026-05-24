@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovelForge — AI 写作工作台</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-mark">N</div>
+                <div class="logo-text">
+                    <span class="logo">NovelForge</span>
+                    <span class="logo-sub">写作工作台</span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-label">导航</div>
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span>控制台</span>
+                </a>
+                <a href="#" class="nav-item" data-view="novels">
+                    <span class="nav-icon">📚</span>
+                    <span>项目</span>
+                </a>
+                <a href="#" class="nav-item" data-view="new-book">
+                    <span class="nav-icon">✨</span>
+                    <span>创建新书</span>
+                </a>
+
+                <div class="nav-section-label" style="margin-top:8px;">创作</div>
+                <a href="#" class="nav-item" data-view="writing">
+                    <span class="nav-icon">✍️</span>
+                    <span>写作台</span>
+                </a>
+                <a href="#" class="nav-item" data-view="review">
+                    <span class="nav-icon">🔍</span>
+                    <span>审稿</span>
+                </a>
+
+                <div class="nav-section-label" style="margin-top:8px;">系统</div>
+                <a href="#" class="nav-item" data-view="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span>设置</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="config-status" id="configStatus">
+                    <span class="status-dot orange"></span>
+                    连接中...
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content" id="mainContent">
+            <!-- Dynamic content loaded here -->
+        </main>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

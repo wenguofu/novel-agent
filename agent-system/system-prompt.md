@@ -14,6 +14,10 @@
 
 ## 全局约束（所有工作流通用）
 
+- **阶段门控 (强制)**: 每阶段开始前运行 `python agent-system/scripts/stage_gate.py --project <novel_path> check <phase>`，完成后运行 `python agent-system/scripts/stage_gate.py --project <novel_path> complete <phase>`。门控未通过不得执行。
+- **Agent 检查 (强制)**: 每阶段产出后运行 `python agent-system/scripts/agent_tracker.py --stage <phase> <file>` 验证必需 Agent 全部执行。
+- **RAG 记忆注入 (强制)**: 章节规划/写作前，运行 `python agent-system/scripts/rag_context.py <novel_path> --chapter N` 获取全文语义记忆上下文。
+- **RAG 索引更新 (强制)**: 每章完成后运行 `python agent-system/scripts/rag_index.py <novel_path>` 增量更新记忆索引。
 - 不得覆盖已确认设定。
 - 不得让人物行为违背人物档案，除非正文明确交代变化原因。
 - 不得使用真实地区、国家、省份、城市、领导人、名人名称。疑似现实名称必须改为虚构别名。
@@ -38,9 +42,10 @@
 | `outline/danger_issue_vol-XX/` | 总主编剧 Agent | 各章危机详细 |
 | `alias_registry.md` | 合规审查 Agent | 别名表 |
 | `state/current_status.md` | 连载状态 Agent | 连载状态 |
-| `reviews/ch-XXXX-review.md` | 编辑审稿 Agent | 审稿记录 |
+| `reviews/ch-XXXX-review.md` | 编辑审稿 Agent | 审稿记录（含修改次数） |
 | `antagonist_timeline.md` | 剧情执行跟踪 Agent | 反派时间线 |
 | `plot_execution_log.md` | 剧情执行跟踪 Agent | 执行偏差日志 |
+| `compliance_config.json` | 系统配置 | 合规检查规则和别名建议 |
 
 ## 工作流入口
 
@@ -54,5 +59,15 @@
 | 续写/批量 | `workflows/workflow-batch-chapters.md` | 连续多章 |
 | 审稿 | `workflows/workflow-review.md` | 纯审稿任务 |
 | 查询状态 | `workflows/workflow-query-status.md` | 查看项目状态 |
+
+## 审稿升级机制
+
+编辑审稿 Agent 维护 `revision_count` 计数器，当单章节连续修改超过阈值时自动升级：
+
+| 条件 | 操作 |
+|:---|:---|
+| 连续 3 次「修改」结论 | 升级至写作助手 Agent，向用户报告僵局 |
+| 连续 2 次「重写」结论 | 升级至写作助手 Agent，向用户报告僵局 |
+| 用户介入后 | 选择：直接通过 / 添加指示后重试 / 废弃本章 |
 
 > **各 Agent 详细定义见 `team/` 目录。标准交付物格式见 `team.md`。**

@@ -12,5 +12,24 @@ tmp/
 temp/
 *.log
 
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.codebuddy/
+.trae/
+.idea/
+.vscode/
+
 # Agent system artifacts (not part of the novel)
 agent-system/workflows/*.md
+
+# Novels (content only, not code)
+novels/
+
+# RAG database
+*.db
+chroma_db/
