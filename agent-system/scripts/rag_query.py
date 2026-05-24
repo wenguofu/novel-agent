@@ -198,7 +198,7 @@ def print_results(results: list[dict]):
 
 
 def inject_context(novel_name: str, chapter: int = None, volume: int = None,
-                   max_tokens: int = 2000, limit: int = 15):
+                   max_tokens: int = 2000, limit: int = 15, characters: str = ""):
     """
     上下文注入模式: 自动为写作Agent生成关联上下文
 
@@ -220,16 +220,19 @@ def inject_context(novel_name: str, chapter: int = None, volume: int = None,
         except Exception:
             pass
 
-    # 查询2: 人物最新状态
-    char_query = "主角 李闲 陈远山 苏灵 王硕 当前状态 最新进展 人物关系"
+    # 查询2: 人物最新状态 (动态)
+    char_names = [c.strip() for c in characters.split(",") if c.strip()]
+    if not char_names:
+        char_names = ["主角", "主要角色"]
+    char_query = " ".join(char_names[:6]) + " 当前状态 最新进展 人物关系"
     try:
         r2 = query_memory(novel_name, char_query, limit=limit // 3, ftype="chapter")
         all_results.extend(r2)
     except Exception:
         pass
 
-    # 查询3: 未回收伏笔
-    foreshadow_query = "伏笔 未回收 待回收 秘密 揭示 线索"
+    # 查询3: 未回收伏笔 + 世界观规则
+    foreshadow_query = "伏笔 未回收 待回收 秘密 揭示 线索 设定 规则 世界观"
     try:
         r3 = query_memory(novel_name, foreshadow_query, limit=limit // 3, ftype="plot_arc")
         all_results.extend(r3)
@@ -299,6 +302,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=10, help="返回结果数 (默认10)")
     parser.add_argument("--inject", action="store_true", help="上下文注入模式")
     parser.add_argument("--max-tokens", type=int, default=2000, help="注入最大token数 (默认2000)")
+    parser.add_argument("--characters", default="", help="逗号分隔的角色名列表 (注入模式用)")
     parser.add_argument("--info", action="store_true", help="显示索引信息")
     parser.add_argument("--json", action="store_true", help="JSON格式输出")
 
@@ -319,6 +323,7 @@ if __name__ == "__main__":
             volume=args.volume,
             max_tokens=args.max_tokens,
             limit=args.limit,
+            characters=args.characters,
         )
     else:
         results = query_memory(

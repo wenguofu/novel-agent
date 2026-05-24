@@ -90,8 +90,9 @@ def extract_metadata(filepath: str, content: str, novel_name: str) -> dict:
     if title_match:
         meta["title"] = title_match.group(1).strip()
 
-    # 统计字数
-    meta["char_count"] = len(content.replace("\n", "").replace(" ", ""))
+    # 统计字数 + 内容哈希
+    meta["char_count"] = len(content.replace("\\n", "").replace(" ", ""))
+    meta["content_hash"] = hashlib.md5(content.encode("utf-8")).hexdigest()
 
     # 提取人物提及
     char_names = re.findall(r"(李闲|陈远山|王硕|苏灵|林望舒|唐一梨|陆星野)", content)
@@ -194,7 +195,34 @@ def index_novel(novel_path: str, rebuild: bool = False):
             pass
 
     new_files = [f for f in files_to_index if str(f) not in existing_sources]
-    print(f"\n📊 文件统计: 总计 {len(files_to_index)} 个, 新增 {len(new_files)} 个")
+
+    # Check existing files for content changes (re-generated chapters etc.)
+    changed_files = []
+    for f in files_to_index:
+        fp = str(f)
+        if fp in existing_sources:
+            try:
+                new_hash = hashlib.md5(f.read_bytes()).hexdigest()
+                # Get old content by querying chunks from this source
+                old_chunks = collection.get(where={"source_path": fp})
+                if old_chunks and old_chunks.get("metadatas"):
+                    old_meta = old_chunks["metadatas"][0]
+                    old_hash = old_meta.get("content_hash", "")
+                    if old_hash and old_hash != new_hash:
+                        # Content changed - delete old chunks, re-index
+                        old_ids = old_chunks.get("ids", [])
+                        if old_ids:
+                            collection.delete(ids=old_ids)
+                        changed_files.append(f)
+                        existing_sources.discard(fp)
+            except Exception:
+                pass
+
+    if changed_files:
+        new_files.extend(changed_files)
+    new_files = sorted(set(new_files), key=lambda f: str(f))
+
+    print(f"\n📊 文件统计: 总计 {len(files_to_index)} 个, 新增 {len(new_files)} 个, 内容变更 {len(changed_files)} 个")
 
     if not new_files:
         print("✅ 索引已是最新，无需更新")

@@ -30,6 +30,18 @@ def main():
     novel_path = Path(args.novel_path).resolve()
     novel_name = novel_path.name
 
+    # Extract character names from characters.md for dynamic queries
+    char_names = []
+    chars_file = novel_path / "characters.md"
+    if chars_file.exists():
+        import re as _re2
+        chars_text = chars_file.read_text(encoding="utf-8")
+        # Match patterns like "- 姓名：XXX", "- **姓名**：XXX", "## XXX"
+        found = _re2.findall(r'(?:姓名[：:]\s*|^##\s+)(.{1,6}?)(?:\s|$)', chars_text, _re2.MULTILINE)
+        char_names = [n.strip() for n in found if n.strip() and len(n.strip()) >= 2][:8]
+    if not char_names:
+        char_names = ["主角"]
+
     script_dir = Path(__file__).parent
     query_script = script_dir / "rag_query.py"
 
@@ -59,6 +71,7 @@ def main():
             novel_name,
             "--inject",
             f"--max-tokens={args.max_tokens}",
+            f"--characters={','.join(char_names)}",
         ]
         if chapter:
             cmd.append(f"--chapter={chapter}")
