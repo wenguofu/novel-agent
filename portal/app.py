@@ -1006,18 +1006,71 @@ def api_test_config():
 
 # Genre categories with sub-genres
 GENRE_OPTIONS = {
-    "玄幻": ["东方玄幻", "异界大陆", "王朝争霸", "洪荒封神", "高武世界", "另类玄幻"],
-    "仙侠": ["古典仙侠", "现代修真", "洪荒封神", "神话修真", "幻想修仙"],
-    "都市": ["都市生活", "异术超能", "重生逆袭", "青春校园", "商战职场", "娱乐明星"],
-    "科幻": ["星际文明", "未来世界", "末世危机", "时空穿梭", "超级科技", "进化变异"],
-    "历史": ["架空历史", "秦汉三国", "两晋隋唐", "宋元明清", "历史神话", "外国历史"],
-    "悬疑": ["悬疑侦探", "灵异鬼怪", "恐怖惊悚", "推理探案", "盗墓探险"],
-    "游戏": ["虚拟网游", "电子竞技", "游戏异界", "游戏系统"],
-    "军事": ["战争幻想", "谍战特工", "军旅生活", "抗战烽火"],
-    "武侠": ["传统武侠", "新派武侠", "国术无双", "武侠幻想"],
-    "奇幻": ["西方奇幻", "史诗奇幻", "剑与魔法", "黑暗奇幻", "现代奇幻"],
-    "轻小说": ["恋爱日常", "搞笑吐槽", "原生幻想", "青春疼痛"],
-    "二次元": ["同人衍生", "综漫无限", "动漫穿越"],
+    "玄幻": [
+        "东方玄幻", "异界大陆", "王朝争霸", "洪荒封神", "高武世界",
+        "另类玄幻", "神话传说", "诸天万界", "凡人流", "无敌流",
+        "系统流", "气运流", "血脉觉醒", "儒道至圣", "术士世界",
+    ],
+    "仙侠": [
+        "古典仙侠", "现代修真", "洪荒封神", "神话修真", "幻想修仙",
+        "凡人修仙", "剑道独尊", "炼丹炼器", "宗门养成", "轮回转世",
+        "修真科技", "灵根觉醒", "仙魔大战", "天道争锋", "散修逆袭",
+    ],
+    "都市": [
+        "都市生活", "异术超能", "重生逆袭", "青春校园", "商战职场",
+        "娱乐明星", "医生文", "特种兵", "鉴宝捡漏", "都市修真",
+        "神豪系统", "奶爸日常", "极限运动", "美食经营", "风水相术",
+    ],
+    "科幻": [
+        "星际文明", "未来世界", "末世危机", "时空穿梭", "超级科技",
+        "进化变异", "机甲战争", "AI觉醒", "星际殖民", "基因编辑",
+        "赛博朋克", "废土求生", "太空歌剧", "虚拟世界", "外星入侵",
+    ],
+    "历史": [
+        "架空历史", "秦汉三国", "两晋隋唐", "宋元明清", "历史神话",
+        "外国历史", "争霸天下", "科举朝堂", "基建种田", "穿越种田",
+        "后宫权谋", "谍战密探", "航海大发现", "草原帝国", "文明崛起",
+    ],
+    "悬疑": [
+        "悬疑侦探", "灵异鬼怪", "恐怖惊悚", "推理探案", "盗墓探险",
+        "心理罪案", "法医秦明", "古墓谜题", "诡异游戏", "克苏鲁",
+        "阴阳先生", "捉鬼天师", "诅咒解密", "无限循环", "都市传说",
+    ],
+    "游戏": [
+        "虚拟网游", "电子竞技", "游戏异界", "游戏系统",
+        "全息游戏", "MOBA竞技", "FPS射击", "生存游戏",
+        "卡牌对战", "塔防策略", "开放世界", "roguelike",
+    ],
+    "军事": [
+        "战争幻想", "谍战特工", "军旅生活", "抗战烽火",
+        "特种作战", "海军争霸", "空军王牌", "未来战争",
+        "佣兵生涯", "军事科技", "边境风云", "维和行动",
+    ],
+    "武侠": [
+        "传统武侠", "新派武侠", "国术无双", "武侠幻想",
+        "江湖恩怨", "侠客行", "六扇门", "暗器世家",
+        "轻功天下", "内功心法", "刀剑江湖", "武林盟主",
+    ],
+    "奇幻": [
+        "西方奇幻", "史诗奇幻", "剑与魔法", "黑暗奇幻", "现代奇幻",
+        "龙与地下城", "精灵史诗", "矮人锻造", "魔法学院",
+        "恶魔契约", "神祇战争", "位面穿梭", "亡灵国度",
+    ],
+    "轻小说": [
+        "恋爱日常", "搞笑吐槽", "原生幻想", "青春疼痛",
+        "校园恋爱", "异世界转生", "慢生活", "病娇纯爱",
+        "反差萌", "甜宠日常", "胃疼文学", "治愈系",
+    ],
+    "二次元": [
+        "同人衍生", "综漫无限", "动漫穿越",
+        "漫威DC", "火影海贼", "型月世界",
+        "虚拟偶像", "宅文化", "cosplay",
+    ],
+    "体育": [
+        "足球风云", "篮球称霸", "综合竞技", "格斗搏击",
+        "围棋象棋", "赛车竞速", "电子竞技", "田径之王",
+        "游泳跳水", "网球王子", "乒乓争锋", "冰雪运动",
+    ],
 }
 
 WIZARD_STEPS = [
@@ -1036,8 +1089,8 @@ WIZARD_STEPS = [
         "allow_custom": True, "required": True,
     },
     {
-        "id": "subgenre", "label": "题材细分", "type": "sub_select",
-        "question": "请选择题材细分方向",
+        "id": "subgenre", "label": "题材细分", "type": "multi_select",
+        "question": "请选择题材细分方向（可多选）",
         "parent_key": "genre",
         "allow_custom": True, "required": False,
     },
@@ -1071,10 +1124,23 @@ WIZARD_STEPS = [
         "allow_custom": True, "required": True,
     },
     {
-        "id": "style", "label": "写作风格", "type": "ai",
-        "question": "AI 为你推荐写作风格",
-        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐5种最适合的写作风格。\n\n书名：{name}\n题材：{genre}\n细分：{subgenre}\n主角：{protagonist}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"风格名称\", \"desc\": \"风格特点和适合理由（30字内）\"}}, ...]",
-        "allow_custom": True, "required": True,
+        "id": "style", "label": "写作风格", "type": "style_select",
+        "question": "选择写作风格并设置比例（总和100%）",
+        "options": [
+            {"label": "金庸风", "desc": "传统武侠，典雅大气"},
+            {"label": "古龙风", "desc": "简洁凌厉，意境留白"},
+            {"label": "番茄风", "desc": "爽文直白，快节奏"},
+            {"label": "辰东风", "desc": "宏大叙事，设定丰富"},
+            {"label": "宅猪风", "desc": "东方神话，厚重底蕴"},
+            {"label": "猫腻风", "desc": "文艺心机，伏笔深远"},
+            {"label": "烽火风", "desc": "华丽辞藻，情感浓烈"},
+            {"label": "土豆风", "desc": "热血升级，打脸爽快"},
+            {"label": "老鹰风", "desc": "搞笑玩梗，轻松愉快"},
+            {"label": "乌贼风", "desc": "诡秘设定，逻辑严密"},
+            {"label": "三少风", "desc": "升级打怪，稳定更新"},
+            {"label": "江南风", "desc": "青春忧伤，文笔细腻"},
+        ],
+        "allow_custom": False, "required": True,
     },
 ]
 
@@ -1094,20 +1160,21 @@ def api_wizard_step():
     step_type = step.get("type", "ai")
 
     # --- Select type: return fixed options ---
-    if step_type == "select":
+    if step_type == "select" or step_type == "style_select":
         return jsonify({
             "success": True,
             "step": {k: v for k, v in step.items() if k != "prompt_template"},
             "step_index": step_index,
             "total_steps": TOTAL_STEPS,
             "options": step.get("options", []),
-            "step_type": "select",
+            "step_type": step_type,
+            "multi": step_type == "style_select",
             "allow_custom": step.get("allow_custom", False),
             "is_last": False,
         })
 
-    # --- Sub-select type: options depend on parent selection ---
-    if step_type == "sub_select":
+    # --- Sub-select / Multi-select: options depend on parent selection ---
+    if step_type == "multi_select" or step_type == "sub_select":
         parent_key = step.get("parent_key", "genre")
         parent_val = selections.get(parent_key, "")
         sub_options = []
@@ -1120,7 +1187,8 @@ def api_wizard_step():
             "step_index": step_index,
             "total_steps": TOTAL_STEPS,
             "options": sub_options,
-            "step_type": "select",
+            "step_type": step_type,
+            "multi": step_type == "multi_select",
             "allow_custom": step.get("allow_custom", False),
             "is_last": False,
             "parent_label": parent_val,

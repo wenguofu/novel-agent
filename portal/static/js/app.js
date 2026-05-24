@@ -378,47 +378,135 @@ const App = {
             return;
         }
 
-        // --- SELECT / AI STEP ---
-        const isAiLoading = isAiStep && w.loading;
+        // --- SELECT / AI / MULTI STEP ---
 
+        const isMulti = resp.multi === true;
+        const aiBadge = isAiStep ? ' <span class="wizard-ai-badge">🤖 AI</span>' : '';
+        const backBtn = index > 0 ? '<button class="btn btn-secondary" onclick="App._wizardBack(' + index + ')">← 上一步</button>' : '';
+        const refreshBtn = isAiStep ? '<button class="btn btn-secondary" onclick="App._loadWizardStep(' + index + ')">🔄 换一批</button>' : '';
+
+        // Build options HTML
         let optionsHtml;
+        const isStyle = stepType === 'style_select';
         if (isAiStep && !options.length && w.loading) {
             optionsHtml = '<div class="loading" style="padding:40px"><div class="spinner"></div><span>AI 正在生成推荐...</span></div>';
+        } else if (isStyle) {
+            // Style select with percentage sliders
+            if (!w._stylePcts) w._stylePcts = {};
+            var sp = w._stylePcts;
+            optionsHtml = '<div class="wizard-options wizard-options-multi">' + options.map(function(opt) {
+                var s = !!sp[opt.label], el = App._escapeAttr(opt.label), eh = App._escapeHtml(opt.label);
+                var pct = sp[opt.label] || 0;
+                var sliderHtml = s ? '<div class="wizard-pct-row"><input type="range" class="wizard-pct-slider" min="5" max="100" value="' + pct + '" data-slbl="' + el + '" oninput="App._stylePctChange(this)"><span class="wizard-pct-val">' + pct + '%</span></div>' : '';
+                return '<div class="wizard-option wizard-multi-opt' + (s ? ' selected' : '') + '" data-mlabel="' + el + '" onclick="App._toggleStyle(this,\'' + el + '\')"><div class="wizard-option-check">' + (s ? '☑' : '☐') + '</div><div class="wizard-option-label">' + eh + '</div>' + sliderHtml + '</div>';
+            }).join('') + '</div>';
+        } else if (isMulti) {
+            if (!w._multiSelected) w._multiSelected = new Set();
+            var msel = w._multiSelected;
+            optionsHtml = '<div class="wizard-options wizard-options-multi">' + options.map(function(opt) {
+                var s = msel.has(opt.label), el = App._escapeAttr(opt.label), eh = App._escapeHtml(opt.label);
+                return '<div class="wizard-option wizard-multi-opt' + (s ? ' selected' : '') + '" data-mlabel="' + el + '" onclick="App._toggleMulti(this,\'' + el + '\')"><div class="wizard-option-check">' + (s ? '☑' : '☐') + '</div><div class="wizard-option-label">' + eh + '</div></div>';
+            }).join('') + '</div>';
         } else {
-            optionsHtml = `<div class="wizard-options">${options.map((opt, i) => `
-                <div class="wizard-option" data-idx="${index}" data-label="${this._escapeAttr(opt.label)}" data-desc="${this._escapeAttr(opt.desc || '')}">
-                    <div class="wizard-option-label">${this._escapeHtml(opt.label)}</div>
-                    ${opt.desc ? `<div class="wizard-option-desc">${this._escapeHtml(opt.desc)}</div>` : ''}
-                    <div class="wizard-option-pick">选择 →</div>
-                </div>
-            `).join('')}</div>`;
+            optionsHtml = '<div class="wizard-options">' + options.map(function(opt) {
+                var el = App._escapeAttr(opt.label), ed = App._escapeAttr(opt.desc || ''), eh = App._escapeHtml(opt.label);
+                var descHtml = opt.desc ? '<div class="wizard-option-desc">' + App._escapeHtml(opt.desc) + '</div>' : '';
+                return '<div class="wizard-option" data-idx="' + index + '" data-label="' + el + '" data-desc="' + ed + '"><div class="wizard-option-label">' + eh + '</div>' + descHtml + '<div class="wizard-option-pick">选择 →</div></div>';
+            }).join('') + '</div>';
         }
 
-        const aiBadge = isAiStep ? ' <span class="wizard-ai-badge">🤖 AI</span>' : '';
+        // Footer
+        var footerHtml;
+        if (isStyle) {
+            var totalPct = Object.values(w._stylePcts || {}).reduce(function(a,b){return a+b;}, 0);
+            footerHtml = '<div class="wizard-multi-footer"><span class="text-secondary">风格占比: <strong id="pctTotal" style="color:' + (totalPct === 100 ? 'var(--success)' : 'var(--warning)') + '">' + totalPct + '%</strong></span><button class="btn btn-primary btn-lg" id="styleConfirmBtn" onclick="App._confirmStyle(' + index + ')"' + (totalPct !== 100 ? ' disabled' : '') + '>✓ 确认' + (totalPct !== 100 ? '（需凑满100%）' : '') + '</button>' + backBtn + '</div>';
+        } else if (isMulti) {
+            var cnt = w._multiSelected ? w._multiSelected.size : 0;
+            footerHtml = '<div class="wizard-multi-footer"><span class="text-secondary" style="font-size:13px">已选 <strong style="color:var(--accent)" id="multiCount">' + cnt + '</strong> 项</span><button class="btn btn-primary btn-lg" id="multiConfirmBtn" onclick="App._confirmMulti(' + index + ')"' + (cnt === 0 ? ' disabled' : '') + '>✓ 确认选择</button>' + backBtn + '</div>';
+        } else if (resp.allow_custom) {
+            footerHtml = '<div class="wizard-custom"><span class="text-muted">或自定义：</span><div class="form-row" style="grid-template-columns:1fr auto"><input class="form-input" id="wizCustom" placeholder="输入自定义内容..."><button class="btn btn-secondary" onclick="App._wizardCustom(' + index + ')">✓ 使用</button></div></div><div class="wizard-actions mt-16">' + backBtn + refreshBtn + '</div>';
+        } else {
+            footerHtml = '<div class="wizard-actions mt-16">' + backBtn + refreshBtn + '</div>';
+        }
 
-        container.innerHTML = `
-            <div class="wizard-progress">
-                <div class="wizard-progress-bar"><div class="wizard-progress-fill ${isAiStep?'ai-glow':''}" style="width:${((index+1)/total*100)}%"></div></div>
-                <span class="wizard-progress-text">${index+1} / ${total} · ${stepLabel}${aiBadge}</span>
-            </div>
-            <div class="wizard-question-card">
-                <div class="wizard-question">${step.question}</div>
-                ${summaryHtml}
-                ${optionsHtml}
-                ${resp.allow_custom ? `
-                <div class="wizard-custom">
-                    <span class="text-muted">或自定义：</span>
-                    <div class="form-row" style="grid-template-columns:1fr auto">
-                        <input class="form-input" id="wizCustom" placeholder="输入自定义内容...">
-                        <button class="btn btn-secondary" onclick="App._wizardCustom(${index})">✓ 使用</button>
-                    </div>
-                </div>` : ''}
-                <div class="wizard-actions mt-16">
-                    ${index > 0 ? `<button class="btn btn-secondary" onclick="App._wizardBack(${index})">← 上一步</button>` : ''}
-                    ${isAiStep ? `<button class="btn btn-secondary" onclick="App._loadWizardStep(${index})">🔄 换一批</button>` : ''}
-                </div>
-            </div>
-        `;
+        container.innerHTML =
+            '<div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill' + (isAiStep ? ' ai-glow' : '') + '" style="width:' + ((index + 1) / total * 100) + '%"></div></div><span class="wizard-progress-text">' + (index + 1) + ' / ' + total + ' · ' + stepLabel + aiBadge + '</span></div>' +
+            '<div class="wizard-question-card"><div class="wizard-question">' + step.question + '</div>' + summaryHtml + optionsHtml + footerHtml + '</div>';
+    },
+
+    _toggleMulti(el, label) {
+        const w = this._wizard;
+        if (!w._multiSelected) w._multiSelected = new Set();
+        const sel = w._multiSelected;
+        if (sel.has(label)) sel.delete(label); else sel.add(label);
+        el.classList.toggle('selected', sel.has(label));
+        el.querySelector('.wizard-option-check').textContent = sel.has(label) ? '☑' : '☐';
+        // Update count
+        const cnt = document.getElementById('multiCount');
+        if (cnt) cnt.textContent = sel.size;
+        const btn = document.getElementById('multiConfirmBtn');
+        if (btn) btn.disabled = sel.size === 0;
+    },
+
+    _confirmMulti(index) {
+        const w = this._wizard;
+        const labels = [...(w._multiSelected || [])];
+        if (labels.length === 0) { this.toast('请至少选择一项', 'warning'); return; }
+        const stepId = this.STEP_IDS[index];
+        w.selections[stepId] = labels.join(', ');
+        w._multiSelected = new Set();
+        this._loadWizardStep(index + 1);
+    },
+
+    _toggleStyle(el, label) {
+        const w = this._wizard;
+        if (!w._stylePcts) w._stylePcts = {};
+        if (w._stylePcts[label]) {
+            delete w._stylePcts[label];
+        } else {
+            // Distribute evenly among selected
+            var keys = Object.keys(w._stylePcts);
+            keys.push(label);
+            var each = Math.floor(100 / keys.length);
+            var rem = 100 - each * keys.length;
+            keys.forEach(function(k, i) { w._stylePcts[k] = each + (i < rem ? 1 : 0); });
+        }
+        // Re-render this step
+        this._loadWizardStep(this._wizard.step);
+    },
+
+    _stylePctChange(slider) {
+        const w = this._wizard;
+        if (!w._stylePcts) return;
+        var label = slider.dataset.slbl;
+        var val = parseInt(slider.value);
+        w._stylePcts[label] = val;
+        // Update display
+        var row = slider.closest('.wizard-pct-row');
+        if (row) row.querySelector('.wizard-pct-val').textContent = val + '%';
+        // Update total
+        var total = Object.values(w._stylePcts).reduce(function(a,b){return a+b;}, 0);
+        var totalEl = document.getElementById('pctTotal');
+        if (totalEl) {
+            totalEl.textContent = total + '%';
+            totalEl.style.color = total === 100 ? 'var(--success)' : 'var(--warning)';
+        }
+        var btn = document.getElementById('styleConfirmBtn');
+        if (btn) {
+            btn.disabled = total !== 100;
+            btn.textContent = total === 100 ? '✓ 确认' : '✓ 确认（需凑满100%）';
+        }
+    },
+
+    _confirmStyle(index) {
+        const w = this._wizard;
+        var parts = [];
+        var sp = w._stylePcts || {};
+        Object.keys(sp).forEach(function(k) { parts.push(k + ' ' + sp[k] + '%'); });
+        if (parts.length === 0) { this.toast('请至少选择一种风格', 'warning'); return; }
+        w.selections.style = parts.join(', ');
+        w._stylePcts = {};
+        this._loadWizardStep(index + 1);
     },
 
     _wizardInputNext(index) {

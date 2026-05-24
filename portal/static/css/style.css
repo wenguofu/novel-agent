@@ -1791,3 +1791,34 @@ a:hover { color: var(--accent-hover); }
 .wizard-progress-fill.ai-glow {
   box-shadow: 0 0 8px var(--accent-glow);
 }
+
+/* ─── Multi-select cards ──────────────────────────────────────────── */
+.wizard-options-multi { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.wizard-multi-opt { display: flex; align-items: center; gap: 8px; padding: 10px 14px !important; }
+.wizard-multi-opt .wizard-option-check { font-size: 16px; min-width: 20px; }
+.wizard-multi-opt .wizard-option-label { margin-bottom: 0 !important; }
+.wizard-multi-opt.selected { border-color: var(--accent); background: var(--accent-soft); }
+.wizard-multi-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+}
+
+/* ─── Style percentage slider ──────────────────────────────────────── */
+.wizard-pct-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.wizard-pct-slider {
+  flex: 1; height: 4px; -webkit-appearance: none;
+  background: var(--bg-input); border-radius: 2px; outline: none;
+}
+.wizard-pct-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--accent); cursor: pointer;
+}
+.wizard-pct-val {
+  font-family: var(--font-mono); font-size: 13px;
+  color: var(--accent); min-width: 40px; text-align: right;
+}
