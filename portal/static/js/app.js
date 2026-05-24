@@ -197,7 +197,8 @@ const App = {
                 <div class="quick-action" onclick="App.navigate('outlines')"><div class="qa-icon">📐</div><div class="qa-label">大纲管理</div><div class="qa-desc">规划和编辑</div></div>
                 <div class="quick-action" onclick="App.navigate('settings')"><div class="qa-icon">⚙️</div><div class="qa-label">模型配置</div><div class="qa-desc">DeepSeek设置</div></div>
             </div>` : ''}
-            <div class="card">
+            ${qualityCards}
+            <div class="card mt-16">
                 <div class="card-header"><h2 class="card-title">📚 项目</h2><span class="text-sm text-secondary">${novels.length} 个项目</span></div>
                 <div class="novel-grid">${novelCards || '<div class="empty-state"><div class="empty-state-icon">📖</div><div class="empty-state-title">还没有小说项目</div><div class="empty-state-desc">点击"创建新书"开始你的第一部作品</div></div>'}</div>
             </div>

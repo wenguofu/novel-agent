@@ -1508,6 +1508,35 @@ def api_quality_report(novel_name):
         rev_trend = conn.execute("""SELECT chapter_ref, wc_ok, compliance_ok, forbidden_ok, bcontrast_count, tell_count, created_at
             FROM reviews WHERE novel_id=? ORDER BY created_at DESC LIMIT 10""", (nid,)).fetchall()
 
+        # Cross-chapter consistency: detect same character mentioned across chapters
+        char_check = conn.execute("""
+            SELECT c1.chapter_ref as ch1, c2.chapter_ref as ch2, c1.title
+            FROM chapters c1 JOIN chapters c2 ON c1.novel_id=c2.novel_id AND c1.chapter_num < c2.chapter_num
+            WHERE c1.novel_id=? AND c1.content LIKE '%死%' AND c2.content LIKE '%复活%'
+            AND c2.chapter_num - c1.chapter_num < 20
+            LIMIT 5
+        """, (nid,)).fetchall()
+
+        # Rhythm analysis: check word count volatility
+        ch_wc = conn.execute("""SELECT chapter_ref, word_count FROM chapters
+            WHERE novel_id=? ORDER BY chapter_num""", (nid,)).fetchall()
+        wc_list = [r["word_count"] for r in ch_wc]
+        rhythm_issues = []
+        if len(wc_list) > 5:
+            avg_wc = sum(wc_list) / len(wc_list)
+            for i in range(len(wc_list)):
+                if wc_list[i] < 1500:
+                    rhythm_issues.append({"chapter": ch_wc[i]["chapter_ref"], "issue": "字数过低(" + str(wc_list[i]) + ")", "severity": "warning"})
+            # Detect consecutive low-word chapters (fatigue)
+            consec_low = 0
+            for i in range(len(wc_list)):
+                if wc_list[i] < 2000:
+                    consec_low += 1
+                    if consec_low >= 3:
+                        rhythm_issues.append({"chapter": ch_wc[i]["chapter_ref"], "issue": "连续" + str(consec_low) + "章低于2000字(节奏疲劳)", "severity": "error"})
+                else:
+                    consec_low = 0
+
         conn.close()
 
         return jsonify({"success": True, "report": {
@@ -1526,6 +1555,8 @@ def api_quality_report(novel_name):
                 "avg_tell_patterns": round(avg_tell, 1),
                 "total_judgment_groups": total_jg,
             },
+            "consistency_alerts": [{"ch1": r["ch1"], "ch2": r["ch2"], "title": r["title"]} for r in char_check] if char_check else [],
+            "rhythm_alerts": rhythm_issues,
             "review_trend": [{"ref": r["chapter_ref"], "wc_ok": r["wc_ok"], "comp_ok": r["compliance_ok"], "forb_ok": r["forbidden_ok"], "bc": r["bcontrast_count"], "date": r["created_at"][:10]} for r in reversed(rev_trend)],
         }})
     except Exception as e:
