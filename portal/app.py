@@ -861,6 +861,51 @@ suggestions:
     })
 
 
+@app.route("/api/novels/<novel_name>/optimize-chapter", methods=["POST"])
+def api_optimize_chapter(novel_name):
+    """One-click optimize: fix issues found during review"""
+    data = request.json
+    chapter_ref = data.get("chapter_ref", "")
+    volume = data.get("volume", "vol-01")
+    chapter_num = data.get("chapter_num", "")
+    review_text = data.get("review_text", "")
+    script_issues = data.get("script_issues", "")
+
+    ch_content = read_novel_file(novel_name, "manuscript", f"{chapter_ref}.md")
+    if not ch_content:
+        return jsonify({"success": False, "error": f"章节不存在: {chapter_ref}"}), 404
+
+    system_prompt = f"""你是一个专业的小说编辑。请根据审稿意见优化以下章节。只修复问题，不要改变章节的核心内容和情节走向。
+
+审稿意见：
+{review_text[:3000]}
+
+脚本检查发现的问题：
+{script_issues[:2000]}
+
+请直接输出优化后的完整章节正文，以原始标题开头。保持字数在原有范围。"""
+
+    result = deepseek_chat(
+        messages=[{"role": "user", "content": f"请优化以下章节：
+
+{ch_content[:8000]}"}],
+        system_prompt=system_prompt,
+        temperature=0.4,
+        max_tokens=8192,
+    )
+
+    if not result["success"]:
+        return jsonify(result)
+
+    return jsonify({
+        "success": True,
+        "content": result["content"],
+        "chapter_ref": chapter_ref,
+        "word_count": count_words(result["content"]),
+        "usage": result.get("usage", {}),
+    })
+
+
 @app.route("/api/novels/<novel_name>/run-script", methods=["POST"])
 def api_run_script(novel_name):
     data = request.json

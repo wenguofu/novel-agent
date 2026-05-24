@@ -609,6 +609,7 @@ const App = {
                     <div class="form-row mt-12"><div class="form-group"><label class="form-label">选择小说 *</label><select class="form-select" id="wNovel" onchange="App._loadWritingCtx()"><option value="">-- 请选择 --</option></select></div><div class="form-group"><label class="form-label">卷号</label><select class="form-select" id="wVolume">${[...Array(10)].map((_,i) => `<option value="vol-${String(i+1).padStart(2,'0')}">vol-${String(i+1).padStart(2,'0')}</option>`).join('')}</select></div></div>
                     <div class="form-row mt-12"><div class="form-group"><label class="form-label">章节编号</label><input class="form-input" id="wChapterNum" placeholder="如：1, 2... 留空自动推断"></div><div class="form-group"><label class="form-label">风格</label><div id="wStyleArea"><button class="btn btn-secondary" onclick="App._toggleStylePicker()" style="width:100%">🎨 选择风格</button><div id="wStylePicker" style="display:none;margin-top:8px"></div><div id="wStyleTags" class="wizard-summary" style="margin-top:6px"></div></div></div></div>
                     <div class="form-group mt-12"><label class="form-label">写作指示（可选）</label><textarea class="form-textarea" id="wInstructions" rows="2" placeholder="对本章的特殊要求..."></textarea></div>
+                    <div class="form-group mt-8" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wAutoReview" style="accent-color:var(--accent)"><label for="wAutoReview" style="font-size:13px;color:var(--text-secondary);cursor:pointer">✅ 生成后自动审稿优化</label></div>
                     <div class="form-row mt-12">
                         <div class="form-group"><label class="form-label">温度 <span class="text-muted" style="font-size:11px" id="wTempVal">${this.config.deepseek_temperature || 0.8}</span></label><div class="param-slider-group"><input type="range" id="wTemperature" min="0" max="1.5" step="0.05" value="${this.config.deepseek_temperature || 0.8}" oninput="document.getElementById('wTempVal').textContent=this.value"><span class="param-value">${this.config.deepseek_temperature || 0.8}</span></div></div>
                         <div class="form-group"><label class="form-label">最大Token <span class="text-muted" style="font-size:11px" id="wMaxTokVal">${this.config.deepseek_max_tokens || 8192}</span></label><div class="param-slider-group"><input type="range" id="wMaxTokens" min="1024" max="16384" step="1024" value="${this.config.deepseek_max_tokens || 8192}" oninput="document.getElementById('wMaxTokVal').textContent=this.value"><span class="param-value">${this.config.deepseek_max_tokens || 8192}</span></div></div>
@@ -807,7 +808,6 @@ const App = {
                                 out.querySelector('.streaming-cursor')?.remove();
                                 if (statusEl) statusEl.textContent = '✅ 完成 · ' + wordCount + '字';
                                 if (autoSave) {
-                                    // Auto-save and show completion UI
                                     const padded = data.chapter_num.padStart(4, '0');
                                     const chRef = data.volume + '/ch-' + padded;
                                     API.editChapter(novel, chRef, full).then(function(saveResp) {
@@ -818,6 +818,10 @@ const App = {
                                         '<button class="btn btn-primary" onclick="App.navigate(\'review\',{novel:\'' + novel + '\',chapter:\'' + data.volume + '/ch-' + padded + '\'})">🔍 审稿</button>' +
                                         '<button class="btn btn-secondary" onclick="var e=document.getElementById(\'wChapterNum\');e.value=parseInt(e.value)+1;document.getElementById(\'wInstructions\').value=\'\';App._genChapter(false)">➡️ 下一章</button>' +
                                         '</div>');
+                                    // Auto-review if checkbox checked
+                                    if (document.getElementById('wAutoReview')?.checked) {
+                                        setTimeout(function() { App._autoReviewOptimize(novel, data.volume, data.chapter_num, chRef); }, 1500);
+                                    }
                                 } else {
                                     rd.insertAdjacentHTML('beforeend',
                                         '<div id="streamSave" class="mt-8 flex gap-8">' +
@@ -852,6 +856,35 @@ const App = {
         const padded = chNum.padStart(4, '0');
         const resp = await API.editChapter(novel, `${volume}/ch-${padded}`, content);
         resp.success ? this.toast(`✅ 第 ${chNum} 章已保存`, 'success') : this.toast(resp.error, 'error');
+    },
+
+    _autoReviewOptimize(novel, volume, chNum, chRef) {
+        var rd = document.getElementById('wResult');
+        var notice = document.createElement('div');
+        notice.className = 'card';
+        notice.style.cssText = 'border-color:var(--info);margin-top:16px';
+        notice.innerHTML = '<div class="stream-indicator"><div class="stream-dot"></div><span>🔍 自动审稿优化中...</span></div>';
+        rd.appendChild(notice);
+
+        var parts = chRef.split('/');
+        var chapterNum = parts[1].replace('ch-', '');
+        API.reviewChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum}).then(function(revResp) {
+            if (!revResp.success) { notice.innerHTML = '<div class="code-block error">审稿失败: ' + (revResp.error||'') + '</div>'; return; }
+            notice.innerHTML = '<div class="stream-indicator"><div class="stream-dot"></div><span>🛠️ 根据审稿意见优化章节...</span></div>';
+            var scriptIssues = (revResp.script_results?.analyze?.stdout||'') + '
+' + (revResp.script_results?.compliance?.stdout||'') + '
+' + (revResp.script_results?.forbidden?.stdout||'');
+            API.optimizeChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum, review_text: revResp.ai_review||'', script_issues: scriptIssues}).then(function(optResp) {
+                if (optResp.success) {
+                    API.editChapter(novel, chRef.replace('.md',''), optResp.content).then(function() {
+                        notice.innerHTML = '<div style="color:var(--success)"><strong>✅ 已自动优化并保存</strong> (' + (optResp.word_count||0) + '字)</div>' +
+                            '<details class="mt-8"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📋 查看审稿意见</summary><div class="code-block info mt-4" style="max-height:200px;overflow-y:auto">' + (revResp.ai_review||'') + '</div></details>';
+                    });
+                } else {
+                    notice.innerHTML = '<div class="code-block error">优化失败: ' + (optResp.error||'') + '</div>';
+                }
+            });
+        });
     },
 
     _openBatchModal() {
@@ -1054,27 +1087,52 @@ const App = {
     async _openOutlineEdit(novel, vol) {
         const resp = await API.readOutline(novel, vol);
         const content = resp.success ? resp.content : '# ' + vol + ' 大纲\n\n(新大纲)\n';
-        const body = `
-            <div id="outlineViewer">
-                <div class="reader-toolbar">
-                    <span><strong>📐 ${vol}</strong></span>
-                    <button class="btn btn-sm btn-secondary" onclick="App._toggleOutlineEdit('${novel}','${vol}')">✏️ 编辑</button>
-                </div>
-                <div class="reader-content" style="max-height:55vh">${this.renderMarkdown(content)}</div>
-            </div>
-            <div id="outlineEditor" style="display:none">
-                <div class="editor-panel-header">
-                    <span>✏️ 编辑: ${vol}</span>
-                    <button class="btn btn-sm btn-secondary" onclick="App._toggleOutlineEdit('${novel}','${vol}')">👁 预览</button>
-                </div>
-                <textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px;">${content.replace(/</g, '&lt;')}</textarea>
-            </div>
-        `;
-        const footer = `<button class="btn btn-primary" onclick="App._saveOutline('${novel}','${vol}')">💾 保存</button><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">取消</button>`;
-        const modal = this.modal(`📐 ${vol}`, body, footer, '800px');
-        modal._novel = novel;
-        modal._vol = vol;
-        modal._content = content;
+
+        // Load novel for chapter list
+        const novelResp = await API.getNovel(novel);
+        var chapters = [];
+        if (novelResp.success && novelResp.novel.volumes) {
+            var v = novelResp.novel.volumes.find(function(x) { return x.name === vol; });
+            if (v) chapters = v.chapters || [];
+        }
+
+        var chListHtml = chapters.length > 0
+            ? '<div class="chapter-list" style="max-height:50vh">' + chapters.map(function(ch) {
+                var wb = ch.words >= 2500 ? 'good' : ch.words >= 1500 ? 'warn' : 'low';
+                return '<div class="chapter-item" onclick="App._openChapterReader(\'' + novel + '\',\'' + vol + '/' + ch.name + '\')\" style="cursor:pointer"><span class="ch-num">' + ch.name + '</span><span class="ch-meta"><span class="word-badge ' + wb + '">' + ch.words + '字</span></span><div class="ch-actions"><button class="btn btn-sm btn-primary" onclick="event.stopPropagation();App._editChapterModal(\'' + novel + '\',\'' + vol + '/' + ch.name + '\')\" style="font-size:11px;padding:2px 8px">✏️</button></div></div>';
+            }).join('') + '</div>'
+            : '<div class="empty-state"><div class="empty-state-icon">📄</div><div class="empty-state-title">暂无章节</div></div>';
+
+        var volNum = vol.replace('vol-', '');
+        var body = '' +
+            '<div class="tab-bar" style="margin-bottom:12px">' +
+            '<span class="tab-item active" data-t="outline" onclick="App._switchOulineTab(this,\'outline\')">📐 卷纲骨架</span>' +
+            '<span class="tab-item" data-t="chapters" onclick="App._switchOulineTab(this,\'chapters\')">📖 章节列表 (' + chapters.length + ')</span>' +
+            '<span class="tab-item" data-t="edit" onclick="App._switchOulineTab(this,\'edit\')">✏️ 编辑</span>' +
+            '</div>' +
+            '<div id="oultineTabContent">' +
+            '<div class="reader-content" id="outlineViewer" style="max-height:55vh">' + this.renderMarkdown(content) + '</div>' +
+            '<div id="outlineEditor" style="display:none"><textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px">' + content.replace(/</g, '&lt;').replace(/&/g, '&amp;') + '</textarea></div>' +
+            '</div>';
+
+        var footer = '<button class="btn btn-primary" onclick="App._saveOutline(\'' + novel + '\',\'' + vol + '\')">💾 保存</button><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button>';
+        var modal = this.modal('📐 ' + vol, body, footer, '800px');
+        modal._novel = novel; modal._vol = vol; modal._content = content;
+        modal._chHtml = chListHtml;
+    },
+
+    _switchOulineTab(tab, t) {
+        var modal = tab.closest('.modal');
+        modal.querySelectorAll('.tab-item').forEach(function(x) { x.classList.remove('active'); });
+        tab.classList.add('active');
+        var container = modal.querySelector('#oultineTabContent');
+        if (t === 'outline') {
+            container.innerHTML = '<div class="reader-content" id="outlineViewer" style="max-height:55vh">' + document.getElementById('outlineViewer')?.innerHTML || modal._content + '</div>';
+        } else if (t === 'chapters') {
+            container.innerHTML = modal._chHtml;
+        } else if (t === 'edit') {
+            container.innerHTML = '<div id="outlineEditor"><textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px">' + (modal._content||'').replace(/</g, '&lt;') + '</textarea></div>';
+        }
     },
 
     _toggleOutlineEdit(novel, vol) {

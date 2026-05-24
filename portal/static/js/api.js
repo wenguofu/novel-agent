@@ -35,6 +35,9 @@ const API = {
     // ── Scripts ──
     runScript(novel, data) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/run-script`, data); },
 
+    // ── Optimize ──
+    optimizeChapter(novel, data) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/optimize-chapter`, data); },
+
     // ── Status ──
     updateStatus(novel, content) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/update-status`, { content }); },
 
