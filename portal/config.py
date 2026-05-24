@@ -16,5 +16,5 @@ DEFAULT_TOP_P = float(os.environ.get("DEEPSEEK_TOP_P", "0.9"))
 
 # Portal settings
 PORTAL_HOST = os.environ.get("PORTAL_HOST", "0.0.0.0")
-PORTAL_PORT = int(os.environ.get("PORTAL_PORT", 8686))
+PORTAL_PORT = int(os.environ.get("PORTAL_PORT", 35001))
 DEBUG = os.environ.get("PORTAL_DEBUG", "1") == "1"
