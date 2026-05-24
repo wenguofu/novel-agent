@@ -1767,3 +1767,27 @@ a:hover { color: var(--accent-hover); }
   font-weight: 600;
   color: var(--text-primary);
 }
+
+.wizard-input-area {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.wizard-input-lg {
+  font-size: 18px !important;
+  padding: 14px 20px !important;
+  flex: 1;
+}
+.wizard-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  font-size: 11px;
+  font-weight: 500;
+}
+.wizard-progress-fill.ai-glow {
+  box-shadow: 0 0 8px var(--accent-glow);
+}

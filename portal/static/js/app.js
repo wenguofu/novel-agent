@@ -314,21 +314,19 @@ const App = {
     },
 
     // ═══════════════════════════════════════════════════════════════════
-    //  NEW BOOK (AI Wizard)
+    //  NEW BOOK (AI Wizard v2 — fixed dropdowns first, then AI)
     // ═══════════════════════════════════════════════════════════════════
+
+    STEP_IDS: ['name', 'genre', 'subgenre', 'word_goal', 'protagonist', 'selling_point', 'world_setting', 'style'],
 
     async _renderNewBook(mc) {
         const ok = this.config.deepseek_configured;
         if (!ok) {
-            mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">✨ 创建新书</h1><p class="page-subtitle">AI 交互式创作向导</p></div></div><div class="card" style="border-color:var(--warning)"><div class="flex items-center gap-3"><span style="font-size:24px">⚠️</span><div><strong style="color:var(--warning)">API Key 未配置</strong><p class="text-secondary mt-2">请先在 <a href="#" onclick="App.navigate('settings')" style="color:var(--accent)">⚙️ 设置</a> 填入 DeepSeek API Key</p></div></div></div>`;
+            mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">✨ 创建新书</h1><p class="page-subtitle">交互式创作向导</p></div></div><div class="card" style="border-color:var(--warning)"><div class="flex items-center gap-3"><span style="font-size:24px">⚠️</span><div><strong style="color:var(--warning)">API Key 未配置</strong><p class="text-secondary mt-2">请先在 <a href="#" onclick="App.navigate('settings')" style="color:var(--accent)">⚙️ 设置</a> 填入 DeepSeek API Key</p></div></div></div>`;
             return;
         }
-        // Initialize wizard state
         this._wizard = { step: 0, selections: {}, loading: false };
-        mc.innerHTML = `
-            <div class="page-header"><div><h1 class="page-title">✨ 交互式创作向导</h1><p class="page-subtitle">AI 逐步引导你完成小说设定</p></div></div>
-            <div id="wizardStep"></div>
-        `;
+        mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">✨ 创建新书</h1><p class="page-subtitle">先确定方向，再由 AI 深度推荐</p></div><div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:8px 16px;background:var(--bg-card);border-radius:var(--radius-lg);border:1px solid var(--border-default)"><span style="font-size:13px;color:var(--text-tertiary)">📍</span><span style="font-size:12px;color:var(--text-secondary)">第1步：输入书名 → 选择题材大类 → 选择细分方向 → 确定篇幅 → 然后 AI 深度推荐主角、卖点、世界观、风格</span></div></div><div id="wizardStep"></div>`;
         await this._loadWizardStep(0);
     },
 
@@ -339,13 +337,10 @@ const App = {
         const container = document.getElementById('wizardStep');
         if (!container) return;
 
-        // Show loading
-        container.innerHTML = `
-            <div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:${(index / 6 * 100)}%"></div></div><span class="wizard-progress-text">步骤 ${index + 1} / 6</span></div>
-            <div class="card"><div class="loading" style="padding:40px"><div class="spinner"></div><span>AI 正在生成选项...</span></div></div>
-        `;
+        const total = this.STEP_IDS.length;
+        const stepLabel = this.STEP_IDS[index] ? (['书名','题材','细分','篇幅','主角','卖点','世界观','风格'][index]) : '';
 
-        // Call API
+        // Call API first to know step type
         const resp = await API.wizardStep({ step_index: index, selections: w.selections });
         w.loading = false;
 
@@ -355,65 +350,91 @@ const App = {
         }
 
         const step = resp.step;
+        const stepType = resp.step_type;
         const options = resp.options || [];
-        const isFirst = index === 0;
+        const isAiStep = stepType === 'ai';
 
-        // Build selections summary
+        // Summary tags
         let summaryHtml = '';
-        if (index > 0) {
-            const entries = Object.entries(w.selections).filter(([k]) => k !== 'name');
-            if (entries.length > 0) {
-                summaryHtml = `<div class="wizard-summary">${entries.map(([k, v]) => `<span class="wizard-tag">${v}</span>`).join('')}</div>`;
-            }
+        const entries = Object.entries(w.selections);
+        if (entries.length > 0) {
+            summaryHtml = `<div class="wizard-summary">${entries.map(([k, v]) => `<span class="wizard-tag" title="${k}">${v}</span>`).join('')}</div>`;
         }
 
-        // Build option cards
-        let optionsHtml = options.map((opt, i) => `
-            <div class="wizard-option" data-idx="${index}" data-label="${this._escapeAttr(opt.label)}" data-desc="${this._escapeAttr(opt.desc)}">
-                <div class="wizard-option-label">${this._escapeHtml(opt.label)}</div>
-                <div class="wizard-option-desc">${this._escapeHtml(opt.desc)}</div>
-                <div class="wizard-option-pick">选择 →</div>
-            </div>
-        `).join('');
-
-        // Custom input row
-        const customHtml = resp.allow_custom ? `
-            <div class="wizard-custom">
-                <span class="text-muted">或自定义：</span>
-                <div class="form-row" style="grid-template-columns:1fr auto">
-                    <input class="form-input" id="wizCustom" placeholder="${isFirst ? '输入你的书名...' : '输入自定义内容...'}">
-                    <button class="btn btn-secondary" onclick="App._wizardCustom(${index})">✓ 使用</button>
+        // --- INPUT STEP ---
+        if (stepType === 'input') {
+            container.innerHTML = `
+                <div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:${((index+1)/total*100)}%"></div></div><span class="wizard-progress-text">${index+1} / ${total} · ${stepLabel}</span></div>
+                <div class="wizard-question-card">
+                    <div class="wizard-question">${step.question}</div>
+                    ${summaryHtml}
+                    <div class="wizard-input-area">
+                        <input class="form-input wizard-input-lg" id="wizInput" placeholder="${step.placeholder || ''}" value="${w.selections.name || ''}" autofocus>
+                        <button class="btn btn-primary btn-lg" onclick="App._wizardInputNext(${index})">→ 下一步</button>
+                    </div>
                 </div>
-            </div>
-        ` : '';
+            `;
+            document.getElementById('wizInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') App._wizardInputNext(index); });
+            return;
+        }
+
+        // --- SELECT / AI STEP ---
+        const isAiLoading = isAiStep && w.loading;
+
+        let optionsHtml;
+        if (isAiStep && !options.length && w.loading) {
+            optionsHtml = '<div class="loading" style="padding:40px"><div class="spinner"></div><span>AI 正在生成推荐...</span></div>';
+        } else {
+            optionsHtml = `<div class="wizard-options">${options.map((opt, i) => `
+                <div class="wizard-option" data-idx="${index}" data-label="${this._escapeAttr(opt.label)}" data-desc="${this._escapeAttr(opt.desc || '')}">
+                    <div class="wizard-option-label">${this._escapeHtml(opt.label)}</div>
+                    ${opt.desc ? `<div class="wizard-option-desc">${this._escapeHtml(opt.desc)}</div>` : ''}
+                    <div class="wizard-option-pick">选择 →</div>
+                </div>
+            `).join('')}</div>`;
+        }
+
+        const aiBadge = isAiStep ? ' <span class="wizard-ai-badge">🤖 AI</span>' : '';
 
         container.innerHTML = `
             <div class="wizard-progress">
-                <div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:${((index + 1) / 6 * 100)}%"></div></div>
-                <span class="wizard-progress-text">步骤 ${index + 1} / 6</span>
+                <div class="wizard-progress-bar"><div class="wizard-progress-fill ${isAiStep?'ai-glow':''}" style="width:${((index+1)/total*100)}%"></div></div>
+                <span class="wizard-progress-text">${index+1} / ${total} · ${stepLabel}${aiBadge}</span>
             </div>
             <div class="wizard-question-card">
                 <div class="wizard-question">${step.question}</div>
                 ${summaryHtml}
-                <div class="wizard-options">
-                    ${optionsHtml}
-                </div>
-                ${customHtml}
+                ${optionsHtml}
+                ${resp.allow_custom ? `
+                <div class="wizard-custom">
+                    <span class="text-muted">或自定义：</span>
+                    <div class="form-row" style="grid-template-columns:1fr auto">
+                        <input class="form-input" id="wizCustom" placeholder="输入自定义内容...">
+                        <button class="btn btn-secondary" onclick="App._wizardCustom(${index})">✓ 使用</button>
+                    </div>
+                </div>` : ''}
                 <div class="wizard-actions mt-16">
                     ${index > 0 ? `<button class="btn btn-secondary" onclick="App._wizardBack(${index})">← 上一步</button>` : ''}
-                    <button class="btn btn-secondary" onclick="App._loadWizardStep(${index})" ${w.loading ? 'disabled' : ''}>🔄 换一批</button>
+                    ${isAiStep ? `<button class="btn btn-secondary" onclick="App._loadWizardStep(${index})">🔄 换一批</button>` : ''}
                 </div>
             </div>
         `;
     },
 
+    _wizardInputNext(index) {
+        const val = document.getElementById('wizInput')?.value.trim();
+        if (!val) { this.toast('请输入内容', 'warning'); return; }
+        this._wizard.selections.name = val;
+        this._loadWizardStep(index + 1);
+    },
+
     async _wizardSelect(index, label, desc) {
         const w = this._wizard;
-        const stepId = ['name', 'genre', 'protagonist', 'selling_point', 'world_setting', 'style'][index];
+        const stepId = this.STEP_IDS[index];
+        if (!stepId) return;
         w.selections[stepId] = label;
 
-        if (index >= 5) {
-            // Final step — show confirmation
+        if (index >= this.STEP_IDS.length - 1) {
             await this._wizardConfirm();
         } else {
             await this._loadWizardStep(index + 1);
@@ -428,7 +449,11 @@ const App = {
     },
 
     async _wizardBack(index) {
-        delete this._wizard.selections[['name', 'genre', 'protagonist', 'selling_point', 'world_setting', 'style'][index - 1]];
+        const keys = Object.keys(this._wizard.selections);
+        const prevKey = this.STEP_IDS[index - 1];
+        if (prevKey && this._wizard.selections[prevKey]) {
+            delete this._wizard.selections[prevKey];
+        }
         await this._loadWizardStep(index - 1);
     },
 
@@ -436,21 +461,21 @@ const App = {
         const w = this._wizard;
         const container = document.getElementById('wizardStep');
         const s = w.selections;
+
+        const labels = {name:'书名',genre:'题材',subgenre:'细分',word_goal:'篇幅',protagonist:'主角',selling_point:'卖点',world_setting:'世界观',style:'风格'};
+        const items = Object.entries(labels).map(([k, lbl]) => {
+            const val = s[k] || '未设置';
+            return `<div class="wizard-confirm-item"><div class="wizard-confirm-label">${lbl}</div><div class="wizard-confirm-value">${val}</div></div>`;
+        }).join('');
+
         container.innerHTML = `
-            <div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:100%"></div></div><span class="wizard-progress-text">✅ 完成</span></div>
+            <div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:100%"></div></div><span class="wizard-progress-text">✅ 确认</span></div>
             <div class="wizard-question-card">
-                <div class="wizard-question">📋 确认你的小说设定</div>
-                <div class="wizard-confirm-grid">
-                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">书名</div><div class="wizard-confirm-value">${s.name || '未设置'}</div></div>
-                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">题材</div><div class="wizard-confirm-value">${s.genre || '未设置'}</div></div>
-                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">主角</div><div class="wizard-confirm-value">${s.protagonist || '未设置'}</div></div>
-                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">卖点</div><div class="wizard-confirm-value">${s.selling_point || '未设置'}</div></div>
-                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">世界观</div><div class="wizard-confirm-value">${s.world_setting || '未设置'}</div></div>
-                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">风格</div><div class="wizard-confirm-value">${s.style || '未设置'}</div></div>
-                </div>
+                <div class="wizard-question">📋 确认设定 · AI 将根据以下信息创建小说</div>
+                <div class="wizard-confirm-grid">${items}</div>
                 <div class="wizard-actions mt-16">
-                    <button class="btn btn-secondary" onclick="App._wizardBack(5)">← 修改</button>
-                    <button class="btn btn-primary btn-lg" id="wizCreateBtn" onclick="App._wizardCreate()">🚀 AI 自动创建小说</button>
+                    <button class="btn btn-secondary" onclick="App._wizardBack(${App.STEP_IDS.length - 1})">← 修改</button>
+                    <button class="btn btn-primary btn-lg" id="wizCreateBtn" onclick="App._wizardCreate()">🚀 AI 创建小说 + 生成大纲</button>
                 </div>
                 <div id="wizCreateResult" class="mt-16"></div>
             </div>
@@ -468,15 +493,15 @@ const App = {
             genre: s.genre,
             protagonist: s.protagonist,
             selling_point: s.selling_point,
-            word_goal: document.getElementById('nbWordGoal')?.value || '100万',
+            word_goal: s.word_goal || '100万',
             perspective: '第三人称',
-            references: `${s.world_setting || ''} | 风格: ${s.style || ''}`,
+            references: `细分: ${s.subgenre || '无'} | 世界观: ${s.world_setting || '无'} | 风格: ${s.style || '默认'}`,
         });
 
-        btn.disabled = false; btn.textContent = '🚀 AI 自动创建小说';
+        btn.disabled = false; btn.textContent = '🚀 AI 创建小说 + 生成大纲';
         if (resp.success) {
             this.toast(`🎉 小说「${resp.novel_name}」创建成功！`, 'success');
-            rd.innerHTML = `<div class="card" style="border-color:var(--success)"><h3>✅ 创建成功</h3><p class="text-secondary mt-8">已创建文件：</p><div class="code-block success mt-8">${resp.created_files.join('\\n')}</div><div class="mt-16 flex gap-8"><button class="btn btn-primary" onclick="App.navigate('novels')">📚 查看项目</button><button class="btn btn-success" onclick="App.navigate('writing',{novel:'${resp.novel_name}'})">✍️ 开始写作</button></div></div>`;
+            rd.innerHTML = `<div class="card" style="border-color:var(--success)"><h3>✅ 创建成功</h3><p class="text-secondary mt-8">已创建文件：</p><div class="code-block success mt-8">${resp.created_files.join('\\n')}</div><div class="mt-16 flex gap-8"><button class="btn btn-primary" onclick="App.navigate('novels')">📚 查看项目</button><button class="btn btn-success" onclick="App.navigate('writing',{novel:'${resp.novel_name}'})">✍️ 开始写作</button><button class="btn btn-secondary" onclick="App.navigate('outlines')">📐 管理大纲</button></div></div>`;
         } else {
             this.toast(`创建失败: ${resp.error}`, 'error');
             rd.innerHTML = `<div class="code-block error">${resp.error}</div>`;

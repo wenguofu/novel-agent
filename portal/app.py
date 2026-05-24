@@ -1004,44 +1004,85 @@ def api_test_config():
 
 # ─── Wizard ──────────────────────────────────────────────────────────────────
 
+# Genre categories with sub-genres
+GENRE_OPTIONS = {
+    "玄幻": ["东方玄幻", "异界大陆", "王朝争霸", "洪荒封神", "高武世界", "另类玄幻"],
+    "仙侠": ["古典仙侠", "现代修真", "洪荒封神", "神话修真", "幻想修仙"],
+    "都市": ["都市生活", "异术超能", "重生逆袭", "青春校园", "商战职场", "娱乐明星"],
+    "科幻": ["星际文明", "未来世界", "末世危机", "时空穿梭", "超级科技", "进化变异"],
+    "历史": ["架空历史", "秦汉三国", "两晋隋唐", "宋元明清", "历史神话", "外国历史"],
+    "悬疑": ["悬疑侦探", "灵异鬼怪", "恐怖惊悚", "推理探案", "盗墓探险"],
+    "游戏": ["虚拟网游", "电子竞技", "游戏异界", "游戏系统"],
+    "军事": ["战争幻想", "谍战特工", "军旅生活", "抗战烽火"],
+    "武侠": ["传统武侠", "新派武侠", "国术无双", "武侠幻想"],
+    "奇幻": ["西方奇幻", "史诗奇幻", "剑与魔法", "黑暗奇幻", "现代奇幻"],
+    "轻小说": ["恋爱日常", "搞笑吐槽", "原生幻想", "青春疼痛"],
+    "二次元": ["同人衍生", "综漫无限", "动漫穿越"],
+}
+
 WIZARD_STEPS = [
     {
-        "id": "name", "label": "书名", "question": "请为你的小说起一个名字",
-        "prompt_template": "请为一部新的网络小说推荐5个吸引人的书名。要求：简洁有力，2-5个字为佳，风格偏中式网文。\n\n已有设定：{context}\n\n返回JSON数组格式（仅JSON，不要其他内容）：\n[{{\"label\": \"书名\", \"desc\": \"一句话解释为什么这个书名好\"}}, ...]",
+        "id": "name", "label": "书名", "type": "input",
+        "question": "请为你的小说起一个名字",
+        "placeholder": "输入书名，2-5个字为佳",
         "allow_custom": True, "required": True,
     },
     {
-        "id": "genre", "label": "题材", "question": "请选择小说的题材类型",
-        "prompt_template": "你是一个资深网文编辑。请根据以下信息，推荐6个最合适的题材方向，每个附带简要说明。\n\n书名：{name}\n已有设定：{context}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"题材名\", \"desc\": \"20字以内的解释，为什么适合\"}}, ...]",
+        "id": "genre", "label": "题材大类", "type": "select",
+        "question": "请选择题材大类",
+        "options": [
+            {"label": g, "desc": ", ".join(subs)} for g, subs in GENRE_OPTIONS.items()
+        ],
         "allow_custom": True, "required": True,
     },
     {
-        "id": "protagonist", "label": "主角设定", "question": "请选择或描述主角设定",
-        "prompt_template": "你是一个资深网文编辑。请根据已有设定，生成5个主角原型方案。\n\n书名：{name}\n题材：{genre}\n已有设定：{context}\n\n每个方案包含：姓名、身份/背景、性格、核心金手指/能力。\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"姓名 · 身份概括\", \"desc\": \"性格+金手指的简要描述（50字内）\"}}, ...]",
+        "id": "subgenre", "label": "题材细分", "type": "sub_select",
+        "question": "请选择题材细分方向",
+        "parent_key": "genre",
+        "allow_custom": True, "required": False,
+    },
+    {
+        "id": "word_goal", "label": "篇幅目标", "type": "select",
+        "question": "请选择篇幅目标",
+        "options": [
+            {"label": "50万字", "desc": "短篇网文，快速完本"},
+            {"label": "100万字", "desc": "中等篇幅，网文主流"},
+            {"label": "200万字", "desc": "长篇巨作，稳定连载"},
+            {"label": "300万字", "desc": "超长篇，史诗级叙事"},
+        ],
         "allow_custom": True, "required": True,
     },
     {
-        "id": "selling_point", "label": "核心卖点", "question": "请选择作品的核心卖点/爽点",
-        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐5个最有吸引力的核心卖点方向。\n\n书名：{name}\n题材：{genre}\n主角：{protagonist}\n已有设定：{context}\n\n卖点即读者最爽的地方。返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"卖点标签（5-10字）\", \"desc\": \"展开解释（30字内）\"}}, ...]",
+        "id": "protagonist", "label": "主角设定", "type": "ai",
+        "question": "AI 为你推荐主角方案",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，生成5个主角原型方案。\n\n书名：{name}\n题材：{genre}\n细分：{subgenre}\n篇幅：{word_goal}\n\n每个方案包含：姓名、身份/背景、性格、核心金手指/能力。\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"姓名 · 身份概括\", \"desc\": \"性格+金手指的简要描述（50字内）\"}}, ...]",
         "allow_custom": True, "required": True,
     },
     {
-        "id": "world_setting", "label": "世界观方向", "question": "请选择世界观设定方向",
-        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐4个世界观展开方向。\n\n书名：{name}\n题材：{genre}\n主角：{protagonist}\n卖点：{selling_point}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"世界观方向（8-15字）\", \"desc\": \"展开描述力量体系/地理/势力（40字内）\"}}, ...]",
+        "id": "selling_point", "label": "核心卖点", "type": "ai",
+        "question": "AI 为你推荐卖点方向",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐5个最有吸引力的核心卖点方向。\n\n书名：{name}\n题材：{genre}\n细分：{subgenre}\n主角：{protagonist}\n篇幅：{word_goal}\n\n卖点即读者最爽的地方。返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"卖点标签（5-10字）\", \"desc\": \"展开解释（30字内）\"}}, ...]",
         "allow_custom": True, "required": True,
     },
     {
-        "id": "style", "label": "写作风格", "question": "请选择写作风格",
-        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐5种最适合的写作风格。\n\n书名：{name}\n题材：{genre}\n主角：{protagonist}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"风格名称\", \"desc\": \"风格特点和适合理由（30字内）\"}}, ...]",
+        "id": "world_setting", "label": "世界观方向", "type": "ai",
+        "question": "AI 为你推荐世界观方向",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐4个世界观展开方向。\n\n书名：{name}\n题材：{genre}\n细分：{subgenre}\n主角：{protagonist}\n卖点：{selling_point}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"世界观方向（8-15字）\", \"desc\": \"展开描述力量体系/地理/势力（40字内）\"}}, ...]",
+        "allow_custom": True, "required": True,
+    },
+    {
+        "id": "style", "label": "写作风格", "type": "ai",
+        "question": "AI 为你推荐写作风格",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐5种最适合的写作风格。\n\n书名：{name}\n题材：{genre}\n细分：{subgenre}\n主角：{protagonist}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"风格名称\", \"desc\": \"风格特点和适合理由（30字内）\"}}, ...]",
         "allow_custom": True, "required": True,
     },
 ]
 
+TOTAL_STEPS = len(WIZARD_STEPS)
+
 
 @app.route("/api/wizard/step", methods=["POST"])
 def api_wizard_step():
-    """Multi-turn interactive book creation wizard.
-    Receives current step_index and accumulated selections, returns AI-generated options."""
     data = request.json or {}
     step_index = data.get("step_index", 0)
     selections = data.get("selections", {})
@@ -1050,24 +1091,74 @@ def api_wizard_step():
         return jsonify({"success": False, "error": "无效步骤"}), 400
 
     step = WIZARD_STEPS[step_index]
+    step_type = step.get("type", "ai")
 
-    # Build context from previous selections
+    # --- Select type: return fixed options ---
+    if step_type == "select":
+        return jsonify({
+            "success": True,
+            "step": {k: v for k, v in step.items() if k != "prompt_template"},
+            "step_index": step_index,
+            "total_steps": TOTAL_STEPS,
+            "options": step.get("options", []),
+            "step_type": "select",
+            "allow_custom": step.get("allow_custom", False),
+            "is_last": False,
+        })
+
+    # --- Sub-select type: options depend on parent selection ---
+    if step_type == "sub_select":
+        parent_key = step.get("parent_key", "genre")
+        parent_val = selections.get(parent_key, "")
+        sub_options = []
+        if parent_val in GENRE_OPTIONS:
+            sub_options = [{"label": s, "desc": ""} for s in GENRE_OPTIONS[parent_val]]
+        sub_options.append({"label": "其他 / 混合", "desc": "上述分类之外的创新方向"})
+        return jsonify({
+            "success": True,
+            "step": {k: v for k, v in step.items() if k != "prompt_template"},
+            "step_index": step_index,
+            "total_steps": TOTAL_STEPS,
+            "options": sub_options,
+            "step_type": "select",
+            "allow_custom": step.get("allow_custom", False),
+            "is_last": False,
+            "parent_label": parent_val,
+        })
+
+    # --- Input type: just return step info, no AI call ---
+    if step_type == "input":
+        return jsonify({
+            "success": True,
+            "step": {"id": step["id"], "label": step["label"], "question": step["question"], "type": "input", "placeholder": step.get("placeholder", "")},
+            "step_index": step_index,
+            "total_steps": TOTAL_STEPS,
+            "step_type": "input",
+            "is_last": False,
+        })
+
+    # --- AI type: call DeepSeek ---
     context_parts = []
+    label_map = {
+        "name": "书名", "genre": "题材", "subgenre": "细分", "word_goal": "篇幅",
+        "protagonist": "主角", "selling_point": "卖点", "world_setting": "世界观", "style": "风格",
+    }
     for key, val in selections.items():
         if val:
-            context_parts.append(f"{key}: {val}")
+            context_parts.append(f"{label_map.get(key, key)}: {val}")
     context = "; ".join(context_parts) if context_parts else "无"
 
-    # Build prompt
     prompt = step["prompt_template"].format(
         name=selections.get("name", "未命名"),
         genre=selections.get("genre", "未选择"),
+        subgenre=selections.get("subgenre", "未选择"),
         protagonist=selections.get("protagonist", "未设定"),
         selling_point=selections.get("selling_point", "未设定"),
+        word_goal=selections.get("word_goal", "100万"),
+        world_setting=selections.get("world_setting", "未设定"),
         context=context,
     )
 
-    # Call DeepSeek
     result = deepseek_chat(
         messages=[{"role": "user", "content": prompt}],
         system_prompt="你是一个专业的网文编辑顾问。你只返回严格JSON格式，不添加任何markdown代码块标记或解释文字。",
@@ -1078,19 +1169,16 @@ def api_wizard_step():
     if not result["success"]:
         return jsonify(result)
 
-    # Parse options from AI response
     options = []
     try:
         raw = result["content"].strip()
-        # Remove markdown code fences if present
         if raw.startswith("```"):
             raw = re.sub(r"^```\w*\n?", "", raw)
             raw = re.sub(r"\n?```$", "", raw)
         parsed = json.loads(raw)
         if isinstance(parsed, list):
             options = [{"label": o.get("label", ""), "desc": o.get("desc", "")} for o in parsed[:6]]
-    except (json.JSONDecodeError, Exception) as e:
-        # Fallback: try to extract JSON from the text
+    except (json.JSONDecodeError, Exception):
         match = re.search(r'\[.*\]', result["content"], re.DOTALL)
         if match:
             try:
@@ -1105,10 +1193,11 @@ def api_wizard_step():
 
     return jsonify({
         "success": True,
-        "step": step,
+        "step": {"id": step["id"], "label": step["label"], "question": step["question"], "type": "ai"},
         "step_index": step_index,
-        "total_steps": len(WIZARD_STEPS),
+        "total_steps": TOTAL_STEPS,
         "options": options,
+        "step_type": "ai",
         "allow_custom": step.get("allow_custom", False),
         "is_last": step_index == len(WIZARD_STEPS) - 1,
     })
