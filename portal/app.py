@@ -855,6 +855,34 @@ suggestions:
 
     if result["success"]:
         ch_id = chapter_ref.replace("/", "-").replace("ch-", "")
+        # Sync structured review data to content.db
+        try:
+            from content_db import get_db as _cdb
+            conn = _cdb()
+            novel_row = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+            if novel_row:
+                nid = novel_row["id"]
+                # Extract binary contrast count from analyze stdout
+                bc_match = __import__("re").search(r'binary_contrast_count:\s*(\d+)', analyze.get("stdout", ""))
+                bc_count = int(bc_match.group(1)) if bc_match else 0
+                jg_match = __import__("re").search(r'simple_judgment_groups:\s*(\d+)', analyze.get("stdout", ""))
+                jg_count = int(jg_match.group(1)) if jg_match else 0
+                tp_match = __import__("re").search(r'tell_patterns:\s*(\d+)', analyze.get("stdout", ""))
+                tp_count = int(tp_match.group(1)) if tp_match else 0
+                conn.execute("""INSERT INTO reviews (novel_id, chapter_ref, ai_review, script_detail,
+                    wc_ok, compliance_ok, forbidden_ok, bcontrast_count, judgment_groups, tell_count, word_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(novel_id, chapter_ref, created_at) DO UPDATE SET
+                    ai_review=excluded.ai_review, script_detail=excluded.script_detail,
+                    wc_ok=excluded.wc_ok, compliance_ok=excluded.compliance_ok, forbidden_ok=excluded.forbidden_ok,
+                    bcontrast_count=excluded.bcontrast_count, judgment_groups=excluded.judgment_groups, tell_count=excluded.tell_count""",
+                    (nid, chapter_ref, result.get("content",""), analyze.get("stdout","") + "\n" + compliance.get("stdout","") + "\n" + forbidden.get("stdout",""),
+                     1 if analyze.get("success") else 0, 1 if compliance.get("success") else 0, 1 if forbidden.get("success") else 0,
+                     bc_count, jg_count, tp_count, count_words(ch_content)))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
         review_content = f"""# 审稿报告
 
 日期: {datetime.now().strftime('%Y-%m-%d %H:%M')}
@@ -927,6 +955,22 @@ def api_optimize_chapter(novel_name):
 
     if not result["success"]:
         return jsonify(result)
+
+    # Backup original before overwriting
+    bak_dir = os.path.join(get_novels_dir(), novel_name, "manuscript", ".bak")
+    os.makedirs(bak_dir, exist_ok=True)
+    ch_file = os.path.join(get_novels_dir(), novel_name, "manuscript", f"{chapter_ref}.md")
+    if os.path.exists(ch_file):
+        # Find next revision number
+        rev = 1
+        while os.path.exists(os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md")):
+            rev += 1
+        import shutil as _shutil
+        _shutil.copy2(ch_file, os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md"))
+        # Keep only last 5 versions
+        bak_files = sorted([f for f in os.listdir(bak_dir) if chapter_ref.replace('/','-') in f])
+        for old_f in bak_files[:-5]:
+            os.remove(os.path.join(bak_dir, old_f))
 
     return jsonify({
         "success": True,
@@ -1428,6 +1472,62 @@ def api_config_manage(table, row_id):
             conn.commit()
             conn.close()
             return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Quality Report ─────────────────────────────────────────────────────────
+
+@app.route("/api/content/quality-report/<novel_name>")
+def api_quality_report(novel_name):
+    try:
+        from content_db import get_db as _qdb
+        conn = _qdb()
+        novel = conn.execute("SELECT * FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        nid = novel["id"]
+
+        # Word count trend (last 30 chapters)
+        ch_trend = conn.execute("""SELECT chapter_ref, word_count, created_at FROM chapters
+            WHERE novel_id=? ORDER BY chapter_num DESC LIMIT 30""", (nid,)).fetchall()
+
+        # Review pass rates
+        total_r = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE novel_id=?", (nid,)).fetchone()["c"]
+        wc_pass = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE novel_id=? AND wc_ok=1", (nid,)).fetchone()["c"]
+        comp_pass = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE novel_id=? AND compliance_ok=1", (nid,)).fetchone()["c"]
+        forb_pass = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE novel_id=? AND forbidden_ok=1", (nid,)).fetchone()["c"]
+
+        # Average binary contrast per chapter
+        avg_bc = conn.execute("SELECT AVG(bcontrast_count) as v FROM reviews WHERE novel_id=?", (nid,)).fetchone()["v"] or 0
+        avg_tell = conn.execute("SELECT AVG(tell_count) as v FROM reviews WHERE novel_id=?", (nid,)).fetchone()["v"] or 0
+        total_jg = conn.execute("SELECT SUM(judgment_groups) as v FROM reviews WHERE novel_id=?", (nid,)).fetchone()["v"] or 0
+
+        # Review quality trend (last 10 reviews)
+        rev_trend = conn.execute("""SELECT chapter_ref, wc_ok, compliance_ok, forbidden_ok, bcontrast_count, tell_count, created_at
+            FROM reviews WHERE novel_id=? ORDER BY created_at DESC LIMIT 10""", (nid,)).fetchall()
+
+        conn.close()
+
+        return jsonify({"success": True, "report": {
+            "novel": novel_name,
+            "total_chapters": novel["total_chapters"],
+            "total_words": novel["total_words"],
+            "chapter_trend": [{"ref": r["chapter_ref"], "wc": r["word_count"], "date": r["created_at"][:10]} for r in reversed(ch_trend)],
+            "review_stats": {
+                "total": total_r,
+                "wc_pass_rate": round(wc_pass/max(total_r,1)*100),
+                "compliance_pass_rate": round(comp_pass/max(total_r,1)*100),
+                "forbidden_pass_rate": round(forb_pass/max(total_r,1)*100),
+            },
+            "writing_quality": {
+                "avg_binary_contrast": round(avg_bc, 1),
+                "avg_tell_patterns": round(avg_tell, 1),
+                "total_judgment_groups": total_jg,
+            },
+            "review_trend": [{"ref": r["chapter_ref"], "wc_ok": r["wc_ok"], "comp_ok": r["compliance_ok"], "forb_ok": r["forbidden_ok"], "bc": r["bcontrast_count"], "date": r["created_at"][:10]} for r in reversed(rev_trend)],
+        }})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

@@ -42,6 +42,7 @@ const App = {
                 case 'review': await this._renderReview(mc, params); break;
                 case 'chapters': await this._renderChapters(mc, params); break;
                 case 'outlines': await this._renderOutlines(mc); break;
+                case 'quality': await this._renderQuality(mc); break;
                 case 'search': await this._renderSearch(mc); break;
                 case 'config': await this._renderConfig(mc); break;
                 case 'settings': await this._renderSettings(mc); break;
@@ -941,8 +942,24 @@ const App = {
         API.optimizeChapter(novel, {chapter_ref: chRef, volume: volume, chapter_num: chNum, review_text: aiReview, script_issues: scriptOut}).then(function(optResp) {
             if (optResp.success) {
                 API.editChapter(novel, chRef, optResp.content).then(function() {
-                    notice.innerHTML = '<span style="color:var(--success)">✅ 已优化并保存 (' + (optResp.word_count||0) + '字)</span>';
-                    App.toast('✅ 章节已优化保存', 'success');
+                    notice.innerHTML = '<span style="color:var(--success)">✅ 已保存 (' + (optResp.word_count||0) + '字)</span> · <span class="stream-dot"></span> 正在复审...';
+                    // Auto re-review
+                    API.reviewChapter(novel, {chapter_ref: chRef, volume: volume, chapter_num: chNum}).then(function(reRev) {
+                        if (reRev.success) {
+                            var issues = [];
+                            if (!reRev.script_results.analyze.success) issues.push('字数/结构');
+                            if (!reRev.script_results.compliance.success) issues.push('合规');
+                            if (!reRev.script_results.forbidden.success) issues.push('禁用模式');
+                            if (issues.length === 0) {
+                                notice.innerHTML = '<span style="color:var(--success)">✅ 优化完成 · 复审全部通过</span>';
+                            } else {
+                                notice.innerHTML = '<span style="color:var(--warning)">⚠️ 优化完成 · 复审仍有问题: ' + issues.join(', ') + '</span>';
+                            }
+                        } else {
+                            notice.innerHTML = '<span style="color:var(--warning)">⚠️ 优化完成 · 复审失败</span>';
+                        }
+                        App.toast('✅ 优化+复审完成', 'success');
+                    });
                 });
             } else {
                 notice.innerHTML = '<span style="color:var(--danger)">❌ 优化失败: ' + (optResp.error||'') + '</span>';
@@ -967,8 +984,13 @@ const App = {
             API.optimizeChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum, review_text: revResp.ai_review||'', script_issues: scriptIssues}).then(function(optResp) {
                 if (optResp.success) {
                     API.editChapter(novel, chRef.replace('.md',''), optResp.content).then(function() {
-                        notice.innerHTML = '<div style="color:var(--success)"><strong>✅ 已自动优化并保存</strong> (' + (optResp.word_count||0) + '字)</div>' +
-                            '<details class="mt-8"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📋 查看审稿意见</summary><div class="code-block info mt-4" style="max-height:200px;overflow-y:auto">' + (revResp.ai_review||'') + '</div></details>';
+                        var wc = optResp.word_count || 0;
+                        // Auto re-review
+                        API.reviewChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum}).then(function(reRev) {
+                            var allPass = reRev.success && reRev.script_results.analyze.success && reRev.script_results.compliance.success && reRev.script_results.forbidden.success;
+                            notice.innerHTML = '<div style="color:' + (allPass ? 'var(--success)' : 'var(--warning)') + '"><strong>' + (allPass ? '✅' : '⚠️') + ' 已优化并复审</strong> (' + wc + '字)' + (allPass ? ' · 全部通过' : ' · 仍有问题') + '</div>' +
+                                '<details class="mt-8"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📋 查看详情</summary><div class="code-block info mt-4" style="max-height:200px;overflow-y:auto">' + (revResp.ai_review||'') + '</div></details>';
+                        });
                     });
                 } else {
                     notice.innerHTML = '<div class="code-block error">优化失败: ' + (optResp.error||'') + '</div>';
@@ -1397,6 +1419,65 @@ const App = {
         const content = document.getElementById('outlineEdit').value;
         const resp = await API.editOutline(novel, vol, content);
         resp.success ? (this.toast('✅ 大纲已保存', 'success'), document.querySelectorAll('.modal-overlay').forEach(m => m.remove()), this._loadOutlines()) : this.toast(resp.error, 'error');
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  QUALITY REPORT
+    // ═══════════════════════════════════════════════════════════════════
+
+    async _renderQuality(mc) {
+        mc.innerHTML = '<div class="page-header"><div><h1 class="page-title">📈 质量报告</h1><p class="page-subtitle">写作质量趋势 · 审稿通过率 · 问题分布</p></div></div>' +
+            '<div class="card"><div class="form-row"><div class="form-group"><label class="form-label">选择小说</label><select class="form-select" id="qNovel" onchange="App._loadQuality()"><option value="">-- 请选择 --</option></select></div></div><div id="qContent" class="mt-16"></div></div>';
+        var resp = await API.listNovels();
+        if (resp.success) {
+            var sel = document.getElementById('qNovel');
+            resp.novels.forEach(function(n) { var o = document.createElement('option'); o.value = n.name; o.textContent = n.title||n.name; sel.appendChild(o); });
+        }
+    },
+
+    async _loadQuality() {
+        var novel = document.getElementById('qNovel')?.value;
+        if (!novel) return;
+        var ct = document.getElementById('qContent');
+        ct.innerHTML = '<div class="loading"><div class="spinner"></div><span>加载报告...</span></div>';
+        var resp = await fetch('/api/content/quality-report/' + encodeURIComponent(novel)).then(function(r){return r.json();});
+        if (!resp.success) { ct.innerHTML = '<div class="code-block error">' + (resp.error||'') + '</div>'; return; }
+        var r = resp.report;
+
+        var html = '<div class="stats-grid">' +
+            '<div class="stat-card"><div class="stat-value">' + r.total_chapters + '</div><div class="stat-label">总章节</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + (r.total_words/10000).toFixed(1) + '万</div><div class="stat-label">总字数</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + r.review_stats.total + '</div><div class="stat-label">审稿次数</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + r.review_stats.wc_pass_rate + '%</div><div class="stat-label">字数达标率</div></div>' +
+            '</div>';
+
+        // Review pass rate bars
+        html += '<div class="grid-2 mt-16"><div class="card"><h3 class="card-title">📊 审稿通过率</h3>' +
+            '<div class="mt-8"><div class="progress-label"><span>字数达标</span><span>' + r.review_stats.wc_pass_rate + '%</span></div><div class="progress-bar"><div class="progress-bar-fill ' + (r.review_stats.wc_pass_rate>=80?'success':'warning') + '" style="width:' + r.review_stats.wc_pass_rate + '%"></div></div></div>' +
+            '<div class="mt-8"><div class="progress-label"><span>合规检查</span><span>' + r.review_stats.compliance_pass_rate + '%</span></div><div class="progress-bar"><div class="progress-bar-fill ' + (r.review_stats.compliance_pass_rate>=80?'success':'warning') + '" style="width:' + r.review_stats.compliance_pass_rate + '%"></div></div></div>' +
+            '<div class="mt-8"><div class="progress-label"><span>禁用模式</span><span>' + r.review_stats.forbidden_pass_rate + '%</span></div><div class="progress-bar"><div class="progress-bar-fill ' + (r.review_stats.forbidden_pass_rate>=80?'success':'warning') + '" style="width:' + r.review_stats.forbidden_pass_rate + '%"></div></div></div>' +
+            '</div>';
+
+        // Writing quality metrics
+        html += '<div class="card"><h3 class="card-title">✍️ 写作质量</h3>' +
+            '<div class="stats-grid mt-8" style="grid-template-columns:repeat(3,1fr)">' +
+            '<div class="stat-card"><div class="stat-value">' + r.writing_quality.avg_binary_contrast + '</div><div class="stat-label">平均二元对照/章</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + r.writing_quality.avg_tell_patterns + '</div><div class="stat-label">平均 XX说：/章</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + r.writing_quality.total_judgment_groups + '</div><div class="stat-label">累计判断句组</div></div>' +
+            '</div></div></div>';
+
+        // Chapter word count trend (simple text list)
+        if (r.chapter_trend && r.chapter_trend.length > 0) {
+            html += '<div class="card mt-16"><h3 class="card-title">📈 最近章节字数趋势</h3><div class="mt-8" style="max-height:200px;overflow-y:auto">';
+            r.chapter_trend.forEach(function(ch) {
+                var wb = ch.wc >= 2500 ? 'success' : 'warning';
+                var barW = Math.min(100, ch.wc / 40);
+                html += '<div class="chapter-item"><span class="ch-num">' + ch.ref + '</span><div style="flex:1;margin:0 12px"><div class="progress-bar"><div class="progress-bar-fill ' + wb + '" style="width:' + barW + '%"></div></div></div><span class="ch-meta">' + ch.wc + '字</span></div>';
+            });
+            html += '</div></div>';
+        }
+
+        ct.innerHTML = html;
     },
 
     // ═══════════════════════════════════════════════════════════════════
