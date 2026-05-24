@@ -514,9 +514,10 @@ def api_ai_stream():
                             try:
                                 chunk = json.loads(chunk_str)
                                 delta = chunk["choices"][0].get("delta", {})
-                                if "content" in delta:
-                                    full_text.append(delta["content"])
-                                    yield f"data: {json.dumps({'type': 'token', 'content': delta['content']})}\n\n"
+                                content = delta.get("content")
+                                if content:  # filter null/empty
+                                    full_text.append(content)
+                                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
                             except json.JSONDecodeError:
                                 continue
         except Exception as e:
