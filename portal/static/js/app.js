@@ -614,8 +614,8 @@ const App = {
                         <div class="form-group"><label class="form-label">最大Token <span class="text-muted" style="font-size:11px" id="wMaxTokVal">${this.config.deepseek_max_tokens || 8192}</span></label><div class="param-slider-group"><input type="range" id="wMaxTokens" min="1024" max="16384" step="1024" value="${this.config.deepseek_max_tokens || 8192}" oninput="document.getElementById('wMaxTokVal').textContent=this.value"><span class="param-value">${this.config.deepseek_max_tokens || 8192}</span></div></div>
                     </div>
                     <div class="flex gap-8 mt-16">
-                        <button class="btn btn-primary btn-lg" onclick="App._genChapter(false)">✍️ 生成单章</button>
-                        <button class="btn btn-success btn-lg" onclick="App._genChapter(true)">⚡ 流式生成</button>
+                        <button class="btn btn-primary btn-lg" onclick="App._genChapter(false)">✍️ 生成单章（自动保存）</button>
+                        <button class="btn btn-success btn-lg" onclick="App._genChapter(true)">⚡ 流式预览（手动保存）</button>
                         <button class="btn btn-secondary btn-lg" onclick="App._openBatchModal()">📦 批量续写</button>
                     </div>
                 </div>
@@ -739,28 +739,36 @@ const App = {
         if (!data.chapter_num) { this.toast('请填写章节编号', 'warning'); return; }
 
         const rd = document.getElementById('wResult');
-        rd.innerHTML = `<div class="loading"><div class="spinner"></div><span>AI 正在创作第 ${data.chapter_num} 章...</span></div>`;
+        const novelName = document.querySelector('#wNovel option:checked')?.textContent || novel;
 
-        if (stream) {
-            await this._streamChapter(novel, data, rd);
-        } else {
-            const resp = await API.generateChapter(novel, data);
-            if (resp.success) {
-                this.toast(`✅ 第 ${data.chapter_num} 章完成 (${resp.word_count}字)`, 'success');
-                rd.innerHTML = `<div class="card" style="border-color:var(--success)"><div class="flex justify-between items-center"><h3>✅ 生成完成</h3><span class="badge badge-success">${resp.chapter_file}</span></div><div class="reader-panel mt-16" style="max-height:500px"><div class="reader-content">${this.renderMarkdown(resp.content)}</div></div><div class="flex gap-8 mt-16"><button class="btn btn-primary" onclick="App.navigate('review',{novel:'${novel}',chapter:'${resp.chapter_file}'})">🔍 审稿</button><button class="btn btn-secondary" onclick="document.getElementById('wChapterNum').value=parseInt(document.getElementById('wChapterNum').value)+1;document.getElementById('wInstructions').value='';App._genChapter(false)">➡️ 下一章</button></div></div>`;
-            } else {
-                this.toast(`生成失败: ${resp.error}`, 'error');
-                rd.innerHTML = `<div class="code-block error">${resp.error}</div>`;
-            }
-        }
+        // Always show rich progress card
+        rd.innerHTML = '<div class="card"><h3>✍️ 正在生成 ' + data.volume + ' 第' + data.chapter_num + '章</h3>' +
+            '<div class="text-secondary mt-8" style="font-size:12px">📖 ' + novelName + '</div>' +
+            (data.style ? '<div class="text-muted mt-4" style="font-size:11px">🎨 ' + data.style + '</div>' : '') +
+            '<div class="stream-indicator mt-12"><div class="stream-dot"></div><span id="streamStatus">准备中...</span></div>' +
+            '<div class="stream-output mt-12" id="streamOut"></div></div>';
+
+        // Always use streaming for live progress, auto-save when done
+        await this._streamChapter(novel, data, rd, true); // true = auto save
     },
 
-    async _streamChapter(novel, data, rd) {
-        rd.innerHTML = `<div class="card"><h3>⚡ 流式生成中...</h3><div class="stream-indicator mt-8"><div class="stream-dot"></div><span id="streamStatus">已连接 DeepSeek...</span></div><div class="stream-output mt-12" id="streamOut"><span class="streaming-cursor"></span></div></div>`;
+    async _streamChapter(novel, data, rd, autoSave) {
         const out = document.getElementById('streamOut');
-        let full = '';
+        if (!out) { rd.innerHTML = '<div class="code-block error">渲染失败，请重试</div>'; return; }
+        out.innerHTML = '<span class="streaming-cursor"></span>';
+        const statusEl = document.getElementById('streamStatus');
+        let full = '', wordCount = 0, startTime = Date.now();
         const abortCtrl = new AbortController();
         this.streamAbort = abortCtrl;
+
+        // Elapsed time updater
+        var timerInterval = setInterval(function() {
+            var elapsed = Math.floor((Date.now() - startTime) / 1000);
+            var mins = Math.floor(elapsed / 60), secs = elapsed % 60;
+            if (statusEl && !statusEl.textContent.startsWith('✅') && !statusEl.textContent.startsWith('❌')) {
+                statusEl.textContent = '生成中 · ' + mins + '分' + (secs < 10 ? '0' : '') + secs + '秒 · ' + wordCount + '字';
+            }
+        }, 1000);
 
         try {
             const resp = await fetch('/api/ai/stream', {
@@ -788,15 +796,41 @@ const App = {
                     if (line.startsWith('data: ')) {
                         try {
                             const d = JSON.parse(line.slice(6));
-                            if (d.type === 'token') { full += d.content; out.innerHTML = this.renderMarkdown(full) + '<span class="streaming-cursor"></span>'; out.scrollTop = out.scrollHeight; }
-                            else if (d.type === 'done') {
-                                const wc = (full.match(/[\u4e00-\u9fff]/g) || []).length + (full.match(/[a-zA-Z]+/g) || []).length;
-                                rd.insertAdjacentHTML('beforeend', `<div id="streamSave" class="mt-8 flex gap-8"><button class="btn btn-primary" onclick="App._saveStreamedChapter('${novel}','${data.volume}','${data.chapter_num}')">💾 保存章节</button><button class="btn btn-secondary" onclick="this.closest('.card').remove()">关闭</button></div>`);
-                                App._streamedContent = full;
-                                rd.querySelector('#streamStatus').textContent = `✅ 完成 (${wc}字)`;
-                                out.querySelector('.streaming-cursor')?.remove();
+                            if (d.type === 'token') {
+                                full += d.content;
+                                wordCount = (full.match(/[\u4e00-\u9fff]/g) || []).length + (full.match(/[a-zA-Z]+/g) || []).length;
+                                out.innerHTML = this.renderMarkdown(full) + '<span class="streaming-cursor"></span>';
+                                out.scrollTop = out.scrollHeight;
                             }
-                            else if (d.type === 'error') { rd.querySelector('#streamStatus').textContent = '❌ ' + d.error; out.innerHTML = `<div class="code-block error">${d.error}</div>`; }
+                            else if (d.type === 'done') {
+                                clearInterval(timerInterval);
+                                out.querySelector('.streaming-cursor')?.remove();
+                                if (statusEl) statusEl.textContent = '✅ 完成 · ' + wordCount + '字';
+                                if (autoSave) {
+                                    // Auto-save and show completion UI
+                                    const padded = data.chapter_num.padStart(4, '0');
+                                    const chRef = data.volume + '/ch-' + padded;
+                                    API.editChapter(novel, chRef, full).then(function(saveResp) {
+                                        if (saveResp.success) App.toast('✅ 第 ' + data.chapter_num + ' 章已保存 (' + wordCount + '字)', 'success');
+                                    });
+                                    rd.insertAdjacentHTML('beforeend',
+                                        '<div class="mt-16 flex gap-8">' +
+                                        '<button class="btn btn-primary" onclick="App.navigate(\'review\',{novel:\'' + novel + '\',chapter:\'' + data.volume + '/ch-' + padded + '\'})">🔍 审稿</button>' +
+                                        '<button class="btn btn-secondary" onclick="var e=document.getElementById(\'wChapterNum\');e.value=parseInt(e.value)+1;document.getElementById(\'wInstructions\').value=\'\';App._genChapter(false)">➡️ 下一章</button>' +
+                                        '</div>');
+                                } else {
+                                    rd.insertAdjacentHTML('beforeend',
+                                        '<div id="streamSave" class="mt-8 flex gap-8">' +
+                                        '<button class="btn btn-primary" onclick="App._saveStreamedChapter(\'' + novel + '\',\'' + data.volume + '\',\'' + data.chapter_num + '\')">💾 保存章节</button>' +
+                                        '<button class="btn btn-secondary" onclick="this.closest(\'.card\').remove()">关闭</button></div>');
+                                }
+                                App._streamedContent = full;
+                            }
+                            else if (d.type === 'error') {
+                                clearInterval(timerInterval);
+                                if (statusEl) statusEl.textContent = '❌ ' + d.error;
+                                out.innerHTML = '<div class="code-block error">' + d.error + '</div>';
+                            }
                         } catch (e) { /* skip */ }
                     }
                 }
