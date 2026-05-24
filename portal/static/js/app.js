@@ -604,9 +604,44 @@ const App = {
     async _openOutlineEdit(novel, vol) {
         const resp = await API.readOutline(novel, vol);
         const content = resp.success ? resp.content : '# ' + vol + ' 大纲\n\n(新大纲)\n';
-        const body = `<textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px;">${content.replace(/</g, '&lt;')}</textarea>`;
+        const body = `
+            <div id="outlineViewer">
+                <div class="reader-toolbar">
+                    <span><strong>📐 ${vol}</strong></span>
+                    <button class="btn btn-sm btn-secondary" onclick="App._toggleOutlineEdit('${novel}','${vol}')">✏️ 编辑</button>
+                </div>
+                <div class="reader-content" style="max-height:55vh">${this.renderMarkdown(content)}</div>
+            </div>
+            <div id="outlineEditor" style="display:none">
+                <div class="editor-panel-header">
+                    <span>✏️ 编辑: ${vol}</span>
+                    <button class="btn btn-sm btn-secondary" onclick="App._toggleOutlineEdit('${novel}','${vol}')">👁 预览</button>
+                </div>
+                <textarea class="form-textarea" id="outlineEdit" style="min-height:400px;font-family:var(--font-mono);font-size:13px;">${content.replace(/</g, '&lt;')}</textarea>
+            </div>
+        `;
         const footer = `<button class="btn btn-primary" onclick="App._saveOutline('${novel}','${vol}')">💾 保存</button><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">取消</button>`;
-        this.modal(`📐 编辑大纲: ${vol}`, body, footer, '700px');
+        const modal = this.modal(`📐 ${vol}`, body, footer, '800px');
+        modal._novel = novel;
+        modal._vol = vol;
+        modal._content = content;
+    },
+
+    _toggleOutlineEdit(novel, vol) {
+        const viewer = document.getElementById('outlineViewer');
+        const editor = document.getElementById('outlineEditor');
+        const textarea = document.getElementById('outlineEdit');
+        if (editor.style.display === 'none') {
+            viewer.style.display = 'none';
+            editor.style.display = 'block';
+            textarea.focus();
+        } else {
+            // Update preview from textarea
+            const previewContent = textarea.value;
+            viewer.querySelector('.reader-content').innerHTML = this.renderMarkdown(previewContent);
+            viewer.style.display = 'block';
+            editor.style.display = 'none';
+        }
     },
 
     async _saveOutline(novel, vol) {
