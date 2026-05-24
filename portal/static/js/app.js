@@ -438,7 +438,7 @@ const App = {
             optionsHtml = '<div class="wizard-options wizard-options-multi">' + options.map(function(opt) {
                 var s = !!sp[opt.label], el = App._escapeAttr(opt.label), eh = App._escapeHtml(opt.label);
                 var pct = sp[opt.label] || 0;
-                var sliderHtml = s ? '<div class="wizard-pct-row"><input type="range" class="wizard-pct-slider" min="5" max="100" value="' + pct + '" data-slbl="' + el + '" oninput="App._stylePctChange(this)"><span class="wizard-pct-val">' + pct + '%</span></div>' : '';
+                var sliderHtml = s ? '<div class="wizard-pct-row"><input type="range" class="wizard-pct-slider" min="5" max="100" value="' + pct + '" data-slbl="' + el + '" oninput="App._stylePctChange(this)" onclick="event.stopPropagation()"><span class="wizard-pct-val">' + pct + '%</span></div>' : '';
                 return '<div class="wizard-option wizard-multi-opt' + (s ? ' selected' : '') + '" data-mlabel="' + el + '" onclick="App._toggleStyle(this,\'' + el + '\')"><div class="wizard-option-check">' + (s ? '☑' : '☐') + '</div><div class="wizard-option-label">' + eh + '</div>' + sliderHtml + '</div>';
             }).join('') + '</div>';
         } else if (isMulti) {
@@ -703,7 +703,7 @@ const App = {
             this.STYLE_OPTIONS.map(function(opt) {
                 var sel = !!ws[opt.label], el = self._escapeAttr(opt.label), eh = self._escapeHtml(opt.label);
                 var pct = ws[opt.label] || 0;
-                var slider = sel ? '<div class="wizard-pct-row" style="margin-top:4px;padding-top:4px"><input type="range" class="wizard-pct-slider" min="5" max="100" value="' + pct + '" data-slbl="' + el + '" oninput="App._writeStylePct(this)"><span class="wizard-pct-val">' + pct + '%</span></div>' : '';
+                var slider = sel ? '<div class="wizard-pct-row" style="margin-top:4px;padding-top:4px"><input type="range" class="wizard-pct-slider" min="5" max="100" value="' + pct + '" data-slbl="' + el + '" oninput="App._writeStylePct(this)" onclick="event.stopPropagation()"><span class="wizard-pct-val">' + pct + '%</span></div>' : '';
                 return '<div class="wizard-option wizard-multi-opt' + (sel ? ' selected' : '') + '" style="padding:6px 8px !important" data-mlabel="' + el + '" onclick="App._toggleWriteStyle(this,\'' + el + '\')"><div class="wizard-option-check" style="font-size:14px">' + (sel ? '☑' : '☐') + '</div><div class="wizard-option-label" style="font-size:12px">' + eh + '</div>' + slider + '</div>';
             }).join('') + '</div>';
         this._updateStyleTags();
