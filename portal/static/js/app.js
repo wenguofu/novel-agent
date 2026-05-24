@@ -904,6 +904,12 @@ const App = {
         resp.success ? this.toast(`✅ 第 ${chNum} 章已保存`, 'success') : this.toast(resp.error, 'error');
     },
 
+    _optimizeFromReviewStored() {
+        var rc = App._reviewContext;
+        if (!rc) { App.toast('审稿上下文丢失，请重新审稿', 'warning'); return; }
+        App._optimizeFromReview(rc.novel, rc.chRef, rc.volume, rc.chNum);
+    },
+
     _optimizeFromReview(novel, chRef, volume, chNum) {
         var rd = document.getElementById('rResult');
         var notice = document.createElement('div');
@@ -941,9 +947,7 @@ const App = {
         API.reviewChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum}).then(function(revResp) {
             if (!revResp.success) { notice.innerHTML = '<div class="code-block error">审稿失败: ' + (revResp.error||'') + '</div>'; return; }
             notice.innerHTML = '<div class="stream-indicator"><div class="stream-dot"></div><span>🛠️ 根据审稿意见优化章节...</span></div>';
-            var scriptIssues = (revResp.script_results?.analyze?.stdout||'') + '
-' + (revResp.script_results?.compliance?.stdout||'') + '
-' + (revResp.script_results?.forbidden?.stdout||'');
+            var scriptIssues = (revResp.script_results?.analyze?.stdout||'') + '\\n' + (revResp.script_results?.compliance?.stdout||'') + '\\n' + (revResp.script_results?.forbidden?.stdout||'');
             API.optimizeChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum, review_text: revResp.ai_review||'', script_issues: scriptIssues}).then(function(optResp) {
                 if (optResp.success) {
                     API.editChapter(novel, chRef.replace('.md',''), optResp.content).then(function() {
@@ -1024,6 +1028,8 @@ const App = {
         const rd = document.getElementById('rResult');
         const parts = chRef.split('/');
         const novelName = document.querySelector('#rNovel option:checked')?.textContent || novel;
+        // Store context for optimize button
+        App._reviewContext = {novel: novel, chRef: chRef, volume: parts[0], chNum: parts[1].replace('ch-', '')};
         const startTime = Date.now();
 
         // Rich progress card
@@ -1090,7 +1096,7 @@ const App = {
                 '</div></details>';
 
             document.getElementById('reviewDetail').innerHTML = scriptSummary + aiReviewHtml + scriptDetailHtml +
-                '<div class="mt-16 flex gap-8"><button class="btn btn-success" onclick="App._optimizeFromReview(\'' + novel + '\',\'' + chRef + '\',\'' + parts[0] + '\',\'' + parts[1].replace(\'ch-\',\'\') + '\')">🛠️ 一键优化并替换</button></div>';
+                '<div class="mt-16 flex gap-8"><button class="btn btn-success" onclick="App._optimizeFromReviewStored()">🛠️ 一键优化并替换</button></div>';
             this.toast('✅ 审稿完成', 'success');
         } else {
             var st2 = document.getElementById('reviewStatus');
