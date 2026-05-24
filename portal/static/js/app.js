@@ -15,6 +15,16 @@ const App = {
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', (e) => { e.preventDefault(); this.navigate(item.dataset.view); });
         });
+        // Wizard option delegation
+        document.getElementById('mainContent').addEventListener('click', (e) => {
+            const option = e.target.closest('.wizard-option');
+            if (option) {
+                const idx = parseInt(option.dataset.idx);
+                const label = option.dataset.label;
+                const desc = option.dataset.desc || '';
+                this._wizardSelect(idx, label, desc);
+            }
+        });
         await this.navigate('dashboard');
     },
 
@@ -114,6 +124,16 @@ const App = {
     _wordBadge(wc) {
         const cls = wc >= 2500 ? 'good' : wc >= 1500 ? 'warn' : 'low';
         return `<span class="word-badge ${cls}">📝 ${wc}字</span>`;
+    },
+
+    _escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    },
+
+    _escapeAttr(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 
     _updateSidebarStatus(cfg) {
@@ -294,47 +314,173 @@ const App = {
     },
 
     // ═══════════════════════════════════════════════════════════════════
-    //  NEW BOOK
+    //  NEW BOOK (AI Wizard)
     // ═══════════════════════════════════════════════════════════════════
 
     async _renderNewBook(mc) {
         const ok = this.config.deepseek_configured;
+        if (!ok) {
+            mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">✨ 创建新书</h1><p class="page-subtitle">AI 交互式创作向导</p></div></div><div class="card" style="border-color:var(--warning)"><div class="flex items-center gap-3"><span style="font-size:24px">⚠️</span><div><strong style="color:var(--warning)">API Key 未配置</strong><p class="text-secondary mt-2">请先在 <a href="#" onclick="App.navigate('settings')" style="color:var(--accent)">⚙️ 设置</a> 填入 DeepSeek API Key</p></div></div></div>`;
+            return;
+        }
+        // Initialize wizard state
+        this._wizard = { step: 0, selections: {}, loading: false };
         mc.innerHTML = `
-            <div class="page-header"><div><h1 class="page-title">✨ 创建新书</h1><p class="page-subtitle">AI 自动生成小说基础资料</p></div></div>
-            ${!ok ? '<div class="card" style="border-color:var(--warning);"><div class="flex items-center gap-3"><span style="font-size:24px">⚠️</span><div><strong style="color:var(--warning)">API Key 未配置</strong><p class="text-secondary mt-2">请先在 <a href="#" onclick="App.navigate(\'settings\')" style="color:var(--accent)">⚙️ 设置</a> 填入 DeepSeek API Key</p></div></div></div>' : ''}
-            <div class="card">
-                <div class="form-group"><label class="form-label">书名 *</label><input class="form-input" id="nbName" placeholder="例：九天剑帝"></div>
-                <div class="form-row"><div class="form-group"><label class="form-label">题材 *</label><input class="form-input" id="nbGenre" placeholder="玄幻 / 都市 / 修仙..."></div><div class="form-group"><label class="form-label">篇幅目标</label><select class="form-select" id="nbWordGoal"><option value="50万">50万字</option><option value="100万" selected>100万字</option><option value="200万">200万字</option><option value="300万">300万字</option></select></div></div>
-                <div class="form-group"><label class="form-label">主角设定 *</label><textarea class="form-textarea" id="nbProtagonist" rows="3" placeholder="主角姓名、性格、背景、金手指等"></textarea></div>
-                <div class="form-group"><label class="form-label">作品卖点</label><textarea class="form-textarea" id="nbSellingPoint" rows="2" placeholder="这本书最吸引读者的地方"></textarea></div>
-                <div class="form-row"><div class="form-group"><label class="form-label">叙事视角</label><select class="form-select" id="nbPerspective"><option value="第三人称" selected>第三人称</option><option value="第一人称">第一人称</option><option value="多视角">多视角</option></select></div><div class="form-group"><label class="form-label">参考作品</label><input class="form-input" id="nbReferences" placeholder="可选，如：凡人修仙传"></div></div>
-                <button class="btn btn-primary btn-lg" onclick="App._createNovel()" id="nbBtn">🚀 AI 自动创建</button>
-                <div id="nbResult" class="mt-16"></div>
+            <div class="page-header"><div><h1 class="page-title">✨ 交互式创作向导</h1><p class="page-subtitle">AI 逐步引导你完成小说设定</p></div></div>
+            <div id="wizardStep"></div>
+        `;
+        await this._loadWizardStep(0);
+    },
+
+    async _loadWizardStep(index) {
+        const w = this._wizard;
+        w.step = index;
+        w.loading = true;
+        const container = document.getElementById('wizardStep');
+        if (!container) return;
+
+        // Show loading
+        container.innerHTML = `
+            <div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:${(index / 6 * 100)}%"></div></div><span class="wizard-progress-text">步骤 ${index + 1} / 6</span></div>
+            <div class="card"><div class="loading" style="padding:40px"><div class="spinner"></div><span>AI 正在生成选项...</span></div></div>
+        `;
+
+        // Call API
+        const resp = await API.wizardStep({ step_index: index, selections: w.selections });
+        w.loading = false;
+
+        if (!resp.success) {
+            container.innerHTML = `<div class="card"><div class="code-block error">${resp.error}<br><button class="btn btn-secondary mt-8" onclick="App._loadWizardStep(${index})">🔄 重试</button></div></div>`;
+            return;
+        }
+
+        const step = resp.step;
+        const options = resp.options || [];
+        const isFirst = index === 0;
+
+        // Build selections summary
+        let summaryHtml = '';
+        if (index > 0) {
+            const entries = Object.entries(w.selections).filter(([k]) => k !== 'name');
+            if (entries.length > 0) {
+                summaryHtml = `<div class="wizard-summary">${entries.map(([k, v]) => `<span class="wizard-tag">${v}</span>`).join('')}</div>`;
+            }
+        }
+
+        // Build option cards
+        let optionsHtml = options.map((opt, i) => `
+            <div class="wizard-option" data-idx="${index}" data-label="${this._escapeAttr(opt.label)}" data-desc="${this._escapeAttr(opt.desc)}">
+                <div class="wizard-option-label">${this._escapeHtml(opt.label)}</div>
+                <div class="wizard-option-desc">${this._escapeHtml(opt.desc)}</div>
+                <div class="wizard-option-pick">选择 →</div>
+            </div>
+        `).join('');
+
+        // Custom input row
+        const customHtml = resp.allow_custom ? `
+            <div class="wizard-custom">
+                <span class="text-muted">或自定义：</span>
+                <div class="form-row" style="grid-template-columns:1fr auto">
+                    <input class="form-input" id="wizCustom" placeholder="${isFirst ? '输入你的书名...' : '输入自定义内容...'}">
+                    <button class="btn btn-secondary" onclick="App._wizardCustom(${index})">✓ 使用</button>
+                </div>
+            </div>
+        ` : '';
+
+        container.innerHTML = `
+            <div class="wizard-progress">
+                <div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:${((index + 1) / 6 * 100)}%"></div></div>
+                <span class="wizard-progress-text">步骤 ${index + 1} / 6</span>
+            </div>
+            <div class="wizard-question-card">
+                <div class="wizard-question">${step.question}</div>
+                ${summaryHtml}
+                <div class="wizard-options">
+                    ${optionsHtml}
+                </div>
+                ${customHtml}
+                <div class="wizard-actions mt-16">
+                    ${index > 0 ? `<button class="btn btn-secondary" onclick="App._wizardBack(${index})">← 上一步</button>` : ''}
+                    <button class="btn btn-secondary" onclick="App._loadWizardStep(${index})" ${w.loading ? 'disabled' : ''}>🔄 换一批</button>
+                </div>
             </div>
         `;
     },
 
-    async _createNovel() {
-        const name = document.getElementById('nbName').value.trim();
-        if (!name) { this.toast('请填写书名', 'warning'); return; }
-        const data = {
-            name, genre: document.getElementById('nbGenre').value.trim(),
-            protagonist: document.getElementById('nbProtagonist').value.trim(),
-            selling_point: document.getElementById('nbSellingPoint').value.trim(),
-            word_goal: document.getElementById('nbWordGoal').value,
-            perspective: document.getElementById('nbPerspective').value,
-            references: document.getElementById('nbReferences').value.trim(),
-        };
-        if (!data.genre) { this.toast('请选择题材', 'warning'); return; }
-        if (!data.protagonist) { this.toast('请填写主角设定', 'warning'); return; }
-        const btn = document.getElementById('nbBtn'); btn.disabled = true; btn.textContent = '⏳ AI 生成中...';
-        const resp = await API.createNovel(data);
-        btn.disabled = false; btn.textContent = '🚀 AI 自动创建';
-        const rd = document.getElementById('nbResult');
+    async _wizardSelect(index, label, desc) {
+        const w = this._wizard;
+        const stepId = ['name', 'genre', 'protagonist', 'selling_point', 'world_setting', 'style'][index];
+        w.selections[stepId] = label;
+
+        if (index >= 5) {
+            // Final step — show confirmation
+            await this._wizardConfirm();
+        } else {
+            await this._loadWizardStep(index + 1);
+        }
+    },
+
+    async _wizardCustom(index) {
+        const input = document.getElementById('wizCustom');
+        const val = input?.value.trim();
+        if (!val) { this.toast('请输入内容', 'warning'); return; }
+        await this._wizardSelect(index, val, '自定义');
+    },
+
+    async _wizardBack(index) {
+        delete this._wizard.selections[['name', 'genre', 'protagonist', 'selling_point', 'world_setting', 'style'][index - 1]];
+        await this._loadWizardStep(index - 1);
+    },
+
+    async _wizardConfirm() {
+        const w = this._wizard;
+        const container = document.getElementById('wizardStep');
+        const s = w.selections;
+        container.innerHTML = `
+            <div class="wizard-progress"><div class="wizard-progress-bar"><div class="wizard-progress-fill" style="width:100%"></div></div><span class="wizard-progress-text">✅ 完成</span></div>
+            <div class="wizard-question-card">
+                <div class="wizard-question">📋 确认你的小说设定</div>
+                <div class="wizard-confirm-grid">
+                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">书名</div><div class="wizard-confirm-value">${s.name || '未设置'}</div></div>
+                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">题材</div><div class="wizard-confirm-value">${s.genre || '未设置'}</div></div>
+                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">主角</div><div class="wizard-confirm-value">${s.protagonist || '未设置'}</div></div>
+                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">卖点</div><div class="wizard-confirm-value">${s.selling_point || '未设置'}</div></div>
+                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">世界观</div><div class="wizard-confirm-value">${s.world_setting || '未设置'}</div></div>
+                    <div class="wizard-confirm-item"><div class="wizard-confirm-label">风格</div><div class="wizard-confirm-value">${s.style || '未设置'}</div></div>
+                </div>
+                <div class="wizard-actions mt-16">
+                    <button class="btn btn-secondary" onclick="App._wizardBack(5)">← 修改</button>
+                    <button class="btn btn-primary btn-lg" id="wizCreateBtn" onclick="App._wizardCreate()">🚀 AI 自动创建小说</button>
+                </div>
+                <div id="wizCreateResult" class="mt-16"></div>
+            </div>
+        `;
+    },
+
+    async _wizardCreate() {
+        const btn = document.getElementById('wizCreateBtn');
+        btn.disabled = true; btn.textContent = '⏳ AI 生成中...';
+        const rd = document.getElementById('wizCreateResult');
+
+        const s = this._wizard.selections;
+        const resp = await API.createNovel({
+            name: s.name,
+            genre: s.genre,
+            protagonist: s.protagonist,
+            selling_point: s.selling_point,
+            word_goal: document.getElementById('nbWordGoal')?.value || '100万',
+            perspective: '第三人称',
+            references: `${s.world_setting || ''} | 风格: ${s.style || ''}`,
+        });
+
+        btn.disabled = false; btn.textContent = '🚀 AI 自动创建小说';
         if (resp.success) {
             this.toast(`🎉 小说「${resp.novel_name}」创建成功！`, 'success');
             rd.innerHTML = `<div class="card" style="border-color:var(--success)"><h3>✅ 创建成功</h3><p class="text-secondary mt-8">已创建文件：</p><div class="code-block success mt-8">${resp.created_files.join('\\n')}</div><div class="mt-16 flex gap-8"><button class="btn btn-primary" onclick="App.navigate('novels')">📚 查看项目</button><button class="btn btn-success" onclick="App.navigate('writing',{novel:'${resp.novel_name}'})">✍️ 开始写作</button></div></div>`;
-        } else { this.toast(`创建失败: ${resp.error}`, 'error'); rd.innerHTML = `<div class="code-block error">${resp.error}</div>`; }
+        } else {
+            this.toast(`创建失败: ${resp.error}`, 'error');
+            rd.innerHTML = `<div class="code-block error">${resp.error}</div>`;
+        }
     },
 
     // ═══════════════════════════════════════════════════════════════════

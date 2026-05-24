@@ -43,6 +43,7 @@ const API = {
     saveConfig(data) { return this.request('POST', '/api/config/save', data); },
     testConfig() { return this.request('POST', '/api/config/test'); },
 
-    // ── Templates ──
+    // ── Wizard ──
+    wizardStep(data) { return this.request('POST', '/api/wizard/step', data); },
     getTemplates() { return this.request('GET', '/api/templates'); },
 };

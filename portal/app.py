@@ -1002,6 +1002,118 @@ def api_test_config():
         return jsonify({"success": False, "error": str(e)})
 
 
+# ─── Wizard ──────────────────────────────────────────────────────────────────
+
+WIZARD_STEPS = [
+    {
+        "id": "name", "label": "书名", "question": "请为你的小说起一个名字",
+        "prompt_template": "请为一部新的网络小说推荐5个吸引人的书名。要求：简洁有力，2-5个字为佳，风格偏中式网文。\n\n已有设定：{context}\n\n返回JSON数组格式（仅JSON，不要其他内容）：\n[{{\"label\": \"书名\", \"desc\": \"一句话解释为什么这个书名好\"}}, ...]",
+        "allow_custom": True, "required": True,
+    },
+    {
+        "id": "genre", "label": "题材", "question": "请选择小说的题材类型",
+        "prompt_template": "你是一个资深网文编辑。请根据以下信息，推荐6个最合适的题材方向，每个附带简要说明。\n\n书名：{name}\n已有设定：{context}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"题材名\", \"desc\": \"20字以内的解释，为什么适合\"}}, ...]",
+        "allow_custom": True, "required": True,
+    },
+    {
+        "id": "protagonist", "label": "主角设定", "question": "请选择或描述主角设定",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，生成5个主角原型方案。\n\n书名：{name}\n题材：{genre}\n已有设定：{context}\n\n每个方案包含：姓名、身份/背景、性格、核心金手指/能力。\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"姓名 · 身份概括\", \"desc\": \"性格+金手指的简要描述（50字内）\"}}, ...]",
+        "allow_custom": True, "required": True,
+    },
+    {
+        "id": "selling_point", "label": "核心卖点", "question": "请选择作品的核心卖点/爽点",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐5个最有吸引力的核心卖点方向。\n\n书名：{name}\n题材：{genre}\n主角：{protagonist}\n已有设定：{context}\n\n卖点即读者最爽的地方。返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"卖点标签（5-10字）\", \"desc\": \"展开解释（30字内）\"}}, ...]",
+        "allow_custom": True, "required": True,
+    },
+    {
+        "id": "world_setting", "label": "世界观方向", "question": "请选择世界观设定方向",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐4个世界观展开方向。\n\n书名：{name}\n题材：{genre}\n主角：{protagonist}\n卖点：{selling_point}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"世界观方向（8-15字）\", \"desc\": \"展开描述力量体系/地理/势力（40字内）\"}}, ...]",
+        "allow_custom": True, "required": True,
+    },
+    {
+        "id": "style", "label": "写作风格", "question": "请选择写作风格",
+        "prompt_template": "你是一个资深网文编辑。请根据已有设定，推荐5种最适合的写作风格。\n\n书名：{name}\n题材：{genre}\n主角：{protagonist}\n\n返回JSON数组（仅JSON，不要其他内容）：\n[{{\"label\": \"风格名称\", \"desc\": \"风格特点和适合理由（30字内）\"}}, ...]",
+        "allow_custom": True, "required": True,
+    },
+]
+
+
+@app.route("/api/wizard/step", methods=["POST"])
+def api_wizard_step():
+    """Multi-turn interactive book creation wizard.
+    Receives current step_index and accumulated selections, returns AI-generated options."""
+    data = request.json or {}
+    step_index = data.get("step_index", 0)
+    selections = data.get("selections", {})
+
+    if step_index >= len(WIZARD_STEPS):
+        return jsonify({"success": False, "error": "无效步骤"}), 400
+
+    step = WIZARD_STEPS[step_index]
+
+    # Build context from previous selections
+    context_parts = []
+    for key, val in selections.items():
+        if val:
+            context_parts.append(f"{key}: {val}")
+    context = "; ".join(context_parts) if context_parts else "无"
+
+    # Build prompt
+    prompt = step["prompt_template"].format(
+        name=selections.get("name", "未命名"),
+        genre=selections.get("genre", "未选择"),
+        protagonist=selections.get("protagonist", "未设定"),
+        selling_point=selections.get("selling_point", "未设定"),
+        context=context,
+    )
+
+    # Call DeepSeek
+    result = deepseek_chat(
+        messages=[{"role": "user", "content": prompt}],
+        system_prompt="你是一个专业的网文编辑顾问。你只返回严格JSON格式，不添加任何markdown代码块标记或解释文字。",
+        temperature=0.9,
+        max_tokens=1024,
+    )
+
+    if not result["success"]:
+        return jsonify(result)
+
+    # Parse options from AI response
+    options = []
+    try:
+        raw = result["content"].strip()
+        # Remove markdown code fences if present
+        if raw.startswith("```"):
+            raw = re.sub(r"^```\w*\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            options = [{"label": o.get("label", ""), "desc": o.get("desc", "")} for o in parsed[:6]]
+    except (json.JSONDecodeError, Exception) as e:
+        # Fallback: try to extract JSON from the text
+        match = re.search(r'\[.*\]', result["content"], re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group())
+                if isinstance(parsed, list):
+                    options = [{"label": o.get("label", ""), "desc": o.get("desc", "")} for o in parsed[:6]]
+            except Exception:
+                pass
+
+    if not options:
+        options = [{"label": "请重试", "desc": "AI未能生成有效选项，请点击重试"}]
+
+    return jsonify({
+        "success": True,
+        "step": step,
+        "step_index": step_index,
+        "total_steps": len(WIZARD_STEPS),
+        "options": options,
+        "allow_custom": step.get("allow_custom", False),
+        "is_last": step_index == len(WIZARD_STEPS) - 1,
+    })
+
+
 # ─── Templates ──────────────────────────────────────────────────────────────
 
 
