@@ -15,6 +15,11 @@ from flask_cors import CORS
 
 import sqlite3 as _sqlite3
 
+from content_db import (
+    get_db as get_content_db, init_db as init_content_db,
+    sync_novel_from_files, sync_all_novels, search_all, get_novel_stats
+)
+
 from config import (
     DEEPSEEK_API_BASE,
     DEEPSEEK_API_KEY,
@@ -369,6 +374,13 @@ def api_edit_chapter(novel_name, ch_ref):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
+
+    # Sync to content DB
+    try:
+        from content_db import sync_novel_from_files
+        sync_novel_from_files(novel_name)
+    except Exception:
+        pass
 
     return jsonify({
         "success": True,
@@ -1403,6 +1415,39 @@ def api_config_manage(table, row_id):
             return jsonify({"success": True, "message": "已更新"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Content DB ────────────────────────────────────────────────────────────
+
+@app.route("/api/content/search")
+def api_content_search():
+    q = request.args.get("q", "")
+    novel = request.args.get("novel", "")
+    limit = int(request.args.get("limit", 20))
+    if not q:
+        return jsonify({"success": False, "error": "请提供查询词"}), 400
+    results = search_all(q, novel_name=novel or None, limit=limit)
+    return jsonify({"success": True, "query": q, "results": results})
+
+@app.route("/api/content/stats/<novel_name>")
+def api_content_stats(novel_name):
+    stats = get_novel_stats(novel_name)
+    if "error" in stats:
+        return jsonify({"success": False, "error": stats["error"]}), 404
+    return jsonify({"success": True, "stats": stats})
+
+@app.route("/api/content/sync", methods=["POST"])
+def api_content_sync():
+    data = request.json or {}
+    novel = data.get("novel", "")
+    if novel:
+        result = sync_novel_from_files(novel)
+    else:
+        result = {"synced": sync_all_novels()}
+    return jsonify({"success": True, "result": result})
+
+# Auto-sync after chapter save: hook into chapter edit
+_original_edit_chapter = None
 
 
 # ─── Templates ──────────────────────────────────────────────────────────────

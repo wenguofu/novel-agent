@@ -42,6 +42,7 @@ const App = {
                 case 'review': await this._renderReview(mc, params); break;
                 case 'chapters': await this._renderChapters(mc, params); break;
                 case 'outlines': await this._renderOutlines(mc); break;
+                case 'search': await this._renderSearch(mc); break;
                 case 'config': await this._renderConfig(mc); break;
                 case 'settings': await this._renderSettings(mc); break;
                 default: mc.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🤷</div><div class="empty-state-title">页面不存在</div></div>';
@@ -1384,6 +1385,71 @@ const App = {
         resp.success ? (this.toast('✅ 大纲已保存', 'success'), document.querySelectorAll('.modal-overlay').forEach(m => m.remove()), this._loadOutlines()) : this.toast(resp.error, 'error');
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  FULL-TEXT SEARCH
+    // ═══════════════════════════════════════════════════════════════════
+
+    async _renderSearch(mc) {
+        mc.innerHTML = '<div class="page-header"><div><h1 class="page-title">🔎 全文搜索</h1><p class="page-subtitle">搜索章节、大纲、审稿记录 · FTS5 全文索引</p></div></div>' +
+            '<div class="card"><div class="form-row"><div class="form-group" style="flex:1"><input class="form-input wizard-input-lg" id="sQuery" placeholder="输入关键词搜索...（如：李闲 突破 元婴）" onkeydown="if(event.key===\'Enter\')App._doSearch()"></div>' +
+            '<div class="form-group"><select class="form-select" id="sNovel"><option value="">全部小说</option></select></div>' +
+            '<button class="btn btn-primary btn-lg" onclick="App._doSearch()">🔍 搜索</button></div>' +
+            '<div id="sResults" class="mt-16"></div></div>';
+
+        // Load novels
+        var resp = await API.listNovels();
+        if (resp.success) {
+            var sel = document.getElementById('sNovel');
+            resp.novels.forEach(function(n) {
+                var o = document.createElement('option'); o.value = n.name; o.textContent = n.title || n.name; sel.appendChild(o);
+            });
+        }
+    },
+
+    async _doSearch() {
+        var q = document.getElementById('sQuery')?.value.trim();
+        if (!q) { this.toast('请输入搜索关键词', 'warning'); return; }
+        var novel = document.getElementById('sNovel')?.value || '';
+        var rd = document.getElementById('sResults');
+        rd.innerHTML = '<div class="loading"><div class="spinner"></div><span>搜索中...</span></div>';
+
+        var params = 'q=' + encodeURIComponent(q) + '&limit=30';
+        if (novel) params += '&novel=' + encodeURIComponent(novel);
+        var resp = await fetch('/api/content/search?' + params).then(function(r){return r.json();});
+
+        if (!resp.success) { rd.innerHTML = '<div class="code-block error">' + (resp.error||'') + '</div>'; return; }
+
+        var r = resp.results;
+        var total = (r.chapters||[]).length + (r.outlines||[]).length + (r.reviews||[]).length;
+        var html = '<div class="text-secondary mb-12">找到 <strong>' + total + '</strong> 条结果</div>';
+
+        // Chapters
+        if (r.chapters && r.chapters.length > 0) {
+            html += '<h3 class="mt-16 mb-8">📖 章节 (' + r.chapters.length + ')</h3>';
+            r.chapters.forEach(function(ch) {
+                html += '<div class="chapter-item" onclick="App._openChapterReader(\'' + ch.novel_name + '\',\'' + ch.chapter_ref + '\')" style="cursor:pointer"><span class="ch-num">' + ch.chapter_ref + '</span><span class="ch-title"><strong>' + (ch.title||'') + '</strong><br><span style="font-size:12px;color:var(--text-secondary)">' + (ch.snippet||'') + '</span></span><span class="ch-meta">' + (ch.word_count||0) + '字 · ' + ch.novel_name + '</span></div>';
+            });
+        }
+
+        // Outlines
+        if (r.outlines && r.outlines.length > 0) {
+            html += '<h3 class="mt-16 mb-8">📐 大纲 (' + r.outlines.length + ')</h3>';
+            r.outlines.forEach(function(o) {
+                html += '<div class="chapter-item"><span class="ch-num">' + o.volume + '</span><span class="ch-title"><span style="font-size:12px;color:var(--text-secondary)">' + (o.snippet||'') + '</span></span><span class="ch-meta">' + o.novel_name + '</span></div>';
+            });
+        }
+
+        // Reviews
+        if (r.reviews && r.reviews.length > 0) {
+            html += '<h3 class="mt-16 mb-8">🔍 审稿 (' + r.reviews.length + ')</h3>';
+            r.reviews.forEach(function(rv) {
+                html += '<div class="chapter-item"><span class="ch-num">' + rv.chapter_ref + '</span><span class="ch-title"><span style="font-size:12px;color:var(--text-secondary)">' + (rv.snippet||'') + '</span></span><span class="ch-meta">' + rv.novel_name + '</span></div>';
+            });
+        }
+
+        if (total === 0) html += '<div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-title">未找到结果</div></div>';
+        rd.innerHTML = html;
+    },
     // ═══════════════════════════════════════════════════════════════════
     //  CONFIG MANAGEMENT
     // ═══════════════════════════════════════════════════════════════════
