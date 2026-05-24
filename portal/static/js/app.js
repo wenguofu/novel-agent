@@ -78,21 +78,36 @@ const App = {
     // ── Markdown ──
     renderMarkdown(text) {
         if (!text) return '<em class="text-muted">(空)</em>';
-        let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-        html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-        html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-        html = html.replace(/^---$/gm, '<hr>');
-        html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
-        html = html.replace(/\n\n/g, '</p><p>');
-        html = html.replace(/^(?!<[hul])/gm, '<p>');
-        html = html.replace(/(?<![hul]>)$/gm, '</p>');
+        let html = text
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            // Headers
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+            // Bold/italic
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            // Code blocks
+            .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // HR
+            .replace(/^---$/gm, '<hr>')
+            // Blockquote
+            .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+            // Unordered lists
+            .replace(/^[*-] (.+)$/gm, '<li>$1</li>')
+            // Ordered lists
+            .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+            // Table rows
+            .replace(/^\|(.+)\|$/gm, (m) => '<tr>' + m.slice(1, -1).split('|').map(c => /^[-:\s]+$/.test(c.trim()) ? '<th></th>' : '<td>' + c.trim() + '</td>').join('') + '</tr>')
+            // Wrap lists
+            .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
+            // Wrap paragraphs: split by double newline, wrap non-tag blocks
+            .replace(/\n{2,}/g, '\n</p><p>\n')
+            .replace(/^(?!<)/gm, '<p>')
+            .replace(/(?<!>)$/gm, '</p>')
+            // Clean empty <p></p>
+            .replace(/<p>\s*<\/p>/g, '');
         return html;
     },
 
@@ -182,7 +197,7 @@ const App = {
                     <div class="stat-card"><div class="stat-value">${n.review_count}</div><div class="stat-label">审稿</div></div>
                 </div>
                 ${wPct > 0 ? `<div class="mt-12"><div class="progress-label"><span>写作进度</span><span>${wPct}%</span></div><div class="progress-bar"><div class="progress-bar-fill accent" style="width:${wPct}%"></div></div></div>` : ''}
-                <div class="markdown-content mt-16">${this.renderMarkdown((n.project_content || '').substring(0, 1000))}</div>
+                <div class="reader-content" style="max-height:45vh">${this.renderMarkdown((n.project_content || '').substring(0, 5000))}</div>
             </div>
         `;
         const footer = `<button class="btn btn-primary" onclick="App.navigate('writing',{novel:'${n.name}'})">✍️ 开始写作</button><button class="btn btn-success" onclick="App.navigate('chapters',{novel:'${n.name}'})">📖 浏览章节</button><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">关闭</button>`;
