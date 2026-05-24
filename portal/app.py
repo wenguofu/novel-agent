@@ -760,6 +760,12 @@ def api_generate_chapter(novel_name):
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(result["content"])
 
+    try:
+        from content_db import sync_novel_from_files
+        sync_novel_from_files(novel_name)
+    except Exception:
+        pass
+
     return jsonify({
         "success": True,
         "chapter_file": f"{volume}/ch-{ch_num_padded}.md",
