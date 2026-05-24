@@ -919,13 +919,81 @@ const App = {
         const chRef = document.getElementById('rChapter').value;
         if (!novel || !chRef) { this.toast('请选择小说和章节', 'warning'); return; }
         const rd = document.getElementById('rResult');
-        rd.innerHTML = '<div class="loading"><div class="spinner"></div><span>审稿中...</span></div>';
         const parts = chRef.split('/');
+        const novelName = document.querySelector('#rNovel option:checked')?.textContent || novel;
+        const startTime = Date.now();
+
+        // Rich progress card
+        rd.innerHTML = '<div class="card">' +
+            '<h3>🔍 正在审稿: ' + chRef + '</h3>' +
+            '<div class="text-secondary mt-8" style="font-size:12px">📖 ' + novelName + '</div>' +
+            '<div class="mt-12">' +
+            '<div class="review-progress-item" id="rpScript"><div class="review-progress-dot"></div><span>📊 运行脚本检查（字数/结构 · 合规性 · 禁用模式）</span></div>' +
+            '<div class="review-progress-item" id="rpAI" style="opacity:0.4"><div class="review-progress-dot idle"></div><span>🤖 AI 深度审稿分析</span></div>' +
+            '</div>' +
+            '<div class="stream-indicator mt-12"><div class="stream-dot"></div><span id="reviewStatus">已开始...</span></div>' +
+            '<div id="reviewDetail" class="mt-12"></div>' +
+            '</div>';
+
+        // Elapsed timer
+        var timerInterval = setInterval(function() {
+            var elapsed = Math.floor((Date.now() - startTime) / 1000);
+            var mins = Math.floor(elapsed / 60), secs = elapsed % 60;
+            var el = document.getElementById('reviewStatus');
+            if (el && !el.textContent.startsWith('✅') && !el.textContent.startsWith('❌')) {
+                el.textContent = '审稿中 · ' + mins + '分' + (secs < 10 ? '0' : '') + secs + '秒';
+            }
+        }, 1000);
+
+        // Show script stage as active after brief delay
+        setTimeout(function() {
+            var rp = document.getElementById('rpScript');
+            if (rp) rp.querySelector('.review-progress-dot').classList.add('active');
+        }, 500);
+
         const resp = await API.reviewChapter(novel, { chapter_ref: chRef.replace('.md',''), volume: parts[0], chapter_num: parts[1].replace('ch-','') });
+
+        clearInterval(timerInterval);
+
         if (resp.success) {
-            rd.innerHTML = `<div class="card" style="border-color:var(--info)"><h3>📋 审稿结果 <span class="text-sm text-muted">${resp.word_count||0}字</span></h3><div class="code-block info mt-8">${resp.ai_review}</div><h4 class="mt-16">📊 脚本检查</h4><div class="grid-3 mt-8"><div class="stat-card"><div class="stat-value" style="font-size:16px">${resp.script_results.analyze.success?'✅':'❌'}</div><div class="stat-label">字数/结构</div></div><div class="stat-card"><div class="stat-value" style="font-size:16px">${resp.script_results.compliance.success?'✅':'❌'}</div><div class="stat-label">合规检查</div></div><div class="stat-card"><div class="stat-value" style="font-size:16px">${resp.script_results.forbidden.success?'✅':'❌'}</div><div class="stat-label">禁用模式</div></div></div><details class="mt-8"><summary style="cursor:pointer;color:var(--accent)">查看详细输出</summary><div class="code-block mt-8">${['analyze','compliance','forbidden'].map(k=>'=== '+k+' ===\\n'+resp.script_results[k].stdout).join('\\n\\n')}</div></details></div>`;
+            // Mark stages complete
+            var rpS = document.getElementById('rpScript');
+            if (rpS) { rpS.style.opacity = '1'; var d = rpS.querySelector('.review-progress-dot'); d.className = 'review-progress-dot done'; d.textContent = '✅'; }
+            var rpA = document.getElementById('rpAI');
+            if (rpA) { rpA.style.opacity = '1'; var d2 = rpA.querySelector('.review-progress-dot'); d2.className = 'review-progress-dot done'; d2.textContent = '✅'; }
+            var st = document.getElementById('reviewStatus');
+            if (st) st.textContent = '✅ 审稿完成 · ' + (resp.word_count || 0) + '字';
+
+            // Script results summary
+            var analyzeOk = resp.script_results.analyze.success;
+            var compOk = resp.script_results.compliance.success;
+            var forbidOk = resp.script_results.forbidden.success;
+            var scriptSummary = '<div class="grid-3 mt-12" style="grid-template-columns:repeat(3,1fr)">' +
+                '<div class="stat-card"><div class="stat-value">' + (analyzeOk ? '✅' : '❌') + '</div><div class="stat-label">字数/结构</div></div>' +
+                '<div class="stat-card"><div class="stat-value">' + (compOk ? '✅' : '❌') + '</div><div class="stat-label">合规检查</div></div>' +
+                '<div class="stat-card"><div class="stat-value">' + (forbidOk ? '✅' : '❌') + '</div><div class="stat-label">禁用模式</div></div></div>';
+
+            // AI review in reader-content
+            var aiReviewHtml = resp.ai_review
+                ? '<div class="mt-16"><div class="reader-content" style="max-height:40vh;overflow-y:auto;padding:16px;background:var(--bg-elevated);border-radius:var(--radius-lg)">' + this.renderMarkdown(resp.ai_review) + '</div></div>'
+                : '';
+
+            // Script detail toggle
+            var scriptDetailHtml = '<details class="mt-12"><summary style="cursor:pointer;color:var(--accent);font-size:13px">📊 查看脚本详细输出</summary>' +
+                '<div class="code-block mt-8" style="max-height:300px;overflow-y:auto">' +
+                ['analyze','compliance','forbidden'].map(function(k) {
+                    return '<strong>=== ' + k + ' ===</strong>\n' + (resp.script_results[k].stdout || '(无输出)');
+                }).join('\n\n') +
+                '</div></details>';
+
+            document.getElementById('reviewDetail').innerHTML = scriptSummary + aiReviewHtml + scriptDetailHtml;
             this.toast('✅ 审稿完成', 'success');
-        } else { this.toast(resp.error, 'error'); rd.innerHTML = `<div class="code-block error">${resp.error}</div>`; }
+        } else {
+            var st2 = document.getElementById('reviewStatus');
+            if (st2) st2.textContent = '❌ 审稿失败';
+            document.getElementById('reviewDetail').innerHTML = '<div class="code-block error mt-8">' + resp.error + '</div>';
+            this.toast(resp.error, 'error');
+        }
     },
 
     // ═══════════════════════════════════════════════════════════════════
