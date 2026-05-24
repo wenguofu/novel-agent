@@ -243,8 +243,15 @@ const App = {
             const n = modal._novel;
             const files = ['project.md', 'genre_bible.md', 'world_bible.md', 'characters.md', 'alias_registry.md', 'full_story_arc.md', 'state/current_status.md'];
             content.innerHTML = files.map(f => {
-                const hasFile = n[f.replace('.md', '_content')] || n[`${f.replace('/', '_')}_content`];
-                return `<div class="chapter-item" onclick="App._openFileModal('${n.name}','${f}')"><span class="ch-num">📄</span><span class="ch-title">${f}</span><span class="ch-meta">${hasFile ? '已存在' : '未创建'}</span></div>`;
+                var hasFile = n[f.replace('.md', '_content')] || n[`${f.replace('/', '_')}_content`];
+                var info = n[f.replace('.md', '_info')];
+                var meta = hasFile ? '已存在' : '未创建';
+                if (info) {
+                    var kb = Math.round(info.size/1024);
+                    var d = new Date(info.mtime*1000);
+                    meta = kb + 'KB · ' + (d.getMonth()+1) + '/' + d.getDate();
+                }
+                return '<div class="chapter-item" onclick="App._openFileModal(\'' + n.name + '\',\'' + f + '\')"><span class="ch-num">📄</span><span class="ch-title">' + f + '</span><span class="ch-meta">' + meta + '</span></div>';
             }).join('');
         }
     },
@@ -252,17 +259,31 @@ const App = {
     async _openFileModal(novel, path) {
         const resp = await API.readFile(novel, path);
         if (!resp.success) { this.toast(resp.error, 'error'); return; }
-        const body = `<textarea class="form-textarea" id="fileEdit" style="min-height:400px;font-family:var(--font-mono);font-size:12px;">${resp.content.replace(/</g, '&lt;')}</textarea>`;
-        const footer = `<button class="btn btn-primary" onclick="App._saveFile('${novel}','${path}')">💾 保存</button><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">关闭</button>`;
-        this.modal(`📄 ${path}`, body, footer, '700px');
+        var escapedContent = resp.content.replace(/</g, '&lt;').replace(/&/g, '&amp;');
+        var body = '' +
+            '<div class="editor-container">' +
+            '<div class="editor-panel"><div class="editor-panel-header">📝 编辑 ' + path + '</div><textarea class="editor-textarea" id="fileEdit" style="font-size:12px">' + escapedContent + '</textarea></div>' +
+            '<div class="preview-panel"><div class="preview-panel-header">👁 预览</div><div class="preview-content" id="filePreview">' + this.renderMarkdown(resp.content) + '</div></div>' +
+            '</div>';
+        var footer = '<button class="btn btn-primary" onclick="App._saveFile(\'' + novel + '\',\'' + path + '\')">💾 保存</button><button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>';
+        var modal = this.modal('📄 ' + path, body, footer, '90vw');
+        // Live preview
+        setTimeout(function() {
+            var ta = document.getElementById('fileEdit');
+            var pv = document.getElementById('filePreview');
+            if (ta && pv) ta.addEventListener('input', function() {
+                pv.innerHTML = App.renderMarkdown(ta.value.replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&gt;/g, '>').replace(/&quot;/g, '"'));
+            });
+        }, 100);
     },
 
-    async _saveFile(novel, path) {
-        const content = document.getElementById('fileEdit').value;
-        const resp = await API.writeFile(novel, path, content);
-        resp.success ? this.toast('✅ 已保存', 'success') : this.toast(resp.error, 'error');
-        // close all modals
-        document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+    _saveFile(novel, path) {
+        var content = document.getElementById('fileEdit').value;
+        var decoded = content.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+        API.writeFile(novel, path, decoded).then(function(wr) {
+            wr.success ? App.toast('✅ 已保存', 'success') : App.toast(wr.error||'保存失败', 'error');
+            document.querySelectorAll('.modal-overlay').forEach(function(m) { m.remove(); });
+        });
     },
 
     async _readChapter(novel, ref) { await this._openChapterReader(novel, ref); },
@@ -833,10 +854,15 @@ const App = {
                                     API.editChapter(novel, chRef, full).then(function(saveResp) {
                                         if (saveResp.success) App.toast('✅ 第 ' + data.chapter_num + ' 章已保存 (' + wordCount + '字)', 'success');
                                     });
+                                    // Auto-advance chapter number for next generation
+                                    var chInput = document.getElementById('wChapterNum');
+                                    if (chInput) chInput.value = parseInt(data.chapter_num) + 1;
+                                    var instrInput = document.getElementById('wInstructions');
+                                    if (instrInput) instrInput.value = '';
                                     rd.insertAdjacentHTML('beforeend',
                                         '<div class="mt-16 flex gap-8">' +
                                         '<button class="btn btn-primary" onclick="App.navigate(\'review\',{novel:\'' + novel + '\',chapter:\'' + data.volume + '/ch-' + padded + '\'})">🔍 审稿</button>' +
-                                        '<button class="btn btn-secondary" onclick="var e=document.getElementById(\'wChapterNum\');e.value=parseInt(e.value)+1;document.getElementById(\'wInstructions\').value=\'\';App._genChapter(false)">➡️ 下一章</button>' +
+                                        '<button class="btn btn-secondary" onclick="App._genChapter(false)">➡️ 继续写下一章</button>' +
                                         '</div>');
                                     // Auto-review if checkbox checked
                                     if (document.getElementById('wAutoReview')?.checked) {
@@ -876,6 +902,30 @@ const App = {
         const padded = chNum.padStart(4, '0');
         const resp = await API.editChapter(novel, `${volume}/ch-${padded}`, content);
         resp.success ? this.toast(`✅ 第 ${chNum} 章已保存`, 'success') : this.toast(resp.error, 'error');
+    },
+
+    _optimizeFromReview(novel, chRef, volume, chNum) {
+        var rd = document.getElementById('rResult');
+        var notice = document.createElement('div');
+        notice.className = 'stream-indicator mt-12';
+        notice.innerHTML = '<div class="stream-dot"></div><span>🛠️ 正在优化章节...</span>';
+        rd.appendChild(notice);
+        var aiReview = rd.querySelector('.reader-content')?.textContent || '';
+        var scriptOut = '';
+        ['analyze','compliance','forbidden'].forEach(function(k) {
+            var el = rd.querySelector('details .code-block');
+            if (el) scriptOut += el.textContent + '\n';
+        });
+        API.optimizeChapter(novel, {chapter_ref: chRef, volume: volume, chapter_num: chNum, review_text: aiReview, script_issues: scriptOut}).then(function(optResp) {
+            if (optResp.success) {
+                API.editChapter(novel, chRef, optResp.content).then(function() {
+                    notice.innerHTML = '<span style="color:var(--success)">✅ 已优化并保存 (' + (optResp.word_count||0) + '字)</span>';
+                    App.toast('✅ 章节已优化保存', 'success');
+                });
+            } else {
+                notice.innerHTML = '<span style="color:var(--danger)">❌ 优化失败: ' + (optResp.error||'') + '</span>';
+            }
+        });
     },
 
     _autoReviewOptimize(novel, volume, chNum, chRef) {
@@ -1039,7 +1089,8 @@ const App = {
                 }).join('\n\n') +
                 '</div></details>';
 
-            document.getElementById('reviewDetail').innerHTML = scriptSummary + aiReviewHtml + scriptDetailHtml;
+            document.getElementById('reviewDetail').innerHTML = scriptSummary + aiReviewHtml + scriptDetailHtml +
+                '<div class="mt-16 flex gap-8"><button class="btn btn-success" onclick="App._optimizeFromReview(\'' + novel + '\',\'' + chRef + '\',\'' + parts[0] + '\',\'' + parts[1].replace(\'ch-\',\'\') + '\')">🛠️ 一键优化并替换</button></div>';
             this.toast('✅ 审稿完成', 'success');
         } else {
             var st2 = document.getElementById('reviewStatus');
@@ -1054,7 +1105,7 @@ const App = {
     // ═══════════════════════════════════════════════════════════════════
 
     async _renderChapters(mc, params) {
-        mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">📖 章节浏览</h1><p class="page-subtitle">阅读、编辑、审稿</p></div></div><div class="card"><div class="form-row"><div class="form-group"><label class="form-label">选择小说</label><select class="form-select" id="cNovel" onchange="App._loadChapters()"><option value="">-- 请选择 --</option></select></div></div><div id="cList" class="mt-16"></div></div>`;
+        mc.innerHTML = `<div class="page-header"><div><h1 class="page-title">📖 章节浏览</h1><p class="page-subtitle">阅读、编辑、审稿</p></div></div><div class="card"><div class="form-row"><div class="form-group"><label class="form-label">选择小说</label><select class="form-select" id="cNovel" onchange="App._loadChapters()"><option value="">-- 请选择 --</option></select></div><div class="form-group"><label class="form-label">搜索</label><input class="form-input" id="cSearch" placeholder="章节号或卷号..." oninput="App._filterChapters()"></div></div><div id="cList" class="mt-16"></div></div>`;
         const resp = await API.listNovels();
         if (resp.success) {
             const sel = document.getElementById('cNovel');
@@ -1078,6 +1129,26 @@ const App = {
                     return `<div class="chapter-item"><span class="ch-num">${ch.name}</span><span class="ch-meta"><span class="word-badge ${wb}">${ch.words}字</span></span><div class="ch-actions"><button class="btn btn-sm btn-primary" onclick="App._openChapterReader('${name}','${v.name}/${ch.name}')">📖 阅读</button><button class="btn btn-sm btn-secondary" onclick="App._editChapterModal('${name}','${v.name}/${ch.name}')">✏️ 编辑</button><button class="btn btn-sm btn-secondary" onclick="App.navigate('review',{novel:'${name}',chapter:'${v.name}/${ch.name}'})">🔍 审稿</button></div></div>`;
                 }).join('');
         }).join('') || '<div class="empty-state"><div class="empty-state-icon">📄</div><div class="empty-state-title">暂无章节</div></div>';
+    },
+
+    _filterChapters() {
+        var q = (document.getElementById('cSearch')?.value || '').toLowerCase();
+        document.querySelectorAll('#cList .volume-header, #cList .chapter-item').forEach(function(el) {
+            if (!q) { el.style.display = ''; return; }
+            var txt = el.textContent.toLowerCase();
+            if (el.classList.contains('volume-header')) {
+                // Show volume header if any chapter inside matches
+                var next = el.nextElementSibling;
+                var found = false;
+                while (next && !next.classList.contains('volume-header')) {
+                    if (next.textContent.toLowerCase().includes(q)) found = true;
+                    next = next.nextElementSibling;
+                }
+                el.style.display = found ? '' : 'none';
+            } else {
+                el.style.display = txt.includes(q) ? '' : 'none';
+            }
+        });
     },
 
     // ═══════════════════════════════════════════════════════════════════

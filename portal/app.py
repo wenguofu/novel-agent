@@ -314,6 +314,10 @@ def api_novel_detail(novel_name):
         content = read_novel_file(novel_name, key_file)
         if content:
             status[key_file.replace(".md", "_content")] = content[:5000]
+            fpath = os.path.join(get_novels_dir(), novel_name, key_file)
+            if os.path.exists(fpath):
+                st = os.stat(fpath)
+                status[key_file.replace(".md", "_info")] = {"size": st.st_size, "mtime": st.st_mtime}
     return jsonify({"success": True, "novel": status})
 
 
