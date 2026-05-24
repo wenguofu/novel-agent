@@ -3,7 +3,9 @@
 detect_forbidden_patterns.py — 禁止模式检测（v2.0）
 
 功能：
-- 检测二元对照句式 "不是...而是..." 是否超过2次
+- 检测二元对照句式 "不是...而是..." 是否超过1次
+- 检测简单判断句（连续"不是"/"是的"/"没有"）
+- 检测"XX说：+对话"生硬格式
 - 检测重复对话（同一人物在连续对话中说高度相似的内容，≥15字重叠）
 - 检测重复动作描写（连续3句内出现完全相同的动作描述）
 
@@ -49,6 +51,35 @@ def detect_binary_contrasts(text: str) -> list[dict]:
             'position': m.start(),
         })
     return matches
+
+
+def detect_simple_judgments(text: str) -> list[dict]:
+    """检测连续简单判断句: "不是X。是的Y。" 等模式"""
+    # 匹配以 "不是"/"是的"/"没有"/"并非" 开头的句子
+    pattern = re.compile(r'(?:不是|是的|没有|并非)[^。！？\n]{0,20}[。！？]', re.MULTILINE)
+    matches = list(pattern.finditer(text))
+    # 找出连续出现的位置组
+    groups = []
+    for i in range(len(matches) - 1):
+        dist = matches[i+1].start() - matches[i].end()
+        if dist < 30:  # 两句话之间距离 < 30 字符视为连续
+            groups.append({
+                'text': text[matches[i].start():matches[i+1].end()][:80],
+                'position': matches[i].start(),
+            })
+    return groups[:10]
+
+
+def detect_tell_patterns(text: str) -> list[dict]:
+    """检测 XX说："..." 生硬对话引入格式"""
+    pattern = re.compile(r'([^\s]{1,4}说[：:]\s*["“「])', re.MULTILINE)
+    matches = []
+    for m in pattern.finditer(text):
+        matches.append({
+            'text': m.group()[:40],
+            'position': m.start(),
+        })
+    return matches[:10]
 
 
 def extract_quote_content(line: str) -> list[tuple[str, int]]:

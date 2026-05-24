@@ -909,7 +909,7 @@ const App = {
     },
 
     _buildSystemPrompt(novel, data) {
-        return `你是一个专业的长篇网文写作Agent。请输出完整的章节正文，以"# 章节标题"开头。\n\n写作约束：每章不少于2500字，不使用真实地名人名，有明确的章节功能和结尾牵引。\n卷：${data.volume}\n章节：第 ${data.chapter_num} 章\n${data.style ? '风格：' + data.style : ''}\n${data.instructions ? '指示：' + data.instructions : ''}`;
+        return `你是一个专业的长篇网文写作Agent。请输出完整的章节正文，以"# 章节标题"开头。\\n\\n写作约束：\\n- 每章不少于2500字，不使用真实地名人名\\n- **禁止**"不是...而是..."句式（≤1次）、禁止连续简单判断句\\n- 对话用动作自然衔接，禁止"XX说：+对话"的生硬格式\\n- show don't tell，关键情节用场景呈现\\n- 段落2-3句以上，对话占比30-50%\\n- 必须有悬念/钩子结尾\\n卷：${data.volume}\\n章节：第 ${data.chapter_num} 章\\n${data.style ? '风格：' + data.style : ''}\\n${data.instructions ? '指示：' + data.instructions : ''}`;
     },
 
     async _saveStreamedChapter(novel, volume, chNum) {
