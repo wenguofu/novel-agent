@@ -607,7 +607,7 @@ const App = {
                 <div class="card">
                     <h3 class="card-title">📋 创作设置</h3>
                     <div class="form-row mt-12"><div class="form-group"><label class="form-label">选择小说 *</label><select class="form-select" id="wNovel" onchange="App._loadWritingCtx()"><option value="">-- 请选择 --</option></select></div><div class="form-group"><label class="form-label">卷号</label><select class="form-select" id="wVolume">${[...Array(10)].map((_,i) => `<option value="vol-${String(i+1).padStart(2,'0')}">vol-${String(i+1).padStart(2,'0')}</option>`).join('')}</select></div></div>
-                    <div class="form-row mt-12"><div class="form-group"><label class="form-label">章节编号</label><input class="form-input" id="wChapterNum" placeholder="如：1, 2... 留空自动推断"></div><div class="form-group"><label class="form-label">风格</label><input class="form-input" id="wStyle" placeholder="默认 / 金庸 / 古龙 / 余华..."></div></div>
+                    <div class="form-row mt-12"><div class="form-group"><label class="form-label">章节编号</label><input class="form-input" id="wChapterNum" placeholder="如：1, 2... 留空自动推断"></div><div class="form-group"><label class="form-label">风格</label><div id="wStyleArea"><button class="btn btn-secondary" onclick="App._toggleStylePicker()" style="width:100%">🎨 选择风格</button><div id="wStylePicker" style="display:none;margin-top:8px"></div><div id="wStyleTags" class="wizard-summary" style="margin-top:6px"></div></div></div></div>
                     <div class="form-group mt-12"><label class="form-label">写作指示（可选）</label><textarea class="form-textarea" id="wInstructions" rows="2" placeholder="对本章的特殊要求..."></textarea></div>
                     <div class="form-row mt-12">
                         <div class="form-group"><label class="form-label">温度 <span class="text-muted" style="font-size:11px" id="wTempVal">${this.config.deepseek_temperature || 0.8}</span></label><div class="param-slider-group"><input type="range" id="wTemperature" min="0" max="1.5" step="0.05" value="${this.config.deepseek_temperature || 0.8}" oninput="document.getElementById('wTempVal').textContent=this.value"><span class="param-value">${this.config.deepseek_temperature || 0.8}</span></div></div>
@@ -630,6 +630,80 @@ const App = {
             if (params.novel) { sel.value = params.novel; this._loadWritingCtx(); }
             if (params.chapter) { document.getElementById('wChapterNum').value = params.chapter.split('/').pop().replace('ch-', ''); document.getElementById('wVolume').value = params.chapter.split('/')[0]; }
         }
+    },
+
+    STYLE_OPTIONS: [
+        {label:'金庸风',desc:'传统武侠，典雅大气'},{label:'古龙风',desc:'简洁凌厉，意境留白'},
+        {label:'番茄风',desc:'爽文直白，快节奏'},{label:'辰东风',desc:'宏大叙事，设定丰富'},
+        {label:'宅猪风',desc:'东方神话，厚重底蕴'},{label:'猫腻风',desc:'文艺心机，伏笔深远'},
+        {label:'烽火风',desc:'华丽辞藻，情感浓烈'},{label:'土豆风',desc:'热血升级，打脸爽快'},
+        {label:'老鹰风',desc:'搞笑玩梗，轻松愉快'},{label:'乌贼风',desc:'诡秘设定，逻辑严密'},
+        {label:'三少风',desc:'升级打怪，稳定更新'},{label:'江南风',desc:'青春忧伤，文笔细腻'},
+    ],
+
+    _toggleStylePicker() {
+        var picker = document.getElementById('wStylePicker');
+        if (!picker) return;
+        if (picker.style.display === 'none') {
+            this._renderStylePicker();
+            picker.style.display = 'block';
+        } else {
+            picker.style.display = 'none';
+        }
+    },
+
+    _renderStylePicker() {
+        if (!this._writingStyles) this._writingStyles = {};
+        var ws = this._writingStyles;
+        var picker = document.getElementById('wStylePicker');
+        var self = this;
+        picker.innerHTML = '<div class="wizard-options wizard-options-multi" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px">' +
+            this.STYLE_OPTIONS.map(function(opt) {
+                var sel = !!ws[opt.label], el = self._escapeAttr(opt.label), eh = self._escapeHtml(opt.label);
+                var pct = ws[opt.label] || 0;
+                var slider = sel ? '<div class="wizard-pct-row" style="margin-top:4px;padding-top:4px"><input type="range" class="wizard-pct-slider" min="5" max="100" value="' + pct + '" data-slbl="' + el + '" oninput="App._writeStylePct(this)"><span class="wizard-pct-val">' + pct + '%</span></div>' : '';
+                return '<div class="wizard-option wizard-multi-opt' + (sel ? ' selected' : '') + '" style="padding:6px 8px !important" data-mlabel="' + el + '" onclick="App._toggleWriteStyle(this,\'' + el + '\')"><div class="wizard-option-check" style="font-size:14px">' + (sel ? '☑' : '☐') + '</div><div class="wizard-option-label" style="font-size:12px">' + eh + '</div>' + slider + '</div>';
+            }).join('') + '</div>';
+        this._updateStyleTags();
+    },
+
+    _toggleWriteStyle(el, label) {
+        if (!this._writingStyles) this._writingStyles = {};
+        var ws = this._writingStyles;
+        if (ws[label]) { delete ws[label]; }
+        else {
+            var keys = Object.keys(ws); keys.push(label);
+            var each = Math.floor(100 / keys.length), rem = 100 - each * keys.length;
+            keys.forEach(function(k, i) { ws[k] = each + (i < rem ? 1 : 0); });
+        }
+        this._renderStylePicker();
+    },
+
+    _writeStylePct(slider) {
+        if (!this._writingStyles) return;
+        var label = slider.dataset.slbl;
+        this._writingStyles[label] = parseInt(slider.value);
+        var row = slider.closest('.wizard-pct-row');
+        if (row) row.querySelector('.wizard-pct-val').textContent = slider.value + '%';
+        this._updateStyleTags();
+    },
+
+    _updateStyleTags() {
+        var tags = document.getElementById('wStyleTags');
+        if (!tags) return;
+        var ws = this._writingStyles || {};
+        var parts = [];
+        Object.keys(ws).forEach(function(k) { parts.push(k + ' ' + ws[k] + '%'); });
+        tags.innerHTML = parts.length > 0
+            ? parts.map(function(p) { return '<span class="wizard-tag">' + p + '</span>'; }).join('')
+            : '';
+    },
+
+    _getWritingStyleStr() {
+        var ws = this._writingStyles || {};
+        var parts = [];
+        Object.keys(ws).forEach(function(k) { parts.push(k + ' ' + ws[k] + '%'); });
+        return parts.join(', ');
     },
 
     async _loadWritingCtx() {
@@ -657,7 +731,7 @@ const App = {
         const data = {
             volume: document.getElementById('wVolume').value,
             chapter_num: document.getElementById('wChapterNum').value,
-            style: document.getElementById('wStyle').value,
+            style: App._getWritingStyleStr(),
             instructions: document.getElementById('wInstructions').value,
             temperature: parseFloat(document.getElementById('wTemperature').value),
             max_tokens: parseInt(document.getElementById('wMaxTokens').value),
@@ -771,7 +845,7 @@ const App = {
             rd.innerHTML = `<div class="loading"><div class="spinner"></div><span>正在写第 ${i} 章 (${completed+1}/${total})...</span></div>`;
             const resp = await API.generateChapter(novel, {
                 volume, chapter_num: String(i),
-                style: document.getElementById('wStyle')?.value || '',
+                style: App._getWritingStyleStr(),
                 instructions: `批量写作第 ${i} 章`,
             });
             completed += resp.success ? 1 : 0;
