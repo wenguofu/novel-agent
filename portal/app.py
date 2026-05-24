@@ -886,9 +886,7 @@ def api_optimize_chapter(novel_name):
 请直接输出优化后的完整章节正文，以原始标题开头。保持字数在原有范围。"""
 
     result = deepseek_chat(
-        messages=[{"role": "user", "content": f"请优化以下章节：
-
-{ch_content[:8000]}"}],
+        messages=[{"role": "user", "content": "请优化以下章节：\n\n" + ch_content[:8000]}],
         system_prompt=system_prompt,
         temperature=0.4,
         max_tokens=8192,

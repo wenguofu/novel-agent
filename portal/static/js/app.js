@@ -153,6 +153,9 @@ const App = {
         const novels = novelsResp.success ? novelsResp.novels : [];
         const totalCh = novels.reduce((s, n) => s + (n.total_chapters || 0), 0);
         const totalW = novels.reduce((s, n) => s + (n.total_words || 0), 0);
+        // Find most chaptered novel for continue label
+        var bestNovel = novels[0];
+        novels.forEach(function(n) { if ((n.total_chapters||0) > (bestNovel?.total_chapters||0)) bestNovel = n; });
         const totalR = novels.reduce((s, n) => s + (n.review_count || 0), 0);
 
         let novelCards = '';
@@ -185,6 +188,7 @@ const App = {
                 <div class="stat-card"><div class="stat-value">${this.config.deepseek_configured ? '✅' : '❌'}</div><div class="stat-label">AI状态</div></div>
             </div>
             ${novels.length > 0 ? `<div class="quick-actions mb-4">
+                <div class="quick-action" onclick="App._continueWriting()"><div class="qa-icon">▶️</div><div class="qa-label">继续写作</div><div class="qa-desc" id="qaContinueDesc">${bestNovel ? (bestNovel.last_chapter||'无章节') : '无项目'}</div></div>
                 <div class="quick-action" onclick="App.navigate('writing')"><div class="qa-icon">✍️</div><div class="qa-label">写作台</div><div class="qa-desc">生成新章节</div></div>
                 <div class="quick-action" onclick="App.navigate('chapters')"><div class="qa-icon">📖</div><div class="qa-label">章节浏览</div><div class="qa-desc">阅读和编辑</div></div>
                 <div class="quick-action" onclick="App.navigate('outlines')"><div class="qa-icon">📐</div><div class="qa-label">大纲管理</div><div class="qa-desc">规划和编辑</div></div>
@@ -607,7 +611,7 @@ const App = {
                 <div class="card">
                     <h3 class="card-title">📋 创作设置</h3>
                     <div class="form-row mt-12"><div class="form-group"><label class="form-label">选择小说 *</label><select class="form-select" id="wNovel" onchange="App._loadWritingCtx()"><option value="">-- 请选择 --</option></select></div><div class="form-group"><label class="form-label">卷号</label><select class="form-select" id="wVolume">${[...Array(10)].map((_,i) => `<option value="vol-${String(i+1).padStart(2,'0')}">vol-${String(i+1).padStart(2,'0')}</option>`).join('')}</select></div></div>
-                    <div class="form-row mt-12"><div class="form-group"><label class="form-label">章节编号</label><input class="form-input" id="wChapterNum" placeholder="如：1, 2... 留空自动推断"></div><div class="form-group"><label class="form-label">风格</label><div id="wStyleArea"><button class="btn btn-secondary" onclick="App._toggleStylePicker()" style="width:100%">🎨 选择风格</button><div id="wStylePicker" style="display:none;margin-top:8px"></div><div id="wStyleTags" class="wizard-summary" style="margin-top:6px"></div></div></div></div>
+                    <div class="form-row mt-12"><div class="form-group"><label class="form-label">章节编号</label><input class="form-input" id="wChapterNum" placeholder="如：1, 2... 留空自动推断"></div><div class="form-group"><label class="form-label">风格</label><div id="wStyleArea"><button class="btn btn-secondary" onclick="App._toggleStylePicker()" style="width:100%" id="wStyleBtn">🎨 选择风格</button><div id="wStylePicker" style="display:none;margin-top:8px"></div><div id="wStyleTags" class="wizard-summary" style="margin-top:6px"></div></div></div></div>
                     <div class="form-group mt-12"><label class="form-label">写作指示（可选）</label><textarea class="form-textarea" id="wInstructions" rows="2" placeholder="对本章的特殊要求..."></textarea></div>
                     <div class="form-group mt-8" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wAutoReview" style="accent-color:var(--accent)"><label for="wAutoReview" style="font-size:13px;color:var(--text-secondary);cursor:pointer">✅ 生成后自动审稿优化</label></div>
                     <div class="form-row mt-12">
@@ -689,12 +693,28 @@ const App = {
         this._updateStyleTags();
     },
 
+    _continueWriting() {
+        // Find novel with most chapters
+        API.listNovels().then(function(r) {
+            if (!r.success || !r.novels.length) { App.toast('没有小说项目', 'warning'); return; }
+            var best = r.novels[0];
+            r.novels.forEach(function(n) { if ((n.total_chapters||0) > (best.total_chapters||0)) best = n; });
+            if (best.last_chapter) {
+                App.navigate('writing', {novel: best.name, chapter: best.last_chapter});
+            } else {
+                App.navigate('writing', {novel: best.name});
+            }
+        });
+    },
+
     _updateStyleTags() {
         var tags = document.getElementById('wStyleTags');
         if (!tags) return;
         var ws = this._writingStyles || {};
         var parts = [];
         Object.keys(ws).forEach(function(k) { parts.push(k + ' ' + ws[k] + '%'); });
+        var btn = document.getElementById('wStyleBtn');
+        if (btn) btn.textContent = parts.length > 0 ? '🎨 已选 ' + parts.length + ' 种风格' : '🎨 选择风格';
         tags.innerHTML = parts.length > 0
             ? parts.map(function(p) { return '<span class="wizard-tag">' + p + '</span>'; }).join('')
             : '';
@@ -1081,7 +1101,23 @@ const App = {
         const resp = await API.getNovel(name);
         if (!resp.success) return;
         const n = resp.novel;
-        list.innerHTML = `<div class="outline-grid">${(n.outline_files||[]).map(f => `\n            <div class="outline-card" onclick="App._openOutlineEdit('${name}','${f.replace('-chapters.md','')}')"><div class="outline-vol">📐 ${f.replace('-chapters.md','')}</div><div class="outline-preview">点击查看和编辑</div></div>`).join('')}</div>`;
+        // Load previews for outline cards
+        var outlineCards = (n.outline_files||[]).map(function(f) {
+            var vol = f.replace('-chapters.md','');
+            return '<div class="outline-card" onclick="App._openOutlineEdit(\'' + name + '\',\'' + vol + '\')"><div class="outline-vol">📐 ' + vol + '</div><div class="outline-preview" id="ocPrev_' + vol + '">加载中...</div></div>';
+        }).join('');
+        list.innerHTML = '<div class="outline-grid">' + outlineCards + '</div>';
+        // Load previews async
+        (n.outline_files||[]).forEach(function(f) {
+            var vol = f.replace('-chapters.md','');
+            API.readOutline(name, vol).then(function(r) {
+                var el = document.getElementById('ocPrev_' + vol);
+                if (el && r.success) {
+                    var lines = r.content.split('\n').filter(function(l) { return l.trim() && !l.startsWith('#'); });
+                    el.textContent = lines.slice(0, 3).join(' · ').substring(0, 100) || '(空大纲)';
+                } else if (el) { el.textContent = '(空大纲)'; }
+            });
+        });
     },
 
     async _openOutlineEdit(novel, vol) {
