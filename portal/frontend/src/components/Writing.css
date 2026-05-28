@@ -1,0 +1,19 @@
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.stream-cursor {
+  animation: blink 1s infinite;
+  color: #1677ff;
+  font-weight: bold;
+}
+
+.markdown-body {
+  line-height: 1.8;
+  font-size: 15px;
+}
+
+.markdown-body p {
+  margin-bottom: 0.8em;
+}

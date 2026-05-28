@@ -17,48 +17,92 @@
                     <span class="logo-sub">写作工作台</span>
                 </div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="nav-section-label">导航</div>
-                <a href="#" class="nav-item active" data-view="dashboard">
-                    <span class="nav-icon">📊</span>
-                    <span>控制台</span>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <a href="#" class="nav-item" data-view="dashboard">
+                    <span class="nav-icon">📊</span><span>控制台</span>
                 </a>
                 <a href="#" class="nav-item" data-view="novels">
-                    <span class="nav-icon">📚</span>
-                    <span>项目</span>
+                    <span class="nav-icon">📚</span><span>项目管理</span>
                 </a>
                 <a href="#" class="nav-item" data-view="new-book">
-                    <span class="nav-icon">✨</span>
-                    <span>创建新书</span>
+                    <span class="nav-icon">✨</span><span>创建新书</span>
                 </a>
 
-                <div class="nav-section-label" style="margin-top:8px;">创作</div>
-                <a href="#" class="nav-item" data-view="writing">
-                    <span class="nav-icon">✍️</span>
-                    <span>写作台</span>
-                </a>
-                <a href="#" class="nav-item" data-view="chapters">
-                    <span class="nav-icon">📖</span>
-                    <span>章节浏览</span>
-                </a>
-                <a href="#" class="nav-item" data-view="review">
-                    <span class="nav-icon">🔍</span>
-                    <span>审稿</span>
-                </a>
-                <a href="#" class="nav-item" data-view="outlines">
-                    <span class="nav-icon">📐</span>
-                    <span>大纲管理</span>
-                </a>
+                <!-- Novel-specific pages (visible when a novel is selected) -->
+                <div class="nav-section-label nav-section-label-row" style="margin-top:10px">
+                    <span id="novelPagesLabel">📖 小说管理</span>
+                    <button class="collapse-btn" id="novelPagesToggle" title="折叠/展开小说管理项" onclick="App.toggleNovelPages()">◀</button>
+                </div>
+                <div id="novelPages" style="display:none">
+                    <a href="#" class="nav-item" data-view="writing">
+                        <span class="nav-icon">✍️</span><span>写作台</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="chapters">
+                        <span class="nav-icon">📖</span><span>章节浏览</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="outlines">
+                        <span class="nav-icon">📐</span><span>大纲管理</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="review">
+                        <span class="nav-icon">🔍</span><span>审稿</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="init-wizard">
+                        <span class="nav-icon">🚀</span><span>初始化向导</span>
+                    </a>
 
-                <div class="nav-section-label" style="margin-top:8px;">分析</div>
-                <a href="#" class="nav-item" data-view="quality"><span class="nav-icon">📈</span><span>质量报告</span></a>
+                    <div class="nav-section-label" style="margin-top:4px">角色与设定</div>
+                    <a href="#" class="nav-item" data-view="characters">
+                        <span class="nav-icon">👥</span><span>人物管理</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="foreshadowing">
+                        <span class="nav-icon">🔮</span><span>伏笔管理</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="world-building">
+                        <span class="nav-icon">🌍</span><span>世界观管理</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="plot-arcs">
+                        <span class="nav-icon">📐</span><span>剧情弧线</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="pacing">
+                        <span class="nav-icon">🎵</span><span>节奏控制</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="revelation">
+                        <span class="nav-icon">🔓</span><span>信息释放</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="genre-rules">
+                        <span class="nav-icon">📜</span><span>类型规则</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="story-volumes">
+                        <span class="nav-icon">📚</span><span>分卷结构</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="volume-plans">
+                        <span class="nav-icon">📋</span><span>卷规划</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="alias-names">
+                        <span class="nav-icon">🏷️</span><span>别名表</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="project-meta">
+                        <span class="nav-icon">📋</span><span>项目元数据</span>
+                    </a>
 
-                <div class="nav-section-label" style="margin-top:4px;">系统</div>
-                <a href="#" class="nav-item" data-view="search"><span class="nav-icon">🔎</span><span>全文搜索</span></a>
-                <a href="#" class="nav-item" data-view="config"><span class="nav-icon">🛠️</span><span>配置管理</span></a>
+                    <div class="nav-section-label" style="margin-top:4px">分析</div>
+                    <a href="#" class="nav-item" data-view="quality">
+                        <span class="nav-icon">📈</span><span>质量报告</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="workflow">
+                        <span class="nav-icon">🔗</span><span>工作流检查</span>
+                    </a>
+                </div>
+
+                <div class="nav-section-label" style="margin-top:10px">系统</div>
+                <a href="#" class="nav-item" data-view="search">
+                    <span class="nav-icon">🔎</span><span>全文搜索</span>
+                </a>
+                <a href="#" class="nav-item" data-view="config">
+                    <span class="nav-icon">🛠️</span><span>配置管理</span>
+                </a>
                 <a href="#" class="nav-item" data-view="settings">
-                    <span class="nav-icon">⚙️</span>
-                    <span>设置</span>
+                    <span class="nav-icon">⚙️</span><span>设置</span>
                 </a>
             </nav>
             <div class="sidebar-footer">

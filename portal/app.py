@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
+import logging
 
 import httpx
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
@@ -36,9 +37,97 @@ from config import (
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
 
+# ─── Load Hermes env vars at startup ─────────────────────────────────────
+_HERMES_ENV = os.path.expanduser("~/.hermes/.env")
+if os.path.exists(_HERMES_ENV):
+    with open(_HERMES_ENV, "r") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _val = _line.split("=", 1)
+                _key, _val = _key.strip(), _val.strip()
+                if _val and _val != "***":  # skip redacted placeholders
+                    os.environ.setdefault(_key, _val)
+
 # ─── DeepSeek User Config Persistence ──────────────────────────────────────
 
 DEEPSEEK_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deepseek_config.json")
+
+# Database paths
+_PORTAL_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_DB_PATH = os.path.join(_PORTAL_DIR, "config.db")
+CONTENT_DB_PATH = os.path.join(_PORTAL_DIR, "content.db")
+USAGE_DB_PATH = os.path.join(_PORTAL_DIR, "usage.db")
+
+
+# ─── Usage DB ──────────────────────────────────────────────────────────────
+
+def _init_usage_db():
+    """Initialize the usage tracking database."""
+    conn = _sqlite3.connect(USAGE_DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            novel TEXT DEFAULT '',
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
+            cost_estimate REAL DEFAULT 0.0,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_usage_created_at ON usage(created_at)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_usage_operation ON usage(operation)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model)
+    """)
+    conn.commit()
+    conn.close()
+
+
+def log_token_usage(model, operation, prompt_tokens, completion_tokens, novel=""):
+    """Log token usage to usage.db. Non-blocking, errors are silent."""
+    try:
+        total_tokens = prompt_tokens + completion_tokens
+        cost = _estimate_cost(model, prompt_tokens, completion_tokens)
+
+        conn = _sqlite3.connect(USAGE_DB_PATH)
+        conn.execute(
+            "INSERT INTO usage (model, operation, novel, prompt_tokens, completion_tokens, total_tokens, cost_estimate, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            (model, operation, novel, prompt_tokens, completion_tokens, total_tokens, cost)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # tracking failure must not block main flow
+
+
+def _estimate_cost(model, prompt_tokens, completion_tokens):
+    """Estimate cost in USD based on DeepSeek pricing.
+
+    deepseek-chat (v3): $0.27/M input, $1.10/M output
+    deepseek-reasoner (r1): $0.14/M input, $0.28/M output
+    """
+    model_lower = model.lower()
+    if "reasoner" in model_lower or "r1" in model_lower:
+        input_price = 0.14 / 1_000_000
+        output_price = 0.28 / 1_000_000
+    else:
+        # deepseek-chat / v3
+        input_price = 0.27 / 1_000_000
+        output_price = 1.10 / 1_000_000
+    return round(prompt_tokens * input_price + completion_tokens * output_price, 6)
+
+
+# Initialize usage DB on module load
+_init_usage_db()
 
 
 def load_user_deepseek_config():
@@ -46,8 +135,8 @@ def load_user_deepseek_config():
         if os.path.exists(DEEPSEEK_CONFIG_PATH):
             with open(DEEPSEEK_CONFIG_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f'[load_user_deepseek_config] {e}')
     return {"api_key": "", "api_base": "", "model": "", "temperature": "", "max_tokens": "", "top_p": ""}
 
 
@@ -180,7 +269,7 @@ def get_novel_status(novel_name):
     if os.path.exists(manuscript_dir):
         for vol_dir in sorted(os.listdir(manuscript_dir)):
             vol_path = os.path.join(manuscript_dir, vol_dir)
-            if os.path.isdir(vol_path):
+            if os.path.isdir(vol_path) and not vol_dir.startswith('.'):
                 chapter_files = sorted([f for f in os.listdir(vol_path) if f.endswith(".md")])
                 chapters = []
                 vol_words = 0
@@ -239,7 +328,7 @@ def get_novel_status(novel_name):
 
 # ─── DeepSeek API ───────────────────────────────────────────────────────────
 
-def deepseek_chat(messages, system_prompt=None, temperature=None, max_tokens=None, top_p=None, stream=False):
+def deepseek_chat(messages, system_prompt=None, temperature=None, max_tokens=None, top_p=None, stream=False, operation=None, novel=""):
     cfg = get_active_deepseek_config()
     api_key = cfg["api_key"]
     api_base = cfg["api_base"]
@@ -282,7 +371,17 @@ def deepseek_chat(messages, system_prompt=None, temperature=None, max_tokens=Non
                     }
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
-                return {"success": True, "content": content, "usage": data.get("usage", {})}
+                usage = data.get("usage", {})
+                # Log token usage
+                if operation and usage:
+                    log_token_usage(
+                        model=model,
+                        operation=operation,
+                        prompt_tokens=usage.get("prompt_tokens", 0),
+                        completion_tokens=usage.get("completion_tokens", 0),
+                        novel=novel,
+                    )
+                return {"success": True, "content": content, "usage": usage}
         except Exception as e:
             return {"success": False, "error": str(e)}
     else:
@@ -290,12 +389,31 @@ def deepseek_chat(messages, system_prompt=None, temperature=None, max_tokens=Non
         return {"__stream__": True, "payload": payload, "headers": headers, "api_base": api_base}
 
 
-# ─── API Routes ─────────────────────────────────────────────────────────────
+# ─── React Frontend Static Serving ──────────────────────────────────────────
 
+_REACT_DIST = os.path.join(_PORTAL_DIR, "frontend", "dist")
+_REACT_ASSETS = os.path.join(_REACT_DIST, "assets")
+_HAS_REACT_BUILD = os.path.exists(_REACT_DIST) and os.path.exists(os.path.join(_REACT_DIST, "index.html"))
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+if _HAS_REACT_BUILD:
+    @app.route("/assets/<path:filename>")
+    def serve_react_assets(filename):
+        return send_from_directory(_REACT_ASSETS, filename)
+
+    @app.route("/")
+    def index():
+        return send_from_directory(_REACT_DIST, "index.html")
+
+    # SPA fallback: serve index.html for any non-API, non-asset route
+    @app.errorhandler(404)
+    def spa_fallback(e):
+        if not request.path.startswith("/api/"):
+            return send_from_directory(_REACT_DIST, "index.html")
+        return jsonify({"error": "Not found"}), 404
+else:
+    @app.route("/")
+    def index():
+        return render_template("index.html")
 
 
 @app.route("/api/novels")
@@ -379,8 +497,20 @@ def api_edit_chapter(novel_name, ch_ref):
     try:
         from content_db import sync_novel_from_files
         sync_novel_from_files(novel_name)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f'[sync_novel_from_files] {e}')
+
+    # v3: Auto-update related state
+    try:
+        from content_db import auto_update_after_save
+        parts = ch_ref.split('/')
+        volume_str = parts[0] if len(parts) > 1 else 'vol-01'
+        ch_match = __import__('re').search(r'ch-(\d+)', ch_ref)
+        ch_num = int(ch_match.group(1)) if ch_match else 0
+        vol_num = int(volume_str.replace('vol-', '')) if volume_str.startswith('vol-') else 0
+        auto_update_after_save(novel_name, vol_num, ch_num, content)
+    except Exception as e:
+        logging.warning(f'[auto_update_after_save] {e}')
 
     return jsonify({
         "success": True,
@@ -441,6 +571,395 @@ def api_read_danger_issue(novel_name, vol_ref, ch_num):
     return jsonify({"success": True, "content": content})
 
 
+# ─── Export ──────────────────────────────────────────────────────────────────
+
+
+def _collect_chapters(novel_name):
+    """Collect all chapters of a novel ordered by volume/chapter.
+
+    Returns list of dicts: {vol_name, ch_name, ch_ref, title, content, word_count}
+    """
+    novels_dir = get_novels_dir()
+    novel_path = os.path.join(novels_dir, novel_name)
+    manuscript_dir = os.path.join(novel_path, "manuscript")
+    chapters = []
+    if not os.path.exists(manuscript_dir):
+        return chapters
+    for vol_dir in sorted(os.listdir(manuscript_dir)):
+        vol_path = os.path.join(manuscript_dir, vol_dir)
+        if not os.path.isdir(vol_path) or vol_dir.startswith('.'):
+            continue
+        for ch_file in sorted(os.listdir(vol_path)):
+            if not ch_file.endswith(".md"):
+                continue
+            ch_path = os.path.join(vol_path, ch_file)
+            with open(ch_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            ch_name = ch_file.replace(".md", "")
+            ch_ref = f"{vol_dir}/{ch_name}"
+            # Extract title from first heading
+            title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+            title = title_match.group(1).strip() if title_match else ch_name
+            wc = count_words(content)
+            chapters.append({
+                "vol_name": vol_dir,
+                "ch_name": ch_name,
+                "ch_ref": ch_ref,
+                "title": title,
+                "content": content,
+                "word_count": wc,
+            })
+    return chapters
+
+
+def _md_to_plain_text(md_text):
+    """Strip markdown formatting for plain text output."""
+    text = md_text
+    # Remove code blocks
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    # Remove inline code
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Remove bold/italic markers
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)
+    # Remove images
+    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+    # Remove links keeping text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove heading markers
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Remove horizontal rules
+    text = re.sub(r'^---+\s*$', '', text, flags=re.MULTILINE)
+    # Remove blockquote markers
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+    return text.strip()
+
+
+def _md_to_html(md_text, chapter_id=""):
+    """Convert markdown text to HTML fragment suitable for EPUB/XHTML."""
+    html = md_text
+    # Escape HTML
+    html = html.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Headers
+    html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
+    html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
+    html = re.sub(r'^# (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
+    # Bold/italic
+    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
+    html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
+    # Inline code
+    html = re.sub(r'`([^`]+)`', r'<code>\1</code>', html)
+    # Horizontal rule
+    html = re.sub(r'^---+\s*$', '<hr/>', html, flags=re.MULTILINE)
+    # Blockquote
+    html = re.sub(r'^&gt; (.+)$', r'<blockquote>\1</blockquote>', html, flags=re.MULTILINE)
+    # Lines that are not HTML tags become paragraphs
+    lines = html.split('\n')
+    result = []
+    in_para = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_para:
+                result.append('</p>')
+                in_para = False
+            continue
+        if stripped.startswith('<'):
+            if in_para:
+                result.append('</p>')
+                in_para = False
+            result.append(stripped)
+        else:
+            if not in_para:
+                result.append('<p>')
+                in_para = True
+            else:
+                result.append('<br/>')
+            result.append(stripped)
+    if in_para:
+        result.append('</p>')
+    return '\n'.join(result)
+
+
+def _novel_title(novel_name):
+    """Get the display title for a novel."""
+    project = read_novel_file(novel_name, "project.md")
+    if project:
+        for line in project.split("\n"):
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                key = parts[0].strip().strip(" #")
+                if key in ("书名", "作品名", "title", "Title"):
+                    return parts[1].strip()
+    return novel_name
+
+
+def _build_epub(novel_name, chapters):
+    """Build a simple EPUB file (ZIP of XHTML) using only Python stdlib."""
+    import io
+    import zipfile
+    from xml.etree.ElementTree import Element, SubElement, tostring
+
+    title = _novel_title(novel_name)
+    uid = f"novelforge-{novel_name}"
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # mimetype must be first and uncompressed
+        zf.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
+
+        # META-INF/container.xml
+        zf.writestr("META-INF/container.xml", '''<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>''')
+
+        # OEBPS/style.css
+        css = """body { font-family: serif; line-height: 1.8; margin: 1em 2em; }
+h2 { text-align: center; margin-top: 2em; }
+h3 { margin-top: 1.5em; }
+p { text-indent: 2em; margin: 0.5em 0; }
+hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }"""
+        zf.writestr("OEBPS/style.css", css)
+
+        # XHTML chapters
+        manifest_items = []
+        spine_items = []
+        ch_xhtml_files = []
+
+        for idx, ch in enumerate(chapters):
+            ch_id = f"chapter-{idx + 1}"
+            html_body = _md_to_html(ch["content"], ch_id)
+            xhtml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN">
+<head>
+  <title>{_escape_xml(ch["title"])}</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+  <h2>{_escape_xml(ch["title"])}</h2>
+  <p class="volume-info">[{_escape_xml(ch["vol_name"])} · {_escape_xml(ch["ch_name"])}]</p>
+{html_body}
+</body>
+</html>'''
+            filename = f"chapter-{idx + 1}.xhtml"
+            ch_xhtml_files.append((filename, ch_id, ch["title"]))
+            zf.writestr(f"OEBPS/{filename}", xhtml)
+            manifest_items.append(
+                f'    <item id="{ch_id}" href="{filename}" media-type="application/xhtml+xml"/>'
+            )
+            spine_items.append(f'    <itemref idref="{ch_id}"/>')
+
+        # toc.ncx
+        nav_points = []
+        for idx, (fname, ch_id, ch_title) in enumerate(ch_xhtml_files):
+            nav_points.append(
+                f'    <navPoint id="navpoint-{idx + 1}" playOrder="{idx + 1}">\n'
+                f'      <navLabel><text>{_escape_xml(ch_title)}</text></navLabel>\n'
+                f'      <content src="{fname}"/>\n'
+                f'    </navPoint>'
+            )
+
+        toc_ncx = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="{uid}"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle><text>{_escape_xml(title)}</text></docTitle>
+  <navMap>
+{chr(10).join(nav_points)}
+  </navMap>
+</ncx>'''
+        zf.writestr("OEBPS/toc.ncx", toc_ncx)
+
+        # content.opf
+        manifest = '\n'.join(
+            ['    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
+             '    <item id="style" href="style.css" media-type="text/css"/>']
+            + manifest_items
+        )
+
+        content_opf = f'''<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:identifier id="book-id">{uid}</dc:identifier>
+    <dc:title>{_escape_xml(title)}</dc:title>
+    <dc:language>zh-CN</dc:language>
+    <dc:date>{now}</dc:date>
+    <dc:creator>NovelForge</dc:creator>
+    <meta name="cover" content="cover"/>
+  </metadata>
+  <manifest>
+{manifest}
+  </manifest>
+  <spine toc="ncx">
+{chr(10).join(spine_items)}
+  </spine>
+</package>'''
+        zf.writestr("OEBPS/content.opf", content_opf)
+
+    return buf.getvalue()
+
+
+def _escape_xml(text):
+    """Escape text for XML/HTML."""
+    if not text:
+        return ""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+
+
+def _build_txt(novel_name, chapters):
+    """Concatenate all chapters into a plain text file."""
+    title = _novel_title(novel_name)
+    lines = [f"{title}", "=" * len(title), ""]
+
+    current_vol = None
+    for ch in chapters:
+        if ch["vol_name"] != current_vol:
+            current_vol = ch["vol_name"]
+            lines.append("")
+            lines.append(f"【{current_vol}】")
+            lines.append("-" * 40)
+            lines.append("")
+        lines.append(f"## {ch['ch_name']} — {ch['title']}")
+        lines.append("")
+        plain = _md_to_plain_text(ch["content"])
+        lines.append(plain)
+        lines.append("")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _build_html(novel_name, chapters):
+    """Create a single-page HTML reading view with TOC."""
+    title = _novel_title(novel_name)
+
+    # Build TOC
+    toc_items = []
+    chapter_bodies = []
+    for idx, ch in enumerate(chapters):
+        ch_anchor = f"ch-{idx + 1}"
+        toc_items.append(
+            f'<li><a href="#{ch_anchor}">[{ch["vol_name"]}] {ch["ch_name"]} — {_escape_xml(ch["title"])}</a></li>'
+        )
+        html_body = _md_to_html(ch["content"], ch_anchor)
+        chapter_bodies.append(f'''
+    <div class="chapter" id="{ch_anchor}">
+      <h2>{_escape_xml(ch["title"])}</h2>
+      <div class="chapter-meta">[{_escape_xml(ch["vol_name"])} · {_escape_xml(ch["ch_name"])} · {ch["word_count"]}字]</div>
+      {html_body}
+      <div class="back-top"><a href="#toc">↑ 回到目录</a></div>
+    </div>''')
+
+    html_doc = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{_escape_xml(title)}</title>
+  <style>
+    body {{ font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif; line-height: 1.8; max-width: 800px; margin: 0 auto; padding: 2em 1em; color: #333; }}
+    h1 {{ text-align: center; font-size: 2em; margin: 1em 0; }}
+    #toc {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 8px; padding: 1em 2em; margin: 2em 0; }}
+    #toc h2 {{ text-align: center; margin-top: 0; }}
+    #toc ul {{ list-style: none; padding-left: 0; }}
+    #toc li {{ padding: 0.25em 0; border-bottom: 1px dotted #eee; }}
+    #toc a {{ text-decoration: none; color: #2a6496; }}
+    #toc a:hover {{ text-decoration: underline; }}
+    .chapter {{ margin: 3em 0; padding-top: 1em; border-top: 2px solid #eee; }}
+    .chapter h2 {{ text-align: center; }}
+    .chapter-meta {{ text-align: center; color: #999; font-size: 0.85em; margin-bottom: 1.5em; }}
+    .chapter h3 {{ margin-top: 1.5em; }}
+    .chapter p {{ text-indent: 2em; margin: 0.6em 0; }}
+    .chapter hr {{ border: none; border-top: 1px solid #ddd; margin: 2em 0; }}
+    .chapter blockquote {{ border-left: 3px solid #ccc; margin: 0.5em 0; padding: 0.2em 1em; color: #555; }}
+    .chapter code {{ background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }}
+    .back-top {{ text-align: right; font-size: 0.85em; margin-top: 1em; }}
+    .back-top a {{ color: #2a6496; text-decoration: none; }}
+    .volume-info {{ text-align: center; color: #888; font-size: 0.9em; }}
+    @media print {{
+      body {{ font-size: 12pt; }}
+      .back-top {{ display: none; }}
+    }}
+  </style>
+</head>
+<body>
+  <h1>{_escape_xml(title)}</h1>
+  <div class="volume-info">共 {len(chapters)} 章 · 总计 {sum(c['word_count'] for c in chapters)} 字</div>
+
+  <div id="toc">
+    <h2>📋 目录</h2>
+    <ul>
+      {"".join(toc_items)}
+    </ul>
+  </div>
+
+  {"".join(chapter_bodies)}
+</body>
+</html>'''
+
+    return html_doc
+
+
+@app.route("/api/novels/<novel_name>/export")
+def api_export_novel(novel_name):
+    """Export all chapters of a novel in the requested format."""
+    export_format = request.args.get("format", "epub").lower()
+    if export_format not in ("epub", "txt", "html"):
+        return jsonify({"success": False, "error": "Unsupported format. Use epub, txt, or html."}), 400
+
+    status = get_novel_status(novel_name)
+    if not status:
+        return jsonify({"success": False, "error": "Novel not found"}), 404
+
+    chapters = _collect_chapters(novel_name)
+    if not chapters:
+        return jsonify({"success": False, "error": "No chapters found"}), 404
+
+    title = _novel_title(novel_name)
+    safe_title = re.sub(r'[\\/:*?"<>|]', '_', title)
+
+    if export_format == "epub":
+        data = _build_epub(novel_name, chapters)
+        return Response(
+            data,
+            mimetype="application/epub+zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_title}.epub"',
+                "Content-Length": str(len(data)),
+            },
+        )
+
+    elif export_format == "txt":
+        data = _build_txt(novel_name, chapters)
+        return Response(
+            data,
+            mimetype="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_title}.txt"',
+            },
+        )
+
+    elif export_format == "html":
+        data = _build_html(novel_name, chapters)
+        return Response(
+            data,
+            mimetype="text/html; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_title}.html"',
+            },
+        )
+
+
 # ─── AI & Writing Operations ────────────────────────────────────────────────
 
 
@@ -457,6 +976,7 @@ def api_ai_chat():
     result = deepseek_chat(
         messages=messages, system_prompt=system,
         temperature=temperature, max_tokens=max_tokens, top_p=top_p,
+        operation="ai-chat",
     )
     return jsonify(result)
 
@@ -470,6 +990,8 @@ def api_ai_stream():
     temperature = data.get("temperature")
     max_tokens = data.get("max_tokens")
     top_p = data.get("top_p")
+    operation = data.get("operation", "stream-generate")
+    novel = data.get("novel", "")
 
     cfg = get_active_deepseek_config()
     api_key = cfg["api_key"]
@@ -498,18 +1020,31 @@ def api_ai_stream():
     }
 
     def generate():
+        stream_usage = {}
         try:
             with httpx.Client(timeout=300) as client:
                 with client.stream("POST", f"{api_base}/chat/completions", headers=headers, json=payload) as resp:
                     if resp.status_code != 200:
-                        yield f"data: {json.dumps({'error': f'API错误 {resp.status_code}', 'type': 'error'})}\n\n"
+                        yield f"data: {json.dumps({'error': f'API错误 {resp.status_code}', 'type': 'error'})}\\n\\n"
                         return
                     full_text = []
                     for line in resp.iter_lines():
                         if line.startswith("data: "):
                             chunk_str = line[6:]
                             if chunk_str == "[DONE]":
-                                yield f"data: {json.dumps({'type': 'done', 'content': ''.join(full_text)})}\n\n"
+                                yield f"data: {json.dumps({'type': 'done', 'content': ''.join(full_text)})}\\n\\n"
+                                # Log token usage from stream
+                                if stream_usage:
+                                    try:
+                                        log_token_usage(
+                                            model=model,
+                                            operation=operation or "stream-generate",
+                                            prompt_tokens=stream_usage.get("prompt_tokens", 0),
+                                            completion_tokens=stream_usage.get("completion_tokens", 0),
+                                            novel=novel,
+                                        )
+                                    except Exception:
+                                        pass
                                 break
                             try:
                                 chunk = json.loads(chunk_str)
@@ -517,11 +1052,14 @@ def api_ai_stream():
                                 content = delta.get("content")
                                 if content:  # filter null/empty
                                     full_text.append(content)
-                                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\\n\\n"
+                                # Capture usage from any chunk that has it
+                                if "usage" in chunk:
+                                    stream_usage = chunk["usage"]
                             except json.JSONDecodeError:
                                 continue
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
+            yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\\n\\n"
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -604,6 +1142,7 @@ def api_create_novel():
         system_prompt=system_prompt,
         temperature=0.7,
         max_tokens=8192,
+        operation="generate-chapter",
     )
 
     if not result["success"]:
@@ -677,91 +1216,36 @@ def api_generate_chapter(novel_name):
     max_tokens = data.get("max_tokens")
 
     novel_path = os.path.join(get_novels_dir(), novel_name)
-    context = {}
-
-    for key_file in [
-        "project.md", "genre_bible.md", "world_bible.md",
-        "characters.md", "full_story_arc.md", "alias_registry.md",
-    ]:
-        content = read_novel_file(novel_name, key_file)
-        if content:
-            context[key_file] = content
-
-    status = read_novel_file(novel_name, "state", "current_status.md")
-    if status:
-        context["current_status.md"] = status
-
-    vol_num = volume.replace("vol-", "")
-    outline = read_novel_file(novel_name, "outline", f"vol-{vol_num}-chapters.md")
-    if outline:
-        context["outline"] = outline
-
-    ch_num_padded = chapter_num.zfill(4) if chapter_num.isdigit() else chapter_num
-    danger_issue = read_novel_file(
-        novel_name, "outline", f"danger_issue_{volume}", f"danger_issue_{ch_num_padded}.md",
-    )
-    if danger_issue:
-        context["danger_issue"] = danger_issue
-
+    ch_num_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
     ch_file_path = os.path.join(novel_path, "manuscript", volume, f"ch-{ch_num_padded}.md")
     chapter_exists = os.path.exists(ch_file_path)
 
-    prev_content = ""
-    if chapter_num.isdigit():
-        prev_num = int(chapter_num) - 1
-        if prev_num > 0:
-            prev_padded = str(prev_num).zfill(4)
-            prev_path = os.path.join(novel_path, "manuscript", volume, f"ch-{prev_padded}.md")
-            if os.path.exists(prev_path):
-                with open(prev_path, "r", encoding="utf-8") as f:
-                    prev_content = f.read()
+    # v3: Use context builder (DB-driven, 9-layer with token budget)
+    vol_num_raw = volume.replace("vol-", "")
+    vol_int = int(vol_num_raw) if vol_num_raw.isdigit() else 1
+    ch_int = int(chapter_num) if chapter_num.isdigit() else 1
 
-    context_text = ""
-    for fname, fcontent in context.items():
-        context_text += f"\n=== {fname} ===\n{fcontent[:3000]}\n"
-
-    if prev_content:
-        context_text += f"\n=== 上一章结尾 ===\n{prev_content[-2000:]}\n"
-
-    system_prompt = f"""你是一个专业的长篇网文写作Agent。你的任务是**严格按照大纲和卷纲**写出高质量的小说章节。
-
-## ⚠️ 脚本强制约束（不可跳过）
-1. **必须严格遵循大纲/卷纲指定的本章内容**，不得偏离或跳过
-2. **必须体现危机/关卡要求**（如果有danger_issue），不得遗漏
-3. 严格遵守类型规则和世界观设定
-4. 人物行为必须符合人物档案
-5. 不得使用真实地名、人名（使用虚构别名）
-6. 每章正文纯字数不少于2500字
-7. **禁止以下文笔问题**：
-   - 禁止使用"不是...而是..."二元对照句式（全文不超过1次）
-   - 禁止连续使用"不是"/"是的"/"没有"等简单判断句超过2句
-   - 禁止"XX说：+ 对话"的生硬对话引入方式，改用动作+对话自然衔接
-   - 禁止大段内心独白式的解释说明（show, don't tell）
-8. **语言质量要求**：
-   - 每段落至少2-3句话，避免连续单句段
-   - 描写与环境结合，不要孤立写景/写人
-   - 对话占比控制在30-50%，平衡叙述与对白
-   - 关键情节用具体场景呈现，不要概括叙述
-9. 必须有明确的章节功能和结尾牵引（悬念/钩子）
-
-## 当前项目上下文
-{context_text}
-
-## 风格要求
-{style if style else '默认（项目基线风格）'}
-
-## 用户额外指示
-{user_instructions if user_instructions else '无'}
-
-{'## 注意：该章节已存在，请基于已有内容续写或重写，保持一致性' if chapter_exists else '## 注意：这是新章节，从头开始创作'}
-
-请直接输出完整的章节正文，以'# 章节标题'开头。"""
+    from context_builder import build_context as _build_ctx
+    ctx = _build_ctx({
+        "name": novel_name,
+        "volume": vol_int,
+        "chapter_num": ch_int,
+        "style": style if style else "",
+        "instructions": user_instructions if user_instructions else "",
+        "max_tokens": 10000,
+    })
+    system_prompt = ctx["system_prompt"]
+    # Append chapter-exists hint (context_builder doesn't know this)
+    if chapter_exists:
+        system_prompt += "\n\n⚠️ 注意：该章节已存在，请基于已有内容续写或重写，保持一致性。"
 
     result = deepseek_chat(
         messages=[{"role": "user", "content": f"请创作 {volume} 第 {chapter_num} 章"}],
         system_prompt=system_prompt,
         temperature=temperature if temperature is not None else 0.8,
         max_tokens=max_tokens if max_tokens is not None else 8192,
+        operation="generate-chapter",
+        novel=novel_name,
     )
 
     if not result["success"]:
@@ -775,8 +1259,8 @@ def api_generate_chapter(novel_name):
     try:
         from content_db import sync_novel_from_files
         sync_novel_from_files(novel_name)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f'[sync_novel_from_files] {e}')
 
     return jsonify({
         "success": True,
@@ -854,6 +1338,8 @@ suggestions:
         system_prompt=system_prompt,
         temperature=0.3,
         max_tokens=4096,
+        operation="review-chapter",
+        novel=novel_name,
     )
 
     if result["success"]:
@@ -884,8 +1370,8 @@ suggestions:
                      bc_count, jg_count, tp_count, count_words(ch_content)))
             conn.commit()
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f'[review_sync_to_content_db] {e}')
         review_content = f"""# 审稿报告
 
 日期: {datetime.now().strftime('%Y-%m-%d %H:%M')}
@@ -954,6 +1440,8 @@ def api_optimize_chapter(novel_name):
         system_prompt=system_prompt,
         temperature=0.4,
         max_tokens=8192,
+        operation="optimize-chapter",
+        novel=novel_name,
     )
 
     if not result["success"]:
@@ -1053,12 +1541,14 @@ def api_get_config():
 @app.route("/api/config/save", methods=["POST"])
 def api_save_config():
     data = request.json or {}
-    api_key = data.get("api_key", "").strip()
-    api_base = data.get("api_base", "").strip()
-    model = data.get("model", "").strip()
-    temperature = str(data.get("temperature", "")).strip()
-    max_tokens = str(data.get("max_tokens", "")).strip()
-    top_p = str(data.get("top_p", "")).strip()
+    existing = load_user_deepseek_config()
+    # Only use provided values; keep existing for empty fields
+    api_key = data.get("api_key", existing.get("api_key", "")).strip()
+    api_base = data.get("api_base", existing.get("api_base", "")).strip()
+    model = data.get("model", existing.get("model", "")).strip()
+    temperature = str(data.get("temperature", existing.get("temperature", ""))).strip()
+    max_tokens = str(data.get("max_tokens", existing.get("max_tokens", ""))).strip()
+    top_p = str(data.get("top_p", existing.get("top_p", ""))).strip()
 
     save_user_deepseek_config(
         api_key=api_key, api_base=api_base, model=model,
@@ -1355,6 +1845,7 @@ def api_wizard_step():
         system_prompt="你是一个专业的网文编辑顾问。你只返回严格JSON格式，不添加任何markdown代码块标记或解释文字。",
         temperature=0.9,
         max_tokens=1024,
+        operation="ai-chat",
     )
 
     if not result["success"]:
@@ -1376,8 +1867,8 @@ def api_wizard_step():
                 parsed = json.loads(match.group())
                 if isinstance(parsed, list):
                     options = [{"label": o.get("label", ""), "desc": o.get("desc", "")} for o in parsed[:6]]
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning(f'[ai_options_json_parse] {e}')
 
     if not options:
         options = [{"label": "请重试", "desc": "AI未能生成有效选项，请点击重试"}]
@@ -1566,6 +2057,911 @@ def api_quality_report(novel_name):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ─── Workflow Enforcement ────────────────────────────────────────────────────
+
+@app.route("/api/workflow/preflight/<novel_name>", methods=["POST"])
+def api_workflow_preflight(novel_name):
+    """Run all pre-generation enforcement scripts. Returns pass/fail for each."""
+    data = request.json or {}
+    volume = data.get("volume", "vol-01")
+    chapter_num = data.get("chapter_num", "")
+
+    novel_path = os.path.join(get_novels_dir(), novel_name)
+    results = {}
+
+    # 1. Stage gate check
+    gate = run_script("stage_gate.py", "--project", novel_path, "check", "phase5_writing",
+                      cwd=NOVEL_AGENT_ROOT)
+    results["stage_gate"] = {"name": "阶段门控", "ok": gate.get("success", False),
+        "detail": gate.get("stdout", "")[:500]}
+
+    # 2. Outline existence check
+    vol_num = volume.replace("vol-", "")
+    outline_path = os.path.join(novel_path, "outline", f"vol-{vol_num}-chapters.md")
+    outline_ok = os.path.exists(outline_path)
+    results["outline_check"] = {"name": "卷纲存在", "ok": outline_ok,
+        "detail": f"outline/vol-{vol_num}-chapters.md {'存在' if outline_ok else '缺失'}"}
+
+    # 3. Danger issue check
+    ch_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
+    di_path = os.path.join(novel_path, "outline", f"danger_issue_{volume}", f"danger_issue_{ch_padded}.md")
+    di_ok = os.path.exists(di_path)
+    results["danger_issue_check"] = {"name": "危机关卡", "ok": di_ok,
+        "detail": f"danger_issue_{ch_padded}.md {'存在' if di_ok else '缺失（不影响生成）'}"}
+
+    # 4. Character file check
+    chars_ok = os.path.exists(os.path.join(novel_path, "characters.md"))
+    results["characters_check"] = {"name": "人物档案", "ok": chars_ok,
+        "detail": "characters.md " + ("存在" if chars_ok else "缺失")}
+
+    # 5. RAG index status
+    rag_out = run_script("rag_query.py", novel_name, "--info", cwd=NOVEL_AGENT_ROOT)
+    results["rag_status"] = {"name": "RAG 记忆库", "ok": rag_out.get("success", False) or "chunks" in rag_out.get("stdout", ""),
+        "detail": rag_out.get("stdout", rag_out.get("stderr", ""))[:300]}
+
+    all_ok = all(r.get("ok", True) or r.get("name") == "危机关卡" for r in results.values())
+    return jsonify({"success": True, "all_ok": all_ok, "results": results})
+
+
+@app.route("/api/workflow/postflight/<novel_name>", methods=["POST"])
+def api_workflow_postflight(novel_name):
+    """Run all post-generation enforcement scripts."""
+    data = request.json or {}
+    chapter_ref = data.get("chapter_ref", "")
+
+    novel_path = os.path.join(get_novels_dir(), novel_name)
+    ch_path = os.path.join(novel_path, "manuscript", f"{chapter_ref}.md")
+    results = {}
+
+    # 1. Review validation
+    ch_id = chapter_ref.replace("/", "-").replace("ch-", "")
+    review_path = os.path.join(novel_path, "reviews", f"{ch_id}-review.md")
+    if os.path.exists(review_path):
+        val = run_script("validate_review.py", review_path, cwd=NOVEL_AGENT_ROOT)
+        results["review_validation"] = {"name": "审稿验证", "ok": val.get("success", False),
+            "detail": val.get("stdout", "")[:300]}
+    else:
+        results["review_validation"] = {"name": "审稿验证", "ok": False, "detail": "审稿文件不存在"}
+
+    # 2. Continuity check
+    cont = run_script("verify_continuity.py", ch_path, cwd=NOVEL_AGENT_ROOT)
+    results["continuity"] = {"name": "连续性校验", "ok": cont.get("success", False),
+        "detail": cont.get("stdout", "")[:300]}
+
+    # 3. Rhythm check
+    rhy = run_script("rhythm_check.py", ch_path, cwd=NOVEL_AGENT_ROOT)
+    results["rhythm"] = {"name": "节奏检查", "ok": rhy.get("success", False),
+        "detail": rhy.get("stdout", "")[:300]}
+
+    # 4. RAG index update
+    rag = run_script("rag_index.py", novel_path, cwd=NOVEL_AGENT_ROOT)
+    results["rag_update"] = {"name": "RAG 索引更新", "ok": rag.get("success", False),
+        "detail": rag.get("stdout", "")[:300]}
+
+    # 5. Stage gate complete
+    gate = run_script("stage_gate.py", "--project", novel_path, "complete", "phase5_writing",
+                      cwd=NOVEL_AGENT_ROOT)
+    results["stage_complete"] = {"name": "阶段完成", "ok": gate.get("success", False),
+        "detail": gate.get("stdout", "")[:300]}
+
+    all_ok = all(r.get("ok", False) for r in results.values())
+    return jsonify({"success": True, "all_ok": all_ok, "results": results})
+
+
+# ─── Full Pipeline Enforcement ────────────────────────────────────────────
+
+@app.route("/api/novels/<novel_name>/enforce-pipeline", methods=["POST"])
+def api_enforce_pipeline(novel_name):
+    """Run the complete enforcement pipeline for a chapter.
+    This is the scripted version of workflow-new-chapter.md Steps 0-10.
+    Returns structured results for each enforcement gate.
+    """
+    data = request.json or {}
+    volume = data.get("volume", "vol-01")
+    chapter_num = data.get("chapter_num", "")
+    chapter_ref = data.get("chapter_ref", "")
+
+    novel_path = os.path.join(get_novels_dir(), novel_name)
+    ch_num_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
+
+    if not chapter_ref and chapter_num:
+        chapter_ref = f"{volume}/ch-{ch_num_padded}"
+
+    pipeline = {}
+
+    # Step 0: Stage gate
+    gate = run_script("stage_gate.py", "--project", novel_path, "check", "phase5_writing")
+    pipeline["0_stage_gate"] = {
+        "name": "阶段门控检查", "ok": gate.get("success", False),
+        "output": gate.get("stdout", gate.get("stderr", ""))[:500]
+    }
+
+    # Step 0.5: RAG context (just check index exists)
+    rag_check = run_script("rag_query.py", novel_name, "--info")
+    has_rag = rag_check.get("success", False) and ("chunks" in rag_check.get("stdout", "").lower() or "Chunks" in rag_check.get("stdout", ""))
+    pipeline["0.5_rag_context"] = {
+        "name": "RAG 记忆库状态", "ok": has_rag,
+        "output": rag_check.get("stdout", "")[:300]
+    }
+
+    # Step 3: Analyze + forbidden patterns
+    ch_path = os.path.join(novel_path, "manuscript", f"{chapter_ref}.md")
+    if os.path.exists(ch_path):
+        analyze = run_script("analyze_chapter.py", ch_path)
+        pipeline["3a_analyze"] = {
+            "name": "章节结构分析", "ok": analyze.get("success", False),
+            "output": analyze.get("stdout", "")[:500]
+        }
+        forbidden = run_script("detect_forbidden_patterns.py", ch_path)
+        pipeline["3b_forbidden"] = {
+            "name": "禁用模式检测", "ok": forbidden.get("success", False),
+            "output": forbidden.get("stdout", "")[:500]
+        }
+        compliance = run_script("check_compliance.py", ch_path)
+        pipeline["3c_compliance"] = {
+            "name": "合规审查", "ok": compliance.get("success", False),
+            "output": compliance.get("stdout", "")[:500]
+        }
+
+    # Step 9: Review validation
+    ch_id = chapter_ref.replace("/", "-").replace("ch-", "")
+    review_path = os.path.join(novel_path, "reviews", f"{ch_id}-review.md")
+    if os.path.exists(review_path):
+        val = run_script("validate_review.py", review_path)
+        pipeline["9a_review_validation"] = {
+            "name": "审稿验证", "ok": val.get("success", False),
+            "output": val.get("stdout", "")[:300]
+        }
+    else:
+        pipeline["9a_review_validation"] = {
+            "name": "审稿验证", "ok": False, "output": "审稿文件不存在"
+        }
+
+    # Continuity check
+    if os.path.exists(ch_path):
+        cont = run_script("verify_continuity.py", ch_path)
+        pipeline["9b_continuity"] = {
+            "name": "连续性校验", "ok": cont.get("success", False),
+            "output": cont.get("stdout", "")[:500]
+        }
+        rhythm = run_script("rhythm_check.py", ch_path)
+        pipeline["9c_rhythm"] = {
+            "name": "节奏检查", "ok": rhythm.get("success", False),
+            "output": rhythm.get("stdout", "")[:500]
+        }
+
+    # RAG index update
+    rag_update = run_script("rag_index.py", novel_path)
+    pipeline["9d_rag_update"] = {
+        "name": "RAG 索引更新", "ok": rag_update.get("success", False),
+        "output": rag_update.get("stdout", "")[:300]
+    }
+
+    # Step 10: Agent tracker + stage complete
+    agent = run_script("agent_tracker.py", "--stage", "创建单章", ch_path if os.path.exists(ch_path) else novel_path)
+    pipeline["10a_agent_tracker"] = {
+        "name": "Agent 执行追踪", "ok": agent.get("success", False),
+        "output": agent.get("stdout", "")[:500]
+    }
+
+    stage_complete = run_script("stage_gate.py", "--project", novel_path, "complete", "phase5_writing")
+    pipeline["10b_stage_complete"] = {
+        "name": "阶段完成标记", "ok": stage_complete.get("success", False),
+        "output": stage_complete.get("stdout", "")[:500]
+    }
+
+    # Summary
+    gates = [v for k, v in pipeline.items() if v is not None]
+    passed = sum(1 for g in gates if g.get("ok", False))
+    total = len(gates)
+    all_ok = passed == total
+
+    return jsonify({
+        "success": True,
+        "all_ok": all_ok,
+        "passed": passed,
+        "total": total,
+        "chapter_ref": chapter_ref,
+        "pipeline": pipeline,
+    })
+
+
+# ─── Context Builder ───────────────────────────────────────────────
+
+@app.route("/api/context/build", methods=["POST"])
+def api_context_build():
+    data = request.json or {}
+    try:
+        from context_builder import build_context
+        vol_str = data.get("volume", "1")
+        if isinstance(vol_str, str) and vol_str.startswith("vol-"):
+            vol_int = int(vol_str.split("-")[1])
+        else:
+            vol_int = int(vol_str)
+        params = {
+            "name": data.get("novel", data.get("novel_name", "")),
+            "volume": vol_int,
+            "chapter_num": int(data.get("chapter_num", 1)),
+            "style": data.get("style", ""),
+            "instructions": data.get("instructions", ""),
+            "max_tokens": int(data.get("max_tokens", 10000)),
+        }
+        result = build_context(params)
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/context/stats/<novel_name>/<int:volume>/<int:chapter>")
+def api_context_stats(novel_name, volume, chapter):
+    try:
+        from context_builder import get_context_stats
+        stats = get_context_stats(novel_name, volume, chapter)
+        return jsonify({"success": True, **stats})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── RAG Engine ──────────────────────────────────────────────────────
+
+@app.route("/api/rag/query", methods=["POST"])
+def api_rag_query():
+    data = request.json or {}
+    novel = data.get("novel", "")
+    categories = data.get("queries", [])
+    max_tokens = int(data.get("total_max_tokens", 10000))
+    if not novel or not categories:
+        return jsonify({"success": False, "error": "novel and queries required"}), 400
+    try:
+        from rag_engine import query_categories
+        result = query_categories(novel, categories, total_max_tokens=max_tokens)
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Init Engine ──────────────────────────────────────────────────────
+
+@app.route("/api/init/full/<novel_name>", methods=["POST"])
+def api_init_full(novel_name):
+    try:
+        from content_db import init_all_from_files
+        result = init_all_from_files(novel_name)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/world-building/init", methods=["POST"])
+def api_init_world_building(novel_name):
+    try:
+        from content_db import init_world_building_from_file
+        result = init_world_building_from_file(novel_name)
+        return jsonify({"success": True, "message": result.get("message", ""), "created": result.get("created", 0)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/plot-arcs/init", methods=["POST"])
+def api_init_plot_arcs(novel_name):
+    try:
+        from content_db import init_plot_arcs_from_file
+        result = init_plot_arcs_from_file(novel_name)
+        return jsonify({"success": True, "message": result.get("message", ""), "created": result.get("created", 0)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/pacing/init", methods=["POST"])
+def api_init_pacing(novel_name):
+    try:
+        from content_db import init_pacing_from_outline
+        result = init_pacing_from_outline(novel_name)
+        return jsonify({"success": True, "message": result.get("message", ""), "created": result.get("created", 0)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/revelation/init", methods=["POST"])
+def api_init_revelation(novel_name):
+    try:
+        from content_db import init_revelation_from_outline
+        result = init_revelation_from_outline(novel_name)
+        return jsonify({"success": True, "message": result.get("message", ""), "created": result.get("created", 0)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── New Domain Tables API ─────────────────────────────────────────────
+
+@app.route("/api/genre_rules/<novel_name>")
+def api_genre_rules_list(novel_name):
+    try:
+        from content_db import get_db
+        conn = get_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel: conn.close(); return jsonify({"success": False, "error": "小说不存在"}), 404
+        rows = conn.execute("SELECT * FROM genre_rules WHERE novel_id=? ORDER BY rule_category, id", (novel["id"],)).fetchall()
+        conn.close()
+        return jsonify({"success": True, "items": [dict(r) for r in rows], "total": len(rows)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/story_volumes/<novel_name>")
+def api_story_volumes_list(novel_name):
+    try:
+        from content_db import get_db
+        conn = get_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel: conn.close(); return jsonify({"success": False, "error": "小说不存在"}), 404
+        rows = conn.execute("SELECT * FROM story_volumes WHERE novel_id=? ORDER BY vol_num", (novel["id"],)).fetchall()
+        conn.close()
+        return jsonify({"success": True, "items": [dict(r) for r in rows], "total": len(rows)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/volume_plans/<novel_name>")
+def api_volume_plans_list(novel_name):
+    try:
+        from content_db import get_db
+        conn = get_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel: conn.close(); return jsonify({"success": False, "error": "小说不存在"}), 404
+        rows = conn.execute("SELECT id, novel_id, vol_num, title, word_count, created_at FROM volume_plans WHERE novel_id=? ORDER BY vol_num", (novel["id"],)).fetchall()
+        conn.close()
+        return jsonify({"success": True, "items": [dict(r) for r in rows], "total": len(rows)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/alias_names/<novel_name>")
+def api_alias_names_list(novel_name):
+    try:
+        from content_db import get_db
+        conn = get_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel: conn.close(); return jsonify({"success": False, "error": "小说不存在"}), 404
+        rows = conn.execute("SELECT * FROM alias_names WHERE novel_id=? ORDER BY category, id", (novel["id"],)).fetchall()
+        conn.close()
+        return jsonify({"success": True, "items": [dict(r) for r in rows], "total": len(rows)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/project_meta/<novel_name>")
+def api_project_meta_list(novel_name):
+    try:
+        from content_db import get_db
+        conn = get_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel: conn.close(); return jsonify({"success": False, "error": "小说不存在"}), 404
+        rows = conn.execute("SELECT * FROM project_meta WHERE novel_id=? ORDER BY meta_key", (novel["id"],)).fetchall()
+        conn.close()
+        return jsonify({"success": True, "items": [dict(r) for r in rows], "total": len(rows)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Character Management ──────────────────────────────────────────
+
+@app.route("/api/characters/<novel_name>")
+def api_characters_list(novel_name):
+    try:
+        from content_db import get_characters
+        items = get_characters(novel_name)
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/characters/<novel_name>/<int:cid>")
+def api_character_get(novel_name, cid):
+    try:
+        from content_db import get_character, get_character_events
+        char = get_character(novel_name, cid)
+        if not char:
+            return jsonify({"success": False, "error": "角色不存在"}), 404
+        events = get_character_events(novel_name, cid)
+        return jsonify({"success": True, "character": char, "events": events})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/characters/<novel_name>", methods=["POST"])
+def api_character_add(novel_name):
+    data = request.json or {}
+    try:
+        from content_db import add_character
+        cid = add_character(novel_name, data.get("name", ""),
+            role=data.get("role", "配角"),
+            gender=data.get("gender", ""), age=data.get("age", ""),
+            identity=data.get("identity", ""), personality=data.get("personality", ""),
+            appearance=data.get("appearance", ""), background=data.get("background", ""),
+            current_status=data.get("current_status", ""),
+            current_vol=data.get("current_vol", 0), current_ch=data.get("current_ch", 0),
+            lifeline=data.get("lifeline", ""), arc=data.get("arc", ""),
+            ending=data.get("ending", ""), notes=data.get("notes", ""))
+        return jsonify({"success": True, "id": cid, "message": "角色已添加"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/characters/<novel_name>/<int:cid>", methods=["PUT", "DELETE"])
+def api_character_manage(novel_name, cid):
+    try:
+        from content_db import update_character, delete_character
+        if request.method == "DELETE":
+            delete_character(cid)
+            return jsonify({"success": True, "message": "已删除"})
+        else:
+            data = request.json or {}
+            update_character(cid, **{k: v for k, v in data.items()
+                if k in ["name","role","gender","age","identity","personality",
+                         "appearance","background","current_status","current_vol",
+                         "current_ch","lifeline","arc","ending","notes",
+                         "desire","fear","lie","truth",
+                         "ability_level","ability_curve","ability_cost",
+                         "emotional_state","emotion_curve","relationship_map",
+                         "dilemma","mirror"]})
+            return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/characters/<novel_name>/<int:cid>/event", methods=["POST"])
+def api_character_event(novel_name, cid):
+    data = request.json or {}
+    try:
+        from content_db import add_character_event
+        eid = add_character_event(novel_name, cid,
+            description=data.get("description", ""),
+            event_type=data.get("event_type", "状态变更"),
+            vol=data.get("vol", 0), ch=data.get("ch", 0),
+            chapter_ref=data.get("chapter_ref", ""),
+            source=data.get("source", "manual"))
+        return jsonify({"success": True, "id": eid, "message": "事件已记录"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/characters/<novel_name>/init", methods=["POST"])
+def api_characters_init(novel_name):
+    try:
+        from content_db import init_characters_from_files
+        result = init_characters_from_files(novel_name)
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Foreshadowing Management ─────────────────────────────────────────
+
+@app.route("/api/foreshadowing/<novel_name>")
+def api_foreshadowing_list(novel_name):
+    status = request.args.get("status")
+    volume = request.args.get("volume", type=int)
+    try:
+        from content_db import get_foreshadowing
+        items = get_foreshadowing(novel_name, status=status, volume=volume)
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/foreshadowing/<novel_name>/unresolved")
+def api_foreshadowing_unresolved(novel_name):
+    vol = request.args.get("vol", type=int)
+    ch = request.args.get("ch", type=int)
+    try:
+        from content_db import get_unresolved_foreshadowing
+        items = get_unresolved_foreshadowing(novel_name, current_vol=vol, current_ch=ch)
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/foreshadowing/<novel_name>", methods=["POST"])
+def api_foreshadowing_add(novel_name):
+    data = request.json or {}
+    try:
+        from content_db import add_foreshadowing
+        fid = add_foreshadowing(
+            novel_name,
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            category=data.get("category", "剧情"),
+            introduced_vol=data.get("introduced_vol", 0),
+            introduced_ch=data.get("introduced_ch", 0),
+            target_vol=data.get("target_vol", 0),
+            target_ch=data.get("target_ch", 0),
+            priority=data.get("priority", "normal"),
+        )
+        return jsonify({"success": True, "id": fid, "message": "伏笔已添加"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/foreshadowing/<novel_name>/<int:fid>", methods=["PUT", "DELETE"])
+def api_foreshadowing_manage(novel_name, fid):
+    try:
+        from content_db import update_foreshadowing, delete_foreshadowing
+        if request.method == "DELETE":
+            delete_foreshadowing(fid)
+            return jsonify({"success": True, "message": "已删除"})
+        else:
+            data = request.json or {}
+            update_foreshadowing(fid, **{k: v for k, v in data.items()
+                if k in ["name","description","category","status","introduced_vol",
+                         "introduced_ch","target_vol","target_ch","resolved_vol",
+                         "resolved_ch","resolution_note","priority"]})
+            return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/foreshadowing/<novel_name>/resolve/<int:fid>", methods=["POST"])
+def api_foreshadowing_resolve(novel_name, fid):
+    data = request.json or {}
+    try:
+        from content_db import resolve_foreshadowing
+        resolve_foreshadowing(fid, data.get("vol", 0), data.get("ch", 0),
+                             data.get("note", ""))
+        return jsonify({"success": True, "message": "伏笔已标记为已填"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/foreshadowing/<novel_name>/init", methods=["POST"])
+def api_foreshadowing_init(novel_name):
+    try:
+        from content_db import init_foreshadowing_from_outline
+        result = init_foreshadowing_from_outline(novel_name)
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── World Building ───────────────────────────────────────────────────
+
+@app.route("/api/world_building/<novel_name>")
+def api_world_building_list(novel_name):
+    domain = request.args.get("domain")
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        sql = "SELECT * FROM world_building WHERE novel_id=?"
+        params = [novel["id"]]
+        if domain:
+            sql += " AND domain=?"
+            params.append(domain)
+        sql += " ORDER BY id DESC"
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+        items = [dict(r) for r in rows]
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/world_building/<novel_name>", methods=["POST"])
+def api_world_building_add(novel_name):
+    data = request.json or {}
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        conn.execute("""INSERT INTO world_building
+            (novel_id, domain, name, content, related_vol, related_ch, tags)
+            VALUES (?,?,?,?,?,?,?)""",
+            (novel["id"],
+             data.get("domain", ""),
+             data.get("name", ""),
+             data.get("content", ""),
+             data.get("related_vol", 0),
+             data.get("related_ch", 0),
+             data.get("tags", "")))
+        conn.commit()
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        return jsonify({"success": True, "id": row_id, "message": "世界观条目已添加"}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/world_building/<novel_name>/<int:row_id>", methods=["PUT", "DELETE"])
+def api_world_building_manage(novel_name, row_id):
+    try:
+        conn = get_content_db()
+        if request.method == "DELETE":
+            conn.execute("DELETE FROM world_building WHERE id=?", (row_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已删除"})
+        else:
+            data = request.json or {}
+            updates = {k: v for k, v in data.items()
+                       if k in ["domain", "name", "content", "related_vol",
+                                "related_ch", "tags"]}
+            if updates:
+                updates["updated_at"] = datetime.now().isoformat()
+                set_clause = ", ".join(f"{k}=?" for k in updates)
+                values = list(updates.values()) + [row_id]
+                conn.execute(f"UPDATE world_building SET {set_clause} WHERE id=?", values)
+                conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Plot Arcs ────────────────────────────────────────────────────────
+
+@app.route("/api/plot_arcs/<novel_name>")
+def api_plot_arcs_list(novel_name):
+    status = request.args.get("status")
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        sql = "SELECT * FROM plot_arcs WHERE novel_id=?"
+        params = [novel["id"]]
+        if status:
+            sql += " AND status=?"
+            params.append(status)
+        sql += " ORDER BY id DESC"
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+        items = [dict(r) for r in rows]
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/plot_arcs/<novel_name>", methods=["POST"])
+def api_plot_arcs_add(novel_name):
+    data = request.json or {}
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        miles = data.get("milestones", [])
+        milestones = json.dumps(miles) if isinstance(miles, list) else miles
+        conn.execute("""INSERT INTO plot_arcs
+            (novel_id, name, type, volume_start, chapter_start,
+             volume_end, chapter_end, summary, milestones, status, priority)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (novel["id"],
+             data.get("name", ""),
+             data.get("type", "主线"),
+             data.get("volume_start", 0),
+             data.get("chapter_start", 0),
+             data.get("volume_end", 0),
+             data.get("chapter_end", 0),
+             data.get("summary", ""),
+             milestones,
+             data.get("status", "active"),
+             data.get("priority", "normal")))
+        conn.commit()
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        return jsonify({"success": True, "id": row_id, "message": "剧情弧已添加"}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/plot_arcs/<novel_name>/<int:row_id>", methods=["PUT", "DELETE"])
+def api_plot_arcs_manage(novel_name, row_id):
+    try:
+        conn = get_content_db()
+        if request.method == "DELETE":
+            conn.execute("DELETE FROM plot_arcs WHERE id=?", (row_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已删除"})
+        else:
+            data = request.json or {}
+            updates = {k: v for k, v in data.items()
+                       if k in ["name", "type", "volume_start", "chapter_start",
+                                "volume_end", "chapter_end", "summary", "milestones",
+                                "status", "priority"]}
+            if "milestones" in updates and isinstance(updates["milestones"], list):
+                updates["milestones"] = json.dumps(updates["milestones"])
+            if updates:
+                updates["updated_at"] = datetime.now().isoformat()
+                set_clause = ", ".join(f"{k}=?" for k in updates)
+                values = list(updates.values()) + [row_id]
+                conn.execute(f"UPDATE plot_arcs SET {set_clause} WHERE id=?", values)
+                conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Pacing Control ───────────────────────────────────────────────────
+
+@app.route("/api/pacing_control/<novel_name>")
+def api_pacing_control_list(novel_name):
+    volume = request.args.get("volume", type=int)
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        sql = "SELECT * FROM pacing_control WHERE novel_id=?"
+        params = [novel["id"]]
+        if volume is not None:
+            sql += " AND volume=?"
+            params.append(volume)
+        sql += " ORDER BY volume, chapter_start"
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+        items = [dict(r) for r in rows]
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/pacing_control/<novel_name>", methods=["POST"])
+def api_pacing_control_add(novel_name):
+    data = request.json or {}
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        conn.execute("""INSERT INTO pacing_control
+            (novel_id, volume, chapter_start, chapter_end, pace_type,
+             intensity, emotion_target, word_budget_min, word_budget_max, notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (novel["id"],
+             data.get("volume", 0),
+             data.get("chapter_start", 0),
+             data.get("chapter_end", 0),
+             data.get("pace_type", "过渡"),
+             data.get("intensity", 5),
+             data.get("emotion_target", ""),
+             data.get("word_budget_min", 2500),
+             data.get("word_budget_max", 3500),
+             data.get("notes", "")))
+        conn.commit()
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        return jsonify({"success": True, "id": row_id, "message": "节奏控制已添加"}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/pacing_control/<novel_name>/<int:row_id>", methods=["PUT", "DELETE"])
+def api_pacing_control_manage(novel_name, row_id):
+    try:
+        conn = get_content_db()
+        if request.method == "DELETE":
+            conn.execute("DELETE FROM pacing_control WHERE id=?", (row_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已删除"})
+        else:
+            data = request.json or {}
+            updates = {k: v for k, v in data.items()
+                       if k in ["volume", "chapter_start", "chapter_end",
+                                "pace_type", "intensity", "emotion_target",
+                                "word_budget_min", "word_budget_max", "notes"]}
+            if updates:
+                set_clause = ", ".join(f"{k}=?" for k in updates)
+                values = list(updates.values()) + [row_id]
+                conn.execute(f"UPDATE pacing_control SET {set_clause} WHERE id=?", values)
+                conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Revelation Schedule ──────────────────────────────────────────────
+
+@app.route("/api/revelation_schedule/<novel_name>")
+def api_revelation_schedule_list(novel_name):
+    volume = request.args.get("volume", type=int)
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        sql = "SELECT * FROM revelation_schedule WHERE novel_id=?"
+        params = [novel["id"]]
+        if volume is not None:
+            sql += " AND reveal_volume=?"
+            params.append(volume)
+        sql += " ORDER BY priority DESC, reveal_volume, reveal_chapter"
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+        items = [dict(r) for r in rows]
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/revelation_schedule/<novel_name>", methods=["POST"])
+def api_revelation_schedule_add(novel_name):
+    data = request.json or {}
+    try:
+        conn = get_content_db()
+        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if not novel:
+            conn.close()
+            return jsonify({"success": False, "error": "小说不存在"}), 404
+        conn.execute("""INSERT INTO revelation_schedule
+            (novel_id, name, info_type, reveal_volume, reveal_chapter,
+             content, audience_knows, protagonist_knows, priority)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
+            (novel["id"],
+             data.get("name", ""),
+             data.get("info_type", "世界观"),
+             data.get("reveal_volume", 0),
+             data.get("reveal_chapter", 0),
+             data.get("content", ""),
+             data.get("audience_knows", 0),
+             data.get("protagonist_knows", 0),
+             data.get("priority", "normal")))
+        conn.commit()
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        return jsonify({"success": True, "id": row_id, "message": "揭示计划已添加"}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/revelation_schedule/<novel_name>/<int:row_id>", methods=["PUT", "DELETE"])
+def api_revelation_schedule_manage(novel_name, row_id):
+    try:
+        conn = get_content_db()
+        if request.method == "DELETE":
+            conn.execute("DELETE FROM revelation_schedule WHERE id=?", (row_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已删除"})
+        else:
+            data = request.json or {}
+            updates = {k: v for k, v in data.items()
+                       if k in ["name", "info_type", "reveal_volume",
+                                "reveal_chapter", "content", "audience_knows",
+                                "protagonist_knows", "priority"]}
+            if updates:
+                updates["updated_at"] = datetime.now().isoformat()
+                set_clause = ", ".join(f"{k}=?" for k in updates)
+                values = list(updates.values()) + [row_id]
+                conn.execute(f"UPDATE revelation_schedule SET {set_clause} WHERE id=?", values)
+                conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── Cleanup ─────────────────────────────────────────────────────────
+
+@app.route("/api/novels/<novel_name>/cleanup-bak", methods=["POST"])
+def api_cleanup_bak(novel_name):
+    """Delete all .bak backup files for a novel"""
+    import shutil
+    bak_dir = os.path.join(get_novels_dir(), novel_name, "manuscript", ".bak")
+    if not os.path.exists(bak_dir):
+        return jsonify({"success": True, "deleted": 0, "message": "无备份文件"})
+    count = 0
+    try:
+        for f in os.listdir(bak_dir):
+            os.remove(os.path.join(bak_dir, f))
+            count += 1
+        os.rmdir(bak_dir)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "deleted": count}), 500
+    return jsonify({"success": True, "deleted": count, "message": f"已删除 {count} 个备份文件"})
+
+
 # ─── Content DB ────────────────────────────────────────────────────────────
 
 @app.route("/api/content/search")
@@ -1615,6 +3011,86 @@ def api_list_templates():
     return jsonify({"success": True, "templates": templates})
 
 
+# ─── Usage Stats ────────────────────────────────────────────────────────────
+
+@app.route("/api/usage/stats")
+def api_usage_stats():
+    """Return token usage statistics."""
+    novel_filter = request.args.get("novel", "")
+    days = int(request.args.get("days", 30))
+
+    try:
+        conn = _sqlite3.connect(USAGE_DB_PATH)
+        conn.row_factory = _sqlite3.Row
+
+        # Total tokens and cost
+        total = conn.execute(
+            "SELECT COALESCE(SUM(total_tokens), 0) AS total_tokens, "
+            "COALESCE(SUM(cost_estimate), 0) AS total_cost FROM usage"
+        ).fetchone()
+
+        # Breakdown by operation
+        by_operation = {}
+        op_rows = conn.execute(
+            "SELECT operation, COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens, "
+            "COALESCE(SUM(cost_estimate), 0) AS cost "
+            "FROM usage GROUP BY operation ORDER BY tokens DESC"
+        ).fetchall()
+        for row in op_rows:
+            by_operation[row["operation"]] = {
+                "calls": row["calls"],
+                "tokens": row["tokens"],
+                "cost": round(row["cost"], 6),
+            }
+
+        # Breakdown by novel
+        by_novel = {}
+        novel_rows = conn.execute(
+            "SELECT novel, COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens, "
+            "COALESCE(SUM(cost_estimate), 0) AS cost "
+            "FROM usage WHERE novel != '' GROUP BY novel ORDER BY tokens DESC"
+        ).fetchall()
+        for row in novel_rows:
+            by_novel[row["novel"]] = {
+                "calls": row["calls"],
+                "tokens": row["tokens"],
+                "cost": round(row["cost"], 6),
+            }
+
+        # Daily usage for last N days
+        daily = []
+        daily_rows = conn.execute(
+            "SELECT date(created_at) AS day, COUNT(*) AS calls, "
+            "COALESCE(SUM(total_tokens), 0) AS tokens, "
+            "COALESCE(SUM(cost_estimate), 0) AS cost "
+            "FROM usage "
+            "WHERE created_at >= datetime('now', ?) "
+            "GROUP BY day ORDER BY day ASC",
+            (f"-{days} days",)
+        ).fetchall()
+        for row in daily_rows:
+            daily.append({
+                "day": row["day"],
+                "calls": row["calls"],
+                "tokens": row["tokens"],
+                "cost": round(row["cost"], 6),
+            })
+
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "total_tokens": total["total_tokens"],
+            "total_cost": round(total["total_cost"], 6),
+            "by_operation": by_operation,
+            "by_novel": by_novel,
+            "daily": daily,
+            "days": days,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ─── Start ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -1633,3 +3109,47 @@ if __name__ == "__main__":
     print(f"  ⚙️  设置页面可随时修改所有参数")
     print(f"{'='*60}\n")
     app.run(host=PORTAL_HOST, port=PORTAL_PORT, debug=DEBUG)
+
+
+@app.route("/api/characters/<novel_name>/<int:cid>/ai-profile", methods=["POST"])
+def api_ai_character_profile(novel_name, cid):
+    try:
+        from content_db import get_character
+        char = get_character(novel_name, cid)
+        if not char:
+            return jsonify({"success": False, "error": "role not found"}), 404
+
+        context = f"Name: {char['name']}\nRole: {char.get('role','')}\n"
+        if char.get('identity'): context += f"Identity: {char['identity']}\n"
+        if char.get('personality'): context += f"Personality: {char['personality']}\n"
+        if char.get('background'): context += f"Background: {char['background'][:500]}\n"
+
+        cfg = get_active_deepseek_config()
+        resp = httpx.post(
+            f"{cfg['api_base']}/chat/completions",
+            headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
+            json={
+                "model": cfg["model"],
+                "messages": [
+                    {"role": "system", "content": "You are a professional web novel character designer. Generate a complete 8-dimension character profile in JSON. Output ONLY JSON, no markdown. Fields: desire, fear, lie, truth, personality, arc, lifeline, ending, ability_level, ability_curve, ability_cost, emotional_state, emotion_curve, relationship_map (JSON array of {target,type,start,conflict,end}), dilemma (JSON array of {vol,dilemma,choice,cost,gained} - 1-2 per volume), mirror (JSON array of {character,mirrors,contrast}), notes."},
+                    {"role": "user", "content": f"Generate 8-dimension profile for this character:\n{context}"},
+                ],
+                "temperature": 0.7, "max_tokens": 4096,
+            },
+            timeout=60,
+        )
+        if resp.status_code != 200:
+            return jsonify({"success": False, "error": f"API error {resp.status_code}"}), 500
+
+        result = resp.json()
+        text = result["choices"][0]["message"]["content"]
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if not json_match:
+            return jsonify({"success": False, "error": "AI did not return valid JSON", "raw": text[:500]}), 500
+
+        profile = json.loads(json_match.group(0))
+        return jsonify({"success": True, "profile": profile, "usage": result.get("usage", {})})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
