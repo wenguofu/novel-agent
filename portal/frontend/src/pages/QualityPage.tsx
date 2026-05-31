@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Statistic, Row, Col, Progress, Tag, Space } from 'antd'
+import { Card, Statistic, Row, Col, Progress, Tag } from 'antd'
 import { BarChartOutlined } from '@ant-design/icons'
 import { useNovelStore } from '../stores/novelStore'
 

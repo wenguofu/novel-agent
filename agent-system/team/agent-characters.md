@@ -1,3 +1,23 @@
+---
+agent_id: agent-characters
+display_name: 人物
+schema_version: "2.0"
+prerequisites:
+  - characters.md
+  - current_status.md
+outputs:
+  - characters.md
+signatures:
+  - 人物(?:检查|一致性|档案|状态)
+  - 是否(?:符合|违反)人物
+  - 人物(?:关系|状态|行为)
+severity_levels:
+  error: [prerequisites]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase1_opening
+---
+
 # 人物 Agent
 
 ## 角色编号

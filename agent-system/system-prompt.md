@@ -56,7 +56,6 @@
 | 创建新书 | `workflows/workflow-new-book.md` | 从零建立项目 |
 | 创建新卷 | `workflows/workflow-new-volume.md` | 规划新卷章纲 |
 | 创建单章 | `workflows/workflow-new-chapter.md` | 写单个章节 |
-| 续写/批量 | `workflows/workflow-batch-chapters.md` | 连续多章 |
 | 审稿 | `workflows/workflow-review.md` | 纯审稿任务 |
 | 查询状态 | `workflows/workflow-query-status.md` | 查看项目状态 |
 

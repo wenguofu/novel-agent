@@ -1,93 +1,119 @@
-# 长篇网文写作 Agent 资料包
+# Novel Agent — AI 长篇网文写作系统
 
-本目录提供一套面向 100 万到 300 万字网文项目的多 Agent 写作体系。体系采用 Markdown 管理项目资料，适用于本地文件夹，也适用于任何支持多角色提示词的工具。
+AI-assisted Chinese web novel writing system (1M-3M words). Flask + React portal with multi-agent architecture, unified database, and MySQL support.
+
+## 快速启动
+
+```bash
+cd portal
+pip install -r ../requirements.txt
+
+# SQLite (开发)
+python run_v2.py
+# → http://127.0.0.1:35001
+
+# MySQL (生产)
+DATABASE_URL=mysql+pymysql://user:pass@host:3306/novel_agent python run_v2.py
+```
+
+## 架构概览 (v3.3)
+
+| 层 | 技术 |
+|------|------|
+| 前端 | React 18 + TypeScript, Ant Design 5, Vite, Zustand, TanStack Query |
+| 后端 | Python Flask, SQLAlchemy ORM, httpx |
+| 数据库 | SQLite (dev) / MySQL (prod) — 通过 `DATABASE_URL` 切换 |
+| AI | DeepSeek API (chat + SSE streaming) |
+| RAG | ChromaDB + BAAI/bge-small-zh-v1.5 |
+| 端口 | 35001 |
+
+### 数据库：统一单库架构
+24 张表统一在一个数据库，不再分离 content/config/usage。数据访问通过 Repository 模式（`repository.py`），110+ 方法覆盖全部 CRUD。
+
+全文搜索使用 LIKE（MySQL 兼容），已移除 FTS5。
+
+### 核心流程
+1. **初始化** → `init_all_from_files()` 从 markdown/yaml 文件加载全部数据
+2. **写作** → 12 层上下文组装 + DeepSeek SSE 流式生成
+3. **审稿** → AI 审稿 + 脚本合规检查（字数/违禁词/句式）
+4. **状态更新** → `auto_update_after_save()` 自动更新角色出场/伏笔状态
 
 ## 文件结构
 
 ```text
-agent-system/
-  compliance_config.json   ← 合规检测规则配置（可编辑！）
-  system-prompt.md
-  team.md
-  compliance.md
-  team/
-    agent-assistant.md     ← 用户交互层（新增）
-    agent-chief-writer.md
-    agent-chapter-planner.md
-    agent-writing.md
-    agent-editor-review.md  ← 新增升级机制
-    agent-compliance.md
-    agent-characters.md
-    agent-genre-rules.md
-    agent-world-settings.md  ← 新增参与单章工作流
-    agent-long-plot.md
-    agent-plot-tracking.md
-    agent-status.md
-  scripts/
-    analyze_chapter.py
-    check_compliance.py      ← v2: 使用外部配置
-    detect_forbidden_patterns.py  ← v2: 改进重复检测
-    verify_continuity.py
-  workflows/
-    workflow-new-chapter.md  ← 新增世界观审核+升级机制
-    workflow-batch-chapters.md  ← 新增两阶段模式+升级机制
-    workflow-new-book.md
-    workflow-new-volume.md
-    workflow-review.md
-    workflow-query-status.md
-  writer-style-skill.md      ← 31位作家风格指南
-  writing-assistant.md
-templates/
-  project.md
-  genre_bible.md
-  world_bible.md
-  characters.md
-  full_story_arc.md
-  volume_plan.md
-  volume_outline.md
-  chapter_packet.md
-  chapter_review.md
-  current_status.md
-  alias_registry.md
-docs/superpowers/
-  specs/
-  plans/
+novel-agent/
+├── portal/                     # Web 应用
+│   ├── app.py                  # Flask 路由 (40+ endpoints)
+│   ├── run_v2.py               # 启动器 (schema init + config seed + 启动)
+│   ├── db.py                   # SQLAlchemy engine/session (SQLite/MySQL)
+│   ├── models_orm.py           # 26 ORM 模型
+│   ├── repository.py           # Repository 层 (110+ 方法)
+│   ├── content_db.py           # 兼容层 → 委托给 repository
+│   ├── context_builder.py      # 12 层上下文组装
+│   ├── init_config_db.py       # [已废弃] → init_unified_db.py
+│   ├── rag_engine.py           # RAG 检索引擎
+│   ├── state_tracker.py        # 状态变更追踪
+│   ├── memory_layer.py         # 记忆层 (ChromaDB + DB fallback)
+│   └── frontend/               # React SPA
+├── agent-system/               # 多 Agent 写作体系
+│   ├── team/                   # 12 个 Agent 角色定义 (YAML frontmatter)
+│   ├── workflows/              # 工作流定义
+│   ├── scripts/                # 检测/分析/合规脚本
+│   └── styles/                 # 16 种风格指纹
+├── novels/<name>/              # 小说项目目录
+│   ├── project.md              # 项目设定
+│   ├── genre_bible.md          # 类型规则
+│   ├── world_bible.md          # 世界观
+│   ├── characters.md           # 人物档案
+│   ├── full_story_arc.md       # 全书剧情线
+│   ├── alias_registry.md       # 别名注册表
+│   ├── outline/                # 卷大纲 (YAML/MD)
+│   ├── manuscript/             # 正文手稿
+│   ├── reviews/                # 审稿报告 (MD + JSON)
+│   ├── volume_plan/            # 卷规划
+│   └── state/                  # 运行状态 (stage_gate.json, current_status.md)
+├── openspec/                   # 架构文档
+├── tests/                      # 77 pytest 测试
+└── scripts/                    # 迁移/升级脚本
 ```
+
+## API 端点 (主要)
+
+### 写作与生成
+| 端点 | 说明 |
+|------|------|
+| `POST /api/context/build` | 12 层上下文组装 |
+| `POST /api/ai/stream` | SSE 流式调用 DeepSeek |
+| `POST /api/novels/<name>/generate-chapter` | 服务端章节生成 |
+| `POST /api/novels/<name>/review-chapter` | AI 审稿 + 脚本检查 |
+
+### 领域 CRUD (全部 RESTful)
+characters, foreshadowing, world_building, plot_arcs, pacing_control, revelation_schedule, genre_rules, story_volumes, volume_plans, alias_names, project_meta
+
+### 配置与统计
+- `GET/POST /api/config` — DeepSeek 配置
+- `/api/config-db/<table>` — 违禁词/合规规则/风格预设 CRUD
+- `GET /api/usage/stats` — Token 用量统计
+- `GET /api/content/search?q=` — 全文搜索
 
 ## 使用方式
 
-1. 复制 `templates/` 为某本书的项目目录。
-2. 填写 `project.md`、`genre_bible.md`、`world_bible.md`、`characters.md`。
-3. 将 `agent-system/system-prompt.md` 放入主 Agent 的系统提示词。
-4. 每卷正文开始前，创建 `outline/vol-XX-chapters.md`，写入章节总数、章节名、一句内容描述与节奏规则。
-5. 每章写作必须经过章节规划、正文写作、编辑审稿、世界观设定审核、合规审查、状态更新。
-6. 合规检查规则位于 `agent-system/compliance_config.json`，可根据需要编辑。
+1. 创建小说项目目录，填写 `project.md`、`genre_bible.md`、`characters.md` 等
+2. 启动 portal：`cd portal && python run_v2.py`
+3. 打开 http://127.0.0.1:35001 → 选择小说 → 写作页生成章节
+4. 或通过 API 直接调用：`POST /api/novels/<name>/generate-chapter`
 
 ## 关键约束
 
-- 每本书必须有独立类型规则、人物档案、世界观资料、长线剧情表、别名表。
-- 每卷必须有独立卷级章纲，正文写作必须遵守对应 outline 条目。
-- 正文不得使用真实地区、国家、省份、城市、领导人、名人名称。
-- 现实对象必须用虚构别名替代，且替代关系写入 `alias_registry.md`。
-- 任何新增设定、人物状态变化、伏笔变化都必须写入项目资料。
-- 编辑审稿连续 3 次修改或 2 次重写则自动升级至用户决策。
+- 每本书：独立类型规则、人物档案、世界观、长线剧情、别名表
+- 每卷：独立章纲 (YAML/MD)，正文遵守 outline 条目
+- 正文：不得使用真实地名/人名/产品名，违规词自动替换
+- 伏笔/状态变化必须写入项目资料
+- 审稿连续 3 次修改或 2 次重写 → 自动升级至用户决策
 
 ## 合规规则自定义
 
 编辑 `agent-system/compliance_config.json` 可自定义：
-- `real_name_patterns`：检测的真实名称列表（国家、省份、城市、领导职务）
-- `alias_suggestions`：检测到违规时建议的替换别名
-- `context_sensitivity`：不触发违规的上下文白名单
-
-## 新增功能（v2）
-
-| 改进 | 说明 |
-|:---|:---|
-| 📋 合规配置化 | 检测规则从 compliance_config.json 读取，可自由增删 |
-| 🗺️ 完整地名覆盖 | 31省+所有地级市+200+县级市映射 |
-| 🧠 上下文白名单 | "小说中""虚构的"等语境不触发违规 |
-| 🔄 审稿升级机制 | 3次修改/2次重写自动升级到用户 |
-| 🌍 世界观审核 | 单章新增设定自动校验 world_bible.md |
-| 🎭 对话重复改进 | 最长公共子串≥15字才算重复，减少误报 |
-| ⚡ 批量效率优化 | 两阶段模式+状态传递优化 |
-| 🧑‍💼 写作助手 Agent | 明确定义用户交互层角色 |
+- `real_name_patterns`：检测的真实名称列表
+- `alias_suggestions`：违规时建议的替换别名
+- `context_sensitivity`：不触发违规的上下文白名单 |

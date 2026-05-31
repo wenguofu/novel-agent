@@ -1,3 +1,25 @@
+---
+agent_id: agent-chief-writer
+display_name: 总主编剧
+schema_version: "2.0"
+prerequisites:
+  - genre_bible.md
+  - full_story_arc.md
+outputs:
+  - outline/vol-XX-chapters.md
+  - volume_plan.md
+signatures:
+  - 总主编剧
+  - 卷级章纲|章节预排|本卷预计章节数
+  - genre_bible.*约束
+  - 节奏规则表|类型节奏映射
+severity_levels:
+  error: [prerequisites, output_files_missing]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase3_volume_outline
+---
+
 # 总主编剧 Agent
 
 ## 角色编号

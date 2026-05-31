@@ -1,3 +1,28 @@
+---
+agent_id: agent-writing
+display_name: 正文写作
+schema_version: "2.0"
+prerequisites:
+  - outline/vol-XX-chapters.md
+  - current_status.md
+outputs:
+  - manuscript/vol-XX/ch-XXXX.md
+signatures:
+  - 正文[：:]
+  - 章节标题[：:]
+  - (?:新增设定|人物状态变化|伏笔变化)
+  - ^#\s*第.{1,6}章
+content_heuristics:
+  min_chinese_chars: 2500
+  must_start_with_chapter_title: true
+  max_binary_contrasts: 2
+severity_levels:
+  error: [prerequisites, min_chinese_chars]
+  warning: [signatures, schema_fields, max_binary_contrasts]
+  info: []
+stage: phase5_writing
+---
+
 # 正文写作 Agent
 
 ## 角色编号
@@ -14,7 +39,7 @@
 - 写作完成后运行 `scripts/analyze_chapter.py` 验证字数和不合格模式。
 
 ## 参与的工作流
-`workflow-new-chapter.md`, `workflow-batch-chapters.md`
+`workflow-new-chapter.md`, 
 
 ## 输出 Schema
 

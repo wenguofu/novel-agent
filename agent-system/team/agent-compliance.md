@@ -1,3 +1,24 @@
+---
+agent_id: agent-compliance
+display_name: 合规审查
+schema_version: "2.0"
+prerequisites:
+  - manuscript/vol-XX/ch-XXXX.md
+  - alias_registry.md
+outputs:
+  - alias_registry.md
+signatures:
+  - 合规(?:检查|审查|结论|名称)
+  - 是否出现真实
+  - alias_registry|别名
+  - 虚构别名|替代名
+severity_levels:
+  error: [prerequisites, real_name_found]
+  warning: [signatures, schema_fields]
+  info: [alias_suggestions]
+stage: phase6_review
+---
+
 # 合规审查 Agent
 
 ## 角色编号
@@ -11,7 +32,7 @@
 - 运行 `scripts/check_compliance.py` 做合规检查。
 
 ## 参与的工作流
-`workflow-new-book.md`, `workflow-new-chapter.md`, `workflow-batch-chapters.md`, `workflow-review.md`
+`workflow-new-book.md`, `workflow-new-chapter.md`, `workflow-review.md`
 
 ## 输出 Schema
 

@@ -1,4 +1,3 @@
-import React from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
@@ -21,14 +20,12 @@ import { PlotArcs } from './pages/PlotArcs'
 import { PacingControl } from './pages/PacingControl'
 import { RevelationSchedule } from './pages/RevelationSchedule'
 import { InitWizard } from './pages/InitWizard'
+import { UsagePage } from './pages/UsagePage'
+import { Onboarding } from './pages/Onboarding'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { useNovelStore } from './stores/novelStore'
 import { Settings } from './pages/Placeholders'
 
 function App() {
-  React.useEffect(() => {
-    useNovelStore.getState().fetchNovels()
-  }, [])
 
   return (
     <ConfigProvider
@@ -55,11 +52,13 @@ function App() {
             <Route path="/arcs" element={<PlotArcs />} />
             <Route path="/pacing" element={<PacingControl />} />
             <Route path="/revelation" element={<RevelationSchedule />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/init" element={<InitWizard />} />
             <Route path="/workflow" element={<Workflow />} />
             <Route path="/quality" element={<QualityPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/config" element={<ConfigPage />} />
+            <Route path="/usage" element={<UsagePage />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
           </ErrorBoundary>

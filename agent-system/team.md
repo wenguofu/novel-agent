@@ -26,15 +26,15 @@ delivery:
 | 0 | 写作助手 Agent | `team/agent-assistant.md` | 所有工作流（用户交互层） |
 | 1 | 总主编剧 Agent | `team/agent-chief-writer.md` | 新书, 新卷 |
 | 2 | 类型规则 Agent | `team/agent-genre-rules.md` | 新书, 新卷 |
-| 3 | 世界观设定 Agent | `team/agent-world-settings.md` | 新书, **单章, 续写/批量** |
+| 3 | 世界观设定 Agent | `team/agent-world-settings.md` | 新书, 单章 |
 | 4 | 人物 Agent | `team/agent-characters.md` | 新书, 单章 |
 | 5 | 长线剧情 Agent | `team/agent-long-plot.md` | 新书, 新卷 |
-| 6 | 章节规划 Agent | `team/agent-chapter-planner.md` | 单章, 续写/批量 |
-| 7 | 正文写作 Agent | `team/agent-writing.md` | 单章, 续写/批量 |
-| 8 | 编辑审稿 Agent | `team/agent-editor-review.md` | 单章, 续写/批量, 审稿 |
-| 9 | 合规审查 Agent | `team/agent-compliance.md` | 新书, 单章, 续写/批量, 审稿 |
-| 10 | 连载状态 Agent | `team/agent-status.md` | 单章, 续写/批量, 查询 |
-| 11 | 剧情执行跟踪 Agent | `team/agent-plot-tracking.md` | 单章, 续写/批量, 审稿 |
+| 6 | 章节规划 Agent | `team/agent-chapter-planner.md` | 单章 |
+| 7 | 正文写作 Agent | `team/agent-writing.md` | 单章 |
+| 8 | 编辑审稿 Agent | `team/agent-editor-review.md` | 单章, 审稿 |
+| 9 | 合规审查 Agent | `team/agent-compliance.md` | 新书, 单章, 审稿 |
+| 10 | 连载状态 Agent | `team/agent-status.md` | 单章, 查询 |
+| 11 | 剧情执行跟踪 Agent | `team/agent-plot-tracking.md` | 单章, 审稿 |
 
 ## 工作流与 Agent 加载对照
 
@@ -43,7 +43,6 @@ delivery:
 | 创建新书 | 0, 1, 2, 3, 4, 9 | `stage_gate.py`, `agent_tracker.py` |
 | 创建新卷 | 0, 1, 2, 5 | `stage_gate.py`, `agent_tracker.py` |
 | 创建单章 | 0, 2, 3, 4, 6, 7, 8, 9, 10, 11 | `stage_gate.py`, `agent_tracker.py`, `rag_context.py`, `analyze_chapter.py`, `check_compliance.py`, `detect_forbidden_patterns.py`, `validate_review.py`, `rag_index.py` |
-| 续写/批量 | 0, 2, 3, 4, 6, 7, 8, 9, 10, 11 | `verify_continuity.py`, `rag_context.py`, `analyze_chapter.py`, `rag_index.py` |
 | 审稿 | 0, 8, 9, 11 | `analyze_chapter.py`, `check_compliance.py`, `detect_forbidden_patterns.py`, `validate_review.py` |
 | 查询状态 | 0, 10 | - |
 

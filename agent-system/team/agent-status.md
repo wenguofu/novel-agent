@@ -1,3 +1,23 @@
+---
+agent_id: agent-status
+display_name: 连载状态
+schema_version: "2.0"
+prerequisites:
+  - current_status.md
+  - manuscript/vol-XX/ch-XXXX.md
+outputs:
+  - state/current_status.md
+signatures:
+  - 连载状态|current_status
+  - 当前(?:剧情|状态)
+  - 资料更新|状态更新
+severity_levels:
+  error: [prerequisites]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase7_status_update
+---
+
 # 连载状态 Agent
 
 ## 角色编号
@@ -11,7 +31,7 @@
 - 为连续写作提供上下文状态基座。
 
 ## 参与的工作流
-`workflow-new-chapter.md`, `workflow-batch-chapters.md`, `workflow-query-status.md`
+`workflow-new-chapter.md`, `workflow-query-status.md`
 
 ## 输出 Schema
 

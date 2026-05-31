@@ -5,13 +5,14 @@ content[:allocated * 2] uses allocated (token count) as char offset — wrong.
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'portal'))
 import pytest
-from context_builder import build_context, _count_tokens
+from context_builder import build_context
+from token_utils import count_tokens
 
 class TestTokenTruncation:
-    def test_count_tokens_chinese(self):
+    def testcount_tokens_chinese(self):
         """Chinese text should cost ~1.5 tokens per character"""
         text = "这是一个测试句子用于验证中文分词和token计数功能"
-        tokens = _count_tokens(text)
+        tokens = count_tokens(text)
         assert tokens > 0
         # Chinese chars ≈ 1.5 tokens each (no English words to dilute)
         assert tokens > len(text)  # tokens should be MORE than chars

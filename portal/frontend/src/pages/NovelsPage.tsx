@@ -2,10 +2,11 @@ import React from 'react'
 import { Card, List, Tag, Space, Button } from 'antd'
 import { BookOutlined, EditOutlined, ReadOutlined } from '@ant-design/icons'
 import { useNovelStore } from '../stores/novelStore'
+import { useNovels } from '../api/client'
 import { useNavigate } from 'react-router-dom'
 
 export const NovelsPage: React.FC = () => {
-  const novels = useNovelStore((s) => s.novels)
+  const { data: novels = [] } = useNovels()
   const setCurrentNovel = useNovelStore((s) => s.setCurrentNovel)
   const navigate = useNavigate()
 

@@ -1,15 +1,39 @@
 /* App-level styles */
 
-/* Sidebar novel selector — white text on dark background */
+/* Sidebar novel selector — dark theme overrides for Select on dark sidebar */
 .sidebar-novel-select .ant-select-selection-item {
   color: #fff !important;
+}
+.sidebar-novel-select .ant-select-selection-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+.sidebar-novel-select .ant-select-selection-search-input {
+  color: #fff !important;
+}
+.sidebar-novel-select .ant-select-selection-placeholder {
+  color: rgba(255, 255, 255, 0.85) !important;
 }
 .sidebar-novel-select .ant-select-arrow {
   color: rgba(255, 255, 255, 0.65) !important;
 }
 .sidebar-novel-select .ant-select-clear {
   color: rgba(255, 255, 255, 0.45) !important;
+  background: transparent !important;
 }
 .sidebar-novel-select.ant-select-open .ant-select-selection-item {
   color: rgba(255, 255, 255, 0.85) !important;
 }
+/* Fix for borderless variant — ensure the selection area is transparent, not white */
+.sidebar-novel-select.ant-select-borderless .ant-select-selector {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+/* Override the focused state background which can flash white */
+.sidebar-novel-select.ant-select-focused .ant-select-selector {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+/* Additional text overrides rendered outside the styles prop scope */
+.sidebar-novel-select .ant-select-selection-search-input {
+  color: #fff !important;
+}
+/* Ensure dropdown options render correctly (light theme inside dropdown is fine) */

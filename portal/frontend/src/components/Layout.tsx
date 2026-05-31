@@ -1,5 +1,5 @@
 import React from 'react'
-import { Layout as AntLayout, Menu, Select, Divider } from 'antd'
+import { Layout as AntLayout, Menu, Select, ConfigProvider, theme } from 'antd'
 import {
   DashboardOutlined,
   EditOutlined,
@@ -20,6 +20,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useNovelStore } from '../stores/novelStore'
+import { useNovels } from '../api/client'
 
 const { Sider, Content } = AntLayout
 
@@ -71,6 +72,7 @@ const novelGroups = [
 // ── Always-visible extras below workspace ──
 const extraItems = [
   { key: '/search', icon: <SearchOutlined />, label: '搜索' },
+  { key: '/usage', icon: <BarChartOutlined />, label: '用量' },
   { key: '/config', icon: <SettingOutlined />, label: '配置' },
 ]
 
@@ -84,7 +86,7 @@ const allItems = [
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate()
   const location = useLocation()
-  const novels = useNovelStore((s) => s.novels)
+  const { data: novels = [] } = useNovels()
   const currentNovel = useNovelStore((s) => s.currentNovel)
   const setCurrentNovel = useNovelStore((s) => s.setCurrentNovel)
 
@@ -93,10 +95,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   )?.key || (location.pathname === '/' ? '/' : undefined)
 
   // Build Ant Design Menu items with SubMenu groups
-  const menuItems = [
+  const menuItems: any[] = [
     // Global
     ...globalItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
-    { type: 'divider' as const },
+    { type: 'divider' },
   ]
 
   if (currentNovel) {
@@ -105,7 +107,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       menuItems.push({
         key: group.key,
         label: group.label,
-        type: 'group' as const,
+        type: 'group',
         children: group.children.map((item) => ({
           key: item.key,
           icon: item.icon,
@@ -124,7 +126,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   }
 
   menuItems.push(
-    { type: 'divider' as const },
+    { type: 'divider' },
     ...extraItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
   )
 
@@ -152,27 +154,33 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             NovelForge
           </div>
 
-          {/* Novel Selector — always visible */}
-          <Select
-            style={{ width: '100%', color: '#fff' }}
-            className="sidebar-novel-select"
-            value={currentNovel || undefined}
-            allowClear
-            placeholder="选择小说..."
-            onChange={(v) => {
-              setCurrentNovel(v || null)
-              if (v && location.pathname === '/') {
-                navigate('/writing')
-              }
+          {/* Novel Selector — dark theme via ConfigProvider */}
+          <ConfigProvider
+            theme={{
+              algorithm: theme.darkAlgorithm,
+              token: { colorPrimary: '#1677ff' },
             }}
-            options={novels.map((n) => ({
-              value: n.name,
-              label: `${n.title || n.name}  ${n.total_chapters ? `(${n.total_chapters}章)` : ''}`,
-            }))}
-            dropdownStyle={{ minWidth: 200 }}
-            variant="borderless"
-            popupMatchSelectWidth={false}
-          />
+          >
+            <Select
+              style={{ width: '100%' }}
+              value={currentNovel || undefined}
+              allowClear
+              placeholder="选择小说..."
+              onChange={(v) => {
+                setCurrentNovel(v || null)
+                if (v && location.pathname === '/') {
+                  navigate('/writing')
+                }
+              }}
+              options={novels.map((n) => ({
+                value: n.name,
+                label: `${n.title || n.name}  ${n.total_chapters ? `(${n.total_chapters}章)` : ''}`,
+              }))}
+              dropdownStyle={{ minWidth: 200 }}
+              variant="borderless"
+              popupMatchSelectWidth={false}
+            />
+          </ConfigProvider>
         </div>
 
         {/* Navigation */}
@@ -190,7 +198,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       </Sider>
 
       <Content style={{ padding: 24, overflow: 'auto' }}>
-        {!currentNovel && !['/', '/novels/new', '/search', '/config'].includes(location.pathname) ? (
+        {!currentNovel && !['/', '/novels/new', '/search', '/config', '/usage'].includes(location.pathname) ? (
           <div
             style={{
               display: 'flex',

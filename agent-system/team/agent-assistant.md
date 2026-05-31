@@ -1,3 +1,20 @@
+---
+agent_id: agent-assistant
+display_name: 写作助手
+schema_version: "2.0"
+prerequisites:
+  - project.md
+outputs: []
+signatures:
+  - 写作助手|agent-assistant
+  - 【任务】|【工作流】|【状态】
+severity_levels:
+  error: []
+  warning: [signatures]
+  info: []
+stage: all
+---
+
 # 写作助手 Agent（用户交互层）
 
 ## 角色编号

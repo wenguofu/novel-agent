@@ -9,7 +9,12 @@ interface ContextRequest {
 }
 
 export async function buildContext(params: ContextRequest): Promise<string> {
-  const data = await apiClient.post<{ system_prompt: string }>('/api/context/build', params)
+  const data = await apiClient.post<{ system_prompt: string }>('/api/context/build', {
+    novel_name: params.novel_name,
+    volume: params.volume,
+    chapter_num: params.chapter,
+    style: params.style || '',
+  })
   return data.system_prompt || ''
 }
 

@@ -1,3 +1,23 @@
+---
+agent_id: agent-chapter-planner
+display_name: 章节规划
+schema_version: "2.0"
+prerequisites:
+  - outline/vol-XX-chapters.md
+  - current_status.md
+  - danger_issue_{章节号}.md
+outputs: []
+signatures:
+  - 章纲|章节规划
+  - 主要冲突|信息增量|结尾悬念
+  - 本章功能(?!.*审稿)
+severity_levels:
+  error: [prerequisites]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase4_chapter_planning
+---
+
 # 章节规划 Agent
 
 ## 角色编号
@@ -22,7 +42,7 @@
 | 悲情/揭秘 | 余华、沈从文、王小波 |
 
 ## 参与的工作流
-`workflow-new-chapter.md`, `workflow-batch-chapters.md`
+`workflow-new-chapter.md`, 
 
 ## 输出 Schema
 

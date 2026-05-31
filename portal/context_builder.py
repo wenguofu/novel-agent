@@ -187,30 +187,27 @@ def build_context(params):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _build_project_meta(novel_name):
-    """Extract project metadata from novels table"""
-    conn = db.get_db()
-    novel = conn.execute("SELECT title, genre, subgenre, word_goal FROM novels WHERE name=?",
-                         (novel_name,)).fetchone()
-    conn.close()
+    """Extract project metadata via repository"""
+    from repository import get_repo
+    novel = get_repo().get_novel(novel_name)
     if not novel:
         return ""
     return f"""## 项目信息
-- 书名：{novel['title'] or novel_name}
-- 类型：{novel['genre'] or '未设置'}
-- 目标篇幅：{novel['word_goal'] or '未设置'}"""
-
+- 书名：{novel.get('title') or novel_name}
+- 类型：{novel.get('genre') or '未设置'}
+- 目标篇幅：{novel.get('word_goal') or '未设置'}"""
 
 def _build_chapter_context(novel_name, volume, chapter_num):
-    """Get outline section + danger issue + previous chapter ending"""
+    """Get outline section + danger issue + previous chapter ending via repository"""
+    from repository import get_repo
+    repo = get_repo()
     parts = []
+    vol_str = f"vol-{volume:02d}"
 
     # Outline section
-    outlines = db.get_db().execute(
-        "SELECT content FROM outlines WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND volume=?",
-        (novel_name, f"vol-{volume:02d}")).fetchone()
-    if outlines:
-        content = outlines["content"]
-        # Try to extract relevant chapter section
+    outline = repo.get_outline(novel_name, vol_str)
+    if outline:
+        content = outline.get("content", "")
         ch_padded_3 = str(chapter_num).zfill(3)
         ch_padded_4 = str(chapter_num).zfill(4)
         import re
@@ -225,21 +222,15 @@ def _build_chapter_context(novel_name, volume, chapter_num):
             parts.append(f"## 本卷大纲\n{content[:1500]}")
 
     # Danger issue
-    danger = db.get_db().execute(
-        """SELECT content FROM danger_issues WHERE novel_id=(SELECT id FROM novels WHERE name=?)
-           AND volume=? AND chapter_num=?""",
-        (novel_name, f"vol-{volume:02d}", chapter_num)).fetchone()
+    danger = repo.get_danger_issue(novel_name, vol_str, chapter_num)
     if danger:
-        parts.append(f"## 本章危机/关卡\n{danger['content'][:800]}")
+        parts.append(f"## 本章危机/关卡\n{danger.get('content', '')[:800]}")
 
     # Previous chapter ending (for continuity)
     if chapter_num > 1:
-        prev_ch = db.get_db().execute(
-            """SELECT content FROM chapters WHERE novel_id=(SELECT id FROM novels WHERE name=?)
-               AND volume=? AND chapter_num=?""",
-            (novel_name, f"vol-{volume:02d}", chapter_num - 1)).fetchone()
+        prev_ch = repo.get_chapter_by_num(novel_name, vol_str, chapter_num - 1)
         if prev_ch:
-            parts.append(f"## 上一章结尾（衔接）\n{prev_ch['content'][-2000:]}")
+            parts.append(f"## 上一章结尾（衔接）\n{prev_ch.get('content', '')[-2000:]}")
 
     return "\n\n".join(parts)
 
@@ -283,99 +274,51 @@ def _build_foreshadowing_context(novel_name, volume):
 
 
 def _build_world_context(novel_name, volume, chapter_num):
-    """Get relevant world building entries"""
-    conn = db.get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return ""
-    nid = novel["id"]
-
-    # Get entries relevant to current volume range
-    rows = conn.execute(
-        """SELECT domain, name, content FROM world_building
-           WHERE novel_id=? AND (related_vol=0 OR related_vol BETWEEN ? AND ?)
-           LIMIT 10""",
-        (nid, max(1, volume - 1), volume + 1)).fetchall()
-    conn.close()
-
+    """Active world-building entries for this volume via repository"""
+    from repository import get_repo
+    rows = get_repo().get_world_building_for_volume(novel_name, volume, limit=10)
     if not rows:
         return ""
-
-    parts = ["## 世界观参考"]
+    parts = ["## 世界观要点"]
     for r in rows:
-        parts.append(f"- **[{r['domain']}] {r['name']}**：{r['content'][:300]}")
+        parts.append(f"- [{r.get('domain', '')}] {r.get('name', '')}: {r.get('content', '')[:200]}")
     return "\n".join(parts)
-
 
 def _build_pacing_context(novel_name, volume, chapter_num):
-    """Get pacing guidance for this chapter"""
-    conn = db.get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return ""
-    nid = novel["id"]
-
-    row = conn.execute(
-        """SELECT pace_type, intensity, emotion_target, word_budget_min, word_budget_max
-           FROM pacing_control
-           WHERE novel_id=? AND volume=? AND chapter_start<=? AND chapter_end>=?
-           LIMIT 1""",
-        (nid, volume, chapter_num, chapter_num)).fetchone()
-    conn.close()
-
+    """Pacing control info for current chapter via repository"""
+    from repository import get_repo
+    row = get_repo().get_pacing(novel_name, volume, chapter_num)
     if not row:
         return ""
-
-    return f"""## 节奏/情感指引
-- 本章节奏：{row['pace_type']}
-- 强度：{row['intensity']}/10
-- 情感目标：{row['emotion_target'] or '未设定'}
-- 字数范围：{row['word_budget_min']}-{row['word_budget_max']}字"""
-
+    parts = [f"## 节奏控制\n- 类型：{row.get('pace_type', '')}\n- 强度：{row.get('intensity', 5)}/10"]
+    if row.get('emotion_target'):
+        parts.append(f"- 情感目标：{row['emotion_target']}")
+    parts.append(f"- 字数预算：{row.get('word_budget_min', 2500)}–{row.get('word_budget_max', 3500)}")
+    if row.get('notes'):
+        parts.append(f"- 备注：{row['notes'][:200]}")
+    return "\n".join(parts)
 
 def _build_revelation_context(novel_name, volume):
-    """Get info that should be revealed in this volume"""
-    conn = db.get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return ""
-    nid = novel["id"]
-
-    rows = conn.execute(
-        """SELECT name, info_type, content FROM revelation_schedule
-           WHERE novel_id=? AND reveal_volume=? LIMIT 5""",
-        (nid, volume)).fetchall()
-    conn.close()
-
+    """Revelation schedule for current volume via repository"""
+    from repository import get_repo
+    rows = get_repo().get_revelations_for_volume(novel_name, volume)
     if not rows:
         return ""
-
-    parts = ["## 信息释放约束（本章可透露以下信息）"]
+    parts = ["## 信息释放排期"]
     for r in rows:
-        parts.append(f"- [{r['info_type']}] {r['name']}：{r['content'][:200]}")
+        parts.append(f"- [第{r.get('reveal_chapter', 0)}章][{r.get('info_type', '')}] {r.get('name', '')}: {r.get('content', '')[:150]}")
     return "\n".join(parts)
-
 
 def _build_plot_arc_context(novel_name, volume):
-    """Get active plot arcs for this volume"""
-    conn = db.get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return ""
-    nid = novel["id"]
-
-    rows = conn.execute(
-        """SELECT name, type, summary FROM plot_arcs
-           WHERE novel_id=? AND status='active'
-           AND volume_start<=? AND volume_end>=?
-           LIMIT 5""",
-        (nid, volume, volume)).fetchall()
-    conn.close()
-
+    """Active plot arcs for current volume via repository"""
+    from repository import get_repo
+    rows = get_repo().get_plot_arcs_for_volume(novel_name, volume)
     if not rows:
         return ""
-
-    parts = ["## 当前剧情弧线"]
+    parts = ["## 剧情线"]
     for r in rows:
-        parts.append(f"- **[{r['type']}] {r['name']}**：{r['summary'][:300]}")
+        parts.append(f"- [{r.get('type', '')}] {r.get('name', '')}: {r.get('summary', '')[:200]}")
     return "\n".join(parts)
-
 
 def _build_style_context(style, instructions, novel_name):
     """Build style guidance"""
@@ -387,44 +330,27 @@ def _build_style_context(style, instructions, novel_name):
     return "\n".join(parts)
 
 
-def get_context_stats(novel_name, volume, chapter_num):
-    """Return available context statistics for a given chapter"""
-    layers = []
-    conn = db.get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    nid = novel["id"] if novel else None
-    conn.close()
+def get_context_stats(novel_name: str, volume: int, chapter_num: int) -> dict:
+    """Get stats about available context for a chapter via repository."""
+    from repository import get_repo
+    repo = get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel:
+        return {"error": "小说不存在"}
+    nid = novel['id']
+    vol_str = f"vol-{volume:02d}"
 
-    if nid:
-        conn = db.get_db()
-        # Characters
-        char_count = len(db.get_characters(novel_name))
-        layers.append({"name": "角色", "available": char_count})
-
-        # Foreshadowing
-        fs_count = len(db.get_unresolved_foreshadowing(novel_name, current_vol=volume))
-        layers.append({"name": "待填伏笔", "available": fs_count})
-
-        # World building
-        wb_count = conn.execute(
-            "SELECT COUNT(*) FROM world_building WHERE novel_id=?", (nid,)).fetchone()[0]
-        layers.append({"name": "世界观条目", "available": wb_count})
-
-        # Plot arcs
-        pa_count = conn.execute(
-            "SELECT COUNT(*) FROM plot_arcs WHERE novel_id=?", (nid,)).fetchone()[0]
-        layers.append({"name": "剧情弧线", "available": pa_count})
-
-        # Pacing
-        pc_count = conn.execute(
-            "SELECT COUNT(*) FROM pacing_control WHERE novel_id=?", (nid,)).fetchone()[0]
-        layers.append({"name": "节奏条目", "available": pc_count})
-
-        # Revelation
-        rs_count = conn.execute(
-            "SELECT COUNT(*) FROM revelation_schedule WHERE novel_id=?", (nid,)).fetchone()[0]
-        layers.append({"name": "信息释放", "available": rs_count})
-
-        conn.close()
-
-    return {"layers": layers, "novel": novel_name, "volume": volume, "chapter": chapter_num}
+    chars_len = len(repo.list_characters(novel_name))
+    fs_len = len(repo.get_unresolved_foreshadowing(novel_name, volume, chapter_num))
+    vol_chapters = len([c for c in repo.list_chapters(novel_name) if c.get('volume') == vol_str])
+    return {
+        "novel": novel_name, "volume": volume, "chapter_num": chapter_num,
+        "total_chapters": novel.get('total_chapters', 0),
+        "volume_chapters": vol_chapters,
+        "characters": chars_len,
+        "unresolved_foreshadowing": fs_len,
+        "world_building": len(repo.list_world_building(novel_name)),
+        "plot_arcs": len(repo.list_plot_arcs(novel_name)),
+        "pacing": 1 if repo.get_pacing(novel_name, volume, chapter_num) else 0,
+        "revelations": len(repo.get_revelations_for_volume(novel_name, volume)),
+    }

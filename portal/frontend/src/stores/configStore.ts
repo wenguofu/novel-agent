@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-interface DeepSeekConfig {
+interface AIConfig {
   api_key?: string
   api_base?: string
   model?: string
@@ -10,10 +10,10 @@ interface DeepSeekConfig {
 }
 
 interface ConfigState {
-  deepseekConfig: DeepSeekConfig
+  deepseekConfig: any
   configured: boolean
   fetchConfig: () => Promise<void>
-  saveConfig: (config: DeepSeekConfig) => Promise<void>
+  saveConfig: (config: AIConfig) => Promise<void>
   testConfig: () => Promise<boolean>
 }
 
@@ -27,7 +27,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
       const data = await resp.json()
       set({
         deepseekConfig: data,
-        configured: !!(data.api_key || data.api_base),
+        configured: data.deepseek_configured || data.deepseek_key_saved,
       })
     } catch {
       // ignore
@@ -35,12 +35,16 @@ export const useConfigStore = create<ConfigState>((set) => ({
   },
 
   saveConfig: async (config) => {
-    await fetch('/api/config/save', {
+    const resp = await fetch('/api/config/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     })
-    set({ deepseekConfig: config, configured: !!(config.api_key || config.api_base) })
+    const data = await resp.json()
+    set({
+      deepseekConfig: { ...config, ...data },
+      configured: data.deepseek_configured,
+    })
   },
 
   testConfig: async () => {

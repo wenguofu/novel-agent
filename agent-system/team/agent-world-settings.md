@@ -1,3 +1,23 @@
+---
+agent_id: agent-world-settings
+display_name: 世界观设定
+schema_version: "2.0"
+prerequisites:
+  - world_bible.md
+outputs:
+  - world_bible.md
+signatures:
+  - 世界观|世界设定|设定(?:检查|一致性)
+  - 是否违反世界观
+  - 是否新增设定
+  - 力量体系|地图|组织|限制条件
+severity_levels:
+  error: [prerequisites]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase1_opening
+---
+
 # 世界观设定 Agent
 
 ## 角色编号
@@ -11,7 +31,7 @@
 - **章节写作时**：审核正文写作中出现的新设定，提供冲突检测和登记建议。
 
 ## 参与的工作流
-`workflow-new-book.md`, `workflow-new-chapter.md`, `workflow-batch-chapters.md`
+`workflow-new-book.md`, `workflow-new-chapter.md`, 
 
 ## 输入 Schema（单章工作流）
 
@@ -24,7 +44,7 @@ delivery:
     - manuscript/vol-XX/ch-{四位章节号}.md
     - outline/vol-XX-chapters.md
   content:
-    check_type: <新书设定 | 单章新增设定审核 | 批量审核>
+    check_type: <新书设定 | 单章新增设定审核>
     chapter_number: <整数 | 不适用>
     new_settings_from_chapter:
       - name: <设定名>

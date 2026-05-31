@@ -10,12 +10,14 @@ import {
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useNovelStore } from '../stores/novelStore'
+import { useNovels } from '../api/client'
+import { EmotionCurveChart } from '../components/EmotionCurveChart'
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate()
-  const novels = useNovelStore((s) => s.novels)
-  const loading = useNovelStore((s) => s.loading)
   const setCurrentNovel = useNovelStore((s) => s.setCurrentNovel)
+  const currentNovel = useNovelStore((s) => s.currentNovel)
+  const { data: novels = [], isLoading } = useNovels()
 
   const totalChapters = novels.reduce((sum, n) => sum + n.total_chapters, 0)
   const totalWords = novels.reduce((sum, n) => sum + (n.total_words || 0), 0)
@@ -24,6 +26,8 @@ export const Dashboard: React.FC = () => {
     setCurrentNovel(name)
     navigate(action)
   }
+
+  const activeNovel = currentNovel || (novels.length > 0 ? novels[0].name : null)
 
   return (
     <div>
@@ -66,7 +70,15 @@ export const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="欢迎使用 NovelForge" loading={loading}>
+      {activeNovel && (
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={24}>
+            <EmotionCurveChart novelName={activeNovel} compact />
+          </Col>
+        </Row>
+      )}
+
+      <Card title="欢迎使用 NovelForge" loading={isLoading}>
         <p style={{ color: '#666', marginBottom: 16 }}>
           选择一个小说开始写作，或创建新的小说项目。
         </p>

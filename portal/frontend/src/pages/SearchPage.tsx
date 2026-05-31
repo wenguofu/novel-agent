@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
 import { Card, Select, Input, Space, List, Tag } from 'antd'
-
 import { useNovelStore } from '../stores/novelStore'
+import { useNovels } from '../api/client'
 
 interface SearchResult { type: string; title: string; snippet: string; novel_name?: string; volume?: string }
 
 export const SearchPage: React.FC = () => {
-  const novels = useNovelStore((s) => s.novels)
+  const { data: novels = [] } = useNovels()
   const currentNovel = useNovelStore((s) => s.currentNovel)
   const setCurrentNovel = useNovelStore((s) => s.setCurrentNovel)
 

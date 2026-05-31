@@ -5,7 +5,8 @@ Demonstrates content[:allocated * 2] fails for Chinese text.
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'portal'))
 import pytest
-from context_builder import build_context, _count_tokens
+from context_builder import build_context
+from token_utils import count_tokens
 
 class TestTokenBudgetEnforcement:
     def test_chinese_truncation_overflow(self):
@@ -13,14 +14,14 @@ class TestTokenBudgetEnforcement:
         Chinese: 1 char ≈ 1.5 tokens, so allocated*2 bytes → 3x overflow."""
         # Simulate: layer budget is 100 tokens, but content is 500 Chinese chars (≈750 tok)
         large_cn_text = "测试" * 500  # 1000 chars, ~1500 tokens
-        tokens_in = _count_tokens(large_cn_text)
+        tokens_in = count_tokens(large_cn_text)
         print(f"\nInput: {len(large_cn_text)} chars = ~{tokens_in} tokens")
 
         # Naive truncation (current bug): allocated=100 → content[:100*2] = 200 chars
         # 200 Chinese chars ≈ 300 tokens → 3x budget violation
         allocated = 100
         naive_truncated = large_cn_text[:allocated * 2]
-        naive_tokens = _count_tokens(naive_truncated)
+        naive_tokens = count_tokens(naive_truncated)
         print(f"Naive: {len(naive_truncated)} chars = {naive_tokens} tokens "
               f"(budget: {allocated}, overflow: {naive_tokens - allocated})")
 

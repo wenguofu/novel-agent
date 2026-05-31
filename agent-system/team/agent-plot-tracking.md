@@ -1,3 +1,26 @@
+---
+agent_id: agent-plot-tracking
+display_name: 剧情执行跟踪
+schema_version: "2.0"
+prerequisites:
+  - full_story_arc.md
+  - outline/vol-XX-chapters.md
+  - current_status.md
+outputs:
+  - antagonist_timeline.md
+  - plot_execution_log.md
+signatures:
+  - 剧情.*跟踪|执行.*偏差|偏差.*告警
+  - 反派.*时间线|antagonist_timeline
+  - 信息(?:差|不对称)|执行报告
+  - plot_execution_log
+severity_levels:
+  error: [prerequisites]
+  warning: [signatures, schema_fields, deviation_alerts]
+  info: []
+stage: phase6_review
+---
+
 # 剧情执行跟踪 Agent
 
 ## 角色编号
@@ -12,7 +35,7 @@
 - 卷完成后生成卷级执行报告 `volume_report/vol-XX.md`。
 
 ## 参与的工作流
-`workflow-new-chapter.md`, `workflow-batch-chapters.md`, `workflow-review.md`
+`workflow-new-chapter.md`, `workflow-review.md`
 
 ## 输入 Schema
 

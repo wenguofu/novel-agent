@@ -25,7 +25,6 @@
 | 创建新书 | `workflows/workflow-new-book.md` | 总主编剧 + 类型 + 世界观 + 人物 + 合规 |
 | 创建新卷 | `workflows/workflow-new-volume.md` | 总主编剧 + 类型 + 长线剧情 |
 | 创建单章 | `workflows/workflow-new-chapter.md` | 章节规划 + 正文 + 编辑审稿 + 合规 + 状态 + 剧情跟踪 |
-| 续写/批量 | `workflows/workflow-batch-chapters.md` | 章节规划 + 正文 + 编辑审稿 + 合规 + 状态 + 剧情跟踪 |
 | 审稿 | `workflows/workflow-review.md` | 编辑审稿 + 合规 + 剧情跟踪 |
 | 查询状态 | `workflows/workflow-query-status.md` | 连载状态 |
 
@@ -63,19 +62,13 @@
 
 - 章节编号、章节标题（可选）、风格要求（可选）、字数要求、特殊要求（可选）
 
-### 4. 续写（批量章节）
-
-加载 `workflows/workflow-batch-chapters.md`，按循环流程执行。接收信息：
-
-- 起始章节编号、结束章节编号、风格要求（可选，可针对不同章节指定）
-
-### 5. 审稿
+### 4. 审稿
 
 加载 `workflows/workflow-review.md`，按流程执行。接收信息：
 
 - 章节编号
 
-### 6. 查询状态
+### 5. 查询状态
 
 加载 `workflows/workflow-query-status.md`，按流程执行。
 
@@ -88,7 +81,7 @@
 | `agent-system/scripts/analyze_chapter.py` | 字数+结构+禁式+人物+重复检测 | 正文写作后、审稿前 |
 | `agent-system/scripts/detect_forbidden_patterns.py` | 禁词/禁式检测 | 正文写作后、审稿前 |
 | `agent-system/scripts/check_compliance.py` | 合规名称检查 | 审稿时、合规检查时 |
-| `agent-system/scripts/verify_continuity.py` | 批量章节连续性校验 | 批量写作完成后 |
+
 | `agent-system/scripts/stage_gate.py` | 阶段门控 (阻止越级) | 每阶段开始前/完成后 |
 | `agent-system/scripts/agent_tracker.py` | Agent 执行完整性检查 | 每阶段产出后 |
 | `agent-system/scripts/validate_review.py` | 审稿评分卡验证 | 编辑审稿完成后 |

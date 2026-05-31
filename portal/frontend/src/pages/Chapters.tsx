@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
-import { Card, Input, List, Tag, Space } from 'antd'
-import { BookOutlined, ReadOutlined, SearchOutlined } from '@ant-design/icons'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Card, Input, List, Tag, Space, Button, message, Popconfirm } from 'antd'
+import { BookOutlined, ReadOutlined, SearchOutlined, CopyOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useNovelStore } from '../stores/novelStore'
 
 interface ChapterItem {
@@ -22,6 +22,7 @@ export const Chapters: React.FC = () => {
   const [search, setSearch] = useState('')
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null)
   const [chapterContent, setChapterContent] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const load = async () => {
     if (!currentNovel) return
@@ -38,6 +39,25 @@ export const Chapters: React.FC = () => {
 
   useEffect(() => { load() }, [currentNovel])
 
+  const extractChNum = (name: string) => {
+    const m = name.match(/ch-(\d+)/)
+    return m ? parseInt(m[1], 10) : 0
+  }
+
+  // ── Find the latest chapter (for delete restriction) ──
+  const latestRef = useMemo(() => {
+    let latest: { vol: string; chNum: number; ref: string } | null = null
+    for (const vol of volumes) {
+      for (const ch of vol.chapters || []) {
+        const cn = extractChNum(ch.name)
+        if (!latest || cn > latest.chNum) {
+          latest = { vol: vol.name, chNum: cn, ref: `${vol.name}/${ch.name}` }
+        }
+      }
+    }
+    return latest
+  }, [volumes])
+
   const handleRead = async (volName: string, chName: string) => {
     const ref = `${volName}/${chName}`
     setSelectedChapter(ref)
@@ -51,9 +71,33 @@ export const Chapters: React.FC = () => {
     }
   }
 
-  const extractChNum = (name: string) => {
-    const m = name.match(/ch-(\d+)/)
-    return m ? parseInt(m[1], 10) : 0
+  const handleDelete = async (volName: string, chName: string) => {
+    if (!currentNovel) return
+    const ref = `${volName}/${chName}`
+    setDeleting(true)
+    try {
+      const resp = await fetch(
+        `/api/novels/${encodeURIComponent(currentNovel)}/chapters/${ref}`,
+        { method: 'DELETE' }
+      )
+      const data = await resp.json()
+      if (data.success) {
+        message.success(data.message || '已删除')
+        if (selectedChapter === ref) {
+          setSelectedChapter(null)
+          setChapterContent('')
+        }
+        // Show rollback details
+        if (data.rollback_log?.length) {
+          data.rollback_log.forEach((log: string) => message.info(log))
+        }
+        load() // refresh list
+      } else {
+        message.error(data.error || '删除失败')
+      }
+    } catch {
+      message.error('删除请求失败')
+    } finally { setDeleting(false) }
   }
 
   const filteredVolumes = volumes.map((vol) => ({
@@ -79,6 +123,9 @@ export const Chapters: React.FC = () => {
             style={{ width: 250 }}
             allowClear
           />
+          {latestRef && (
+            <Tag color="green">最新: 第{latestRef.chNum}章</Tag>
+          )}
         </Space>
       </Card>
 
@@ -95,18 +142,56 @@ export const Chapters: React.FC = () => {
                 dataSource={vol.chapters}
                 renderItem={(ch) => {
                   const ref = `${vol.name}/${ch.name}`
+                  const chNum = extractChNum(ch.name)
+                  const isLatest = latestRef?.ref === ref
+                  const isSelected = selectedChapter === ref
                   return (
                     <List.Item
                       style={{
                         cursor: 'pointer',
-                        background: selectedChapter === ref ? '#e6f4ff' : undefined,
+                        background: isSelected ? '#e6f4ff' : undefined,
                       }}
                       onClick={() => handleRead(vol.name, ch.name)}
+                      actions={[
+                        isLatest ? (
+                          <Popconfirm
+                            key="del"
+                            title="确认删除"
+                            description={`删除第${chNum}章将回滚伏笔、角色状态和阶段进度。此操作不可撤销。`}
+                            onConfirm={(e) => {
+                              e?.stopPropagation()
+                              handleDelete(vol.name, ch.name)
+                            }}
+                            onCancel={(e) => e?.stopPropagation()}
+                            okText="确认删除"
+                            cancelText="取消"
+                            okButtonProps={{ danger: true }}
+                          >
+                            <Button
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              loading={deleting}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </Popconfirm>
+                        ) : (
+                          <Button
+                            key="del-disabled"
+                            size="small"
+                            disabled
+                            icon={<DeleteOutlined />}
+                            title="只能从最新章节开始往前删除"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ),
+                      ]}
                     >
                       <Space>
                         <BookOutlined />
-                        <span>第{extractChNum(ch.name)}章</span>
+                        <span>第{chNum}章</span>
                         <Tag>{ch.words?.toLocaleString() || 0}字</Tag>
+                        {isLatest && <Tag color="green">最新</Tag>}
                       </Space>
                     </List.Item>
                   )
@@ -123,6 +208,44 @@ export const Chapters: React.FC = () => {
           title={selectedChapter ? `阅读: ${selectedChapter}` : '章节内容'}
           style={{ flex: 1 }}
           styles={{ body: { maxHeight: '60vh', overflow: 'auto' } }}
+          extra={
+            chapterContent ? (
+              <Space>
+                {selectedChapter && latestRef?.ref === selectedChapter && (
+                  <Popconfirm
+                    title="确认删除"
+                    description="删除当前章节将回滚伏笔、角色状态和阶段进度。"
+                    onConfirm={() => {
+                      if (selectedChapter) {
+                        const [vol, ch] = selectedChapter.split('/')
+                        handleDelete(vol, ch)
+                      }
+                    }}
+                    okText="确认删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} loading={deleting}>
+                      删除本章
+                    </Button>
+                  </Popconfirm>
+                )}
+                <Button
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(chapterContent).then(() => {
+                      message.success('已复制章节内容')
+                    }).catch(() => {
+                      message.error('复制失败')
+                    })
+                  }}
+                >
+                  复制
+                </Button>
+              </Space>
+            ) : null
+          }
         >
           {chapterContent ? (
             <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, fontSize: 15 }}>

@@ -1,3 +1,23 @@
+---
+agent_id: agent-genre-rules
+display_name: 类型规则
+schema_version: "2.0"
+prerequisites:
+  - genre_bible.md
+outputs:
+  - genre_bible.md
+signatures:
+  - 类型(?:承诺|检查|规则)
+  - 是否加载.*genre_bible
+  - 是否符合类型承诺
+  - 是否包含危机.*专业解释.*主角反差
+severity_levels:
+  error: [prerequisites]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase1_opening
+---
+
 # 类型规则 Agent
 
 ## 角色编号

@@ -10,22 +10,45 @@ from pathlib import Path
 # chromadb path — same as agent-system/scripts/rag_query.py
 CHROMA_DB_DIR = Path.home() / ".hermes" / "novel_rag_db"
 
-# Try importing chromadb; if unavailable, we operate in DB-only mode
-try:
-    import chromadb
-    from sentence_transformers import SentenceTransformer
-    EMBED_MODEL = "BAAI/bge-small-zh-v1.5"
-    _model = None
+# Lazy imports: sentence-transformers/chromadb are heavy and may hang on network issues.
+# Only import when actually needed (first call to _ensure_chroma()).
+EMBED_MODEL = "BAAI/bge-small-zh-v1.5"
+_model = None
+_chroma_imported = False
+_chroma_available = None
 
-    def _get_model():
-        global _model
-        if _model is None:
+def _ensure_chroma():
+    """Lazy-init chromadb + sentence-transformers. Returns True if available."""
+    global _chroma_available, _chroma_imported, _model
+    if _chroma_imported:
+        return _chroma_available
+    _chroma_imported = True
+    try:
+        import chromadb as _cb
+        from sentence_transformers import SentenceTransformer as _ST
+        globals()['chromadb'] = _cb
+        globals()['SentenceTransformer'] = _ST
+        _chroma_available = True
+    except (ImportError, Exception):
+        _chroma_available = False
+    return _chroma_available
+
+def _get_model():
+    global _model
+    if _model is None and _ensure_chroma():
+        try:
             _model = SentenceTransformer(EMBED_MODEL)
-        return _model
+        except Exception:
+            pass
+    return _model
 
-    CHROMA_AVAILABLE = True
-except ImportError:
-    CHROMA_AVAILABLE = False
+CHROMA_AVAILABLE = property(lambda self: _ensure_chroma()) if False else None  # never True at import time
+
+def _is_chroma_available():
+    return _ensure_chroma()
+
+# Import shared token utils
+from token_utils import count_tokens
 
 
 def _get_collection(novel_name):
@@ -98,14 +121,6 @@ def _query_chroma(novel_name, query_text, file_type=None, n_results=5,
         return []
 
 
-def _estimate_tokens(text):
-    """Rough token estimate: Chinese chars ≈ 1.5 tokens, English words ≈ 1.3 tokens"""
-    import re
-    chinese = len(re.findall(r'[\u4e00-\u9fff]', text))
-    english = len(re.findall(r'[a-zA-Z]+', text))
-    return int(chinese * 1.5 + english * 1.3)
-
-
 def query_categories(novel_name, categories, total_max_tokens=10000):
     """
     Query chromadb for multiple categories with token budgets.
@@ -146,7 +161,7 @@ def query_categories(novel_name, categories, total_max_tokens=10000):
 
         for chunk in chunks:
             content = chunk.get("content", "")
-            est = _estimate_tokens(content)
+            est = count_tokens(content)
             if tokens_used + est > allocated:
                 break
             collected.append(chunk)

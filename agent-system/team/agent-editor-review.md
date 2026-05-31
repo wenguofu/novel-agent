@@ -1,3 +1,28 @@
+---
+agent_id: agent-editor-review
+display_name: 编辑审稿
+schema_version: "2.0"
+prerequisites:
+  - manuscript/vol-XX/ch-XXXX.md
+  - outline/vol-XX-chapters.md
+outputs:
+  - reviews/ch-XXXX-review.md
+  - reviews/ch-XXXX-review.json
+signatures:
+  - 审稿(?:结论|记录|维度)
+  - 评分卡|评分[：:]\s*\d
+  - 章节功能.*节奏.*信息密度
+  - 通过.*修改.*重写
+severity_levels:
+  error: [prerequisites, conclusion_invalid]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase6_review
+escalation:
+  max_revisions: 3
+  max_rewrites: 2
+---
+
 # 编辑审稿 Agent
 
 ## 角色编号
@@ -13,7 +38,7 @@
 - **审稿升级**：连续 3 次「修改」或连续 2 次「重写」结论时，向 agent-assistant 发出升级告警。
 
 ## 参与的工作流
-`workflow-new-chapter.md`, `workflow-batch-chapters.md`, `workflow-review.md`
+`workflow-new-chapter.md`, `workflow-review.md`
 
 ## 升级机制
 

@@ -1,3 +1,23 @@
+---
+agent_id: agent-long-plot
+display_name: 长线剧情
+schema_version: "2.0"
+prerequisites:
+  - full_story_arc.md
+  - volume_plan.md
+outputs:
+  - full_story_arc.md
+signatures:
+  - 长线剧情|主线|分卷
+  - 伏笔(?:检查|状态|变化)
+  - full_story_arc|volume_plan
+severity_levels:
+  error: [prerequisites]
+  warning: [signatures, schema_fields]
+  info: [content_heuristics]
+stage: phase2_arc
+---
+
 # 长线剧情 Agent
 
 ## 角色编号
