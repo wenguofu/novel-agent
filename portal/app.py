@@ -1740,9 +1740,12 @@ def api_review_chapter(novel_name):
     volume = data.get("volume", "vol-01")
     chapter_num = data.get("chapter_num", "")
     chapter_num = str(chapter_num) if not isinstance(chapter_num, str) else chapter_num
-    ch_padded = chapter_num.zfill(4) if chapter_num.isdigit() else chapter_num
+    ch_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
     if not chapter_ref:
         chapter_ref = f"{volume}/ch-{ch_padded}"
+    else:
+        # Normalize chapter_ref: vol-01-ch-001 -> vol-01/ch-001
+        chapter_ref = chapter_ref.replace("-ch-", "/ch-")
 
     ch_content = read_novel_file(novel_name, "manuscript", f"{chapter_ref}.md")
     if not ch_content:
