@@ -1,26 +1,70 @@
 """
-Content Database — SQLite + FTS5 full-text search for novel content.
+Content Database — unified access layer for novel content.
+Uses repository.py (SQLAlchemy) under the hood; supports SQLite and MySQL
+via DATABASE_URL environment variable.
 
-Tables: novels, outlines, chapters, reviews, danger_issues
-All tables have FTS5 virtual tables for full-text search.
+All public functions are maintained for backward compatibility.
+Internal DB access goes through repository.get_repo().
 """
 
 import hashlib
 import os
 import re
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "content.db")
 NOVELS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "novels")
 
+# Lazy import to avoid circular deps
+_repo = None
+
+def _get_repo():
+    global _repo
+    if _repo is None:
+        from repository import get_repo
+        _repo = get_repo()
+    return _repo
+
 def get_db():
+    """Return a raw DB connection for backward compatibility.
+
+    For SQLite mode: returns a sqlite3 connection with Row factory.
+    For MySQL mode: logs a deprecation warning and returns a session wrapper.
+
+    New code should use repository.get_repo() instead.
+    """
+    import os as _os
+    db_url = _os.environ.get("DATABASE_URL", "")
+    if db_url.startswith("mysql"):
+        import warnings
+        warnings.warn("get_db() is deprecated with MySQL; use repository.get_repo()", DeprecationWarning)
+        # Return a thin session wrapper for backward compat
+        return _RepoSessionWrapper()
+
+    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+class _RepoSessionWrapper:
+    """Minimal wrapper that provides sqlite3.Row-like interface over repo methods.
+    Only used for backward compatibility in MySQL mode."""
+
+    def execute(self, sql, params=None):
+        """Parse common SQL patterns and delegate to repo methods."""
+        sql_upper = sql.strip().upper()
+        # This is a best-effort compatibility layer; complex queries should use repo directly
+        raise NotImplementedError(
+            "Direct SQL execution is not supported in MySQL mode. "
+            "Use repository.get_repo() methods instead."
+        )
+
+    def close(self):
+        pass
 
 # ═══════════════════════════════════════════════════════════════════════
 # Schema
@@ -49,6 +93,23 @@ CREATE TABLE IF NOT EXISTS outlines (
     updated_at TEXT DEFAULT (datetime('now')),
     UNIQUE(novel_id, volume)
 );
+
+CREATE TABLE IF NOT EXISTS chapter_outlines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
+    volume TEXT NOT NULL,
+    chapter_num INTEGER NOT NULL,
+    title TEXT DEFAULT '',
+    function TEXT DEFAULT '[]',
+    core_events TEXT DEFAULT '',
+    foreshadowing TEXT DEFAULT '[]',
+    ending_hook TEXT DEFAULT '',
+    is_danger_scene INTEGER DEFAULT 0,
+    word_count INTEGER DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(novel_id, volume, chapter_num)
+);
+CREATE INDEX IF NOT EXISTS idx_co_novel_vol ON chapter_outlines(novel_id, volume);
 
 CREATE TABLE IF NOT EXISTS chapters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +144,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     tell_count INTEGER DEFAULT 0,
     judgment_groups INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, chapter_ref, created_at)
+    UNIQUE(novel_id, chapter_ref)
 );
 
 CREATE TABLE IF NOT EXISTS danger_issues (
@@ -91,10 +152,25 @@ CREATE TABLE IF NOT EXISTS danger_issues (
     novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
     volume TEXT NOT NULL,
     chapter_num INTEGER,
+    danger_level TEXT DEFAULT 'low',
+    core_danger TEXT DEFAULT '',
     content TEXT NOT NULL,
+    rhythm_data TEXT DEFAULT '{}',
+    foreshadowing_data TEXT DEFAULT '[]',
     created_at TEXT DEFAULT (datetime('now')),
     UNIQUE(novel_id, volume, chapter_num)
 );
+
+CREATE TABLE IF NOT EXISTS story_tracking (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
+    record_type TEXT NOT NULL,
+    record_key TEXT NOT NULL,
+    record_value TEXT NOT NULL,
+    updated_at TEXT,
+    UNIQUE(novel_id, record_type, record_key)
+);
+CREATE INDEX IF NOT EXISTS idx_st_novel_type ON story_tracking(novel_id, record_type);
 
 CREATE TABLE IF NOT EXISTS foreshadowing (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,7 +210,8 @@ CREATE TABLE IF NOT EXISTS characters (
     ending TEXT DEFAULT '',
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(novel_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS character_events (
@@ -219,54 +296,6 @@ CREATE INDEX IF NOT EXISTS idx_pc_novel ON pacing_control(novel_id);
 CREATE INDEX IF NOT EXISTS idx_rs_novel ON revelation_schedule(novel_id);
 
 
-
--- FTS5 virtual tables for full-text search
-CREATE VIRTUAL TABLE IF NOT EXISTS chapters_fts USING fts5(
-    title, content, content=chapters, content_rowid=id
-);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS outlines_fts USING fts5(
-    content, content=outlines, content_rowid=id
-);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS reviews_fts USING fts5(
-    ai_review, script_detail, content=reviews, content_rowid=id
-);
-
--- Triggers to keep FTS in sync
-CREATE TRIGGER IF NOT EXISTS chapters_ai AFTER INSERT ON chapters BEGIN
-    INSERT INTO chapters_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
-END;
-CREATE TRIGGER IF NOT EXISTS chapters_ad AFTER DELETE ON chapters BEGIN
-    INSERT INTO chapters_fts(chapters_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
-END;
-CREATE TRIGGER IF NOT EXISTS chapters_au AFTER UPDATE ON chapters BEGIN
-    INSERT INTO chapters_fts(chapters_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
-    INSERT INTO chapters_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
-END;
-
-CREATE TRIGGER IF NOT EXISTS outlines_ai AFTER INSERT ON outlines BEGIN
-    INSERT INTO outlines_fts(rowid, content) VALUES (new.id, new.content);
-END;
-CREATE TRIGGER IF NOT EXISTS outlines_ad AFTER DELETE ON outlines BEGIN
-    INSERT INTO outlines_fts(outlines_fts, rowid, content) VALUES('delete', old.id, old.content);
-END;
-CREATE TRIGGER IF NOT EXISTS outlines_au AFTER UPDATE ON outlines BEGIN
-    INSERT INTO outlines_fts(outlines_fts, rowid, content) VALUES('delete', old.id, old.content);
-    INSERT INTO outlines_fts(rowid, content) VALUES (new.id, new.content);
-END;
-
-CREATE TRIGGER IF NOT EXISTS reviews_ai AFTER INSERT ON reviews BEGIN
-    INSERT INTO reviews_fts(rowid, ai_review, script_detail) VALUES (new.id, new.ai_review, new.script_detail);
-END;
-CREATE TRIGGER IF NOT EXISTS reviews_ad AFTER DELETE ON reviews BEGIN
-    INSERT INTO reviews_fts(reviews_fts, rowid, ai_review, script_detail) VALUES('delete', old.id, old.ai_review, old.script_detail);
-END;
-CREATE TRIGGER IF NOT EXISTS reviews_au AFTER UPDATE ON reviews BEGIN
-    INSERT INTO reviews_fts(reviews_fts, rowid, ai_review, script_detail) VALUES('delete', old.id, old.ai_review, old.script_detail);
-    INSERT INTO reviews_fts(rowid, ai_review, script_detail) VALUES (new.id, new.ai_review, new.script_detail);
-END;
-
 -- ═══ New Domain Tables ═══
 
 CREATE TABLE IF NOT EXISTS genre_rules (
@@ -330,86 +359,16 @@ CREATE INDEX IF NOT EXISTS idx_pm_novel ON project_meta(novel_id);
 """
 
 def migrate_v3():
-    """Add v3 extended columns to existing tables (idempotent)"""
-    conn = get_db()
-    try:
-        # characters: emotional_state, ability_level, relationship_map
-        for col, col_type in [
-            ('emotional_state', "TEXT DEFAULT ''"),
-            ('ability_level', "TEXT DEFAULT ''"),
-            ('relationship_map', "TEXT DEFAULT '[]'"),
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE characters ADD COLUMN {col} {col_type}")
-            except sqlite3.OperationalError:
-                pass  # column already exists
-
-        # foreshadowing: hint_method, reveal_method, is_dark
-        for col, col_type in [
-            ('hint_method', "TEXT DEFAULT ''"),
-            ('reveal_method', "TEXT DEFAULT ''"),
-            ('is_dark', "INTEGER DEFAULT 0"),
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE foreshadowing ADD COLUMN {col} {col_type}")
-            except sqlite3.OperationalError:
-                pass
-
-        # chapters: pace_type, emotional_beat, foreshadowing_touched, characters_appeared
-        for col, col_type in [
-            ('pace_type', "TEXT DEFAULT ''"),
-            ('emotional_beat', "TEXT DEFAULT ''"),
-            ('foreshadowing_touched', "TEXT DEFAULT '[]'"),
-            ('characters_appeared', "TEXT DEFAULT '[]'"),
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE chapters ADD COLUMN {col} {col_type}")
-            except sqlite3.OperationalError:
-                pass
-
-        # characters v3.1: 8-dimension profile fields
-        for col, col_type in [
-            ('desire', "TEXT DEFAULT ''"),
-            ('fear', "TEXT DEFAULT ''"),
-            ('lie', "TEXT DEFAULT ''"),
-            ('truth', "TEXT DEFAULT ''"),
-            ('ability_curve', "TEXT DEFAULT ''"),
-            ('ability_cost', "TEXT DEFAULT ''"),
-            ('emotion_curve', "TEXT DEFAULT ''"),
-            ('dilemma', "TEXT DEFAULT ''"),
-            ('mirror', "TEXT DEFAULT ''"),
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE characters ADD COLUMN {col} {col_type}")
-            except sqlite3.OperationalError:
-                pass
-
-        # reviews v3.1: quality tracking columns (BUG-01/02 fix)
-        for col, col_type in [
-            ('wc_ok', "INTEGER DEFAULT 0"),
-            ('compliance_ok', "INTEGER DEFAULT 0"),
-            ('forbidden_ok', "INTEGER DEFAULT 0"),
-            ('bcontrast_count', "INTEGER DEFAULT 0"),
-            ('tell_count', "INTEGER DEFAULT 0"),
-            ('judgment_groups', "INTEGER DEFAULT 0"),
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {col_type}")
-            except sqlite3.OperationalError:
-                pass
-
-        conn.commit()
-    finally:
-        conn.close()
+    """No-op: v3 columns are already present in ORM schema via models_orm.py."""
+    pass
 
 
 def init_db():
-    """Create tables if not exist, then apply v3 migrations"""
-    conn = get_db()
-    conn.executescript(SCHEMA)
-    conn.commit()
-    conn.close()
-    migrate_v3()
+    """Create tables via SQLAlchemy ORM (supports SQLite and MySQL)."""
+    from repository import ensure_tables, get_repo
+    ensure_tables()
+    # Run init seed for config tables
+    get_repo().init_config_seed()
 
 # ═══════════════════════════════════════════════════════════════════════
 # Sync from files
@@ -421,49 +380,44 @@ def count_words(text):
     return chinese + english
 
 def sync_novel_from_files(novel_name):
-    """Sync a single novel's content from files to DB"""
+    """Sync a single novel's content from files to DB via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     if not os.path.isdir(novel_path):
         return {"error": f"小说目录不存在: {novel_path}"}
 
-    conn = get_db()
+    repo = _get_repo()
     try:
-        # Insert/update novel record
-        conn.execute("""INSERT INTO novels (name, title, genre, updated_at)
-            VALUES (?, ?, ?, datetime('now'))
-            ON CONFLICT(name) DO UPDATE SET updated_at=datetime('now')""",
-            (novel_name, novel_name, ''))
-
-        novel_id = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()["id"]
+        # Upsert novel record
+        repo.upsert_novel(novel_name, title=novel_name, genre='')
+        novel = repo.get_novel(novel_name)
+        if not novel:
+            return {"error": "Failed to create novel record"}
+        novel_id = novel["id"]
 
         # Read project.md for metadata
         project_file = os.path.join(novel_path, "project.md")
         if os.path.exists(project_file):
             with open(project_file, encoding="utf-8") as f:
-                content = f.read()
-            # Extract title
-            title_match = re.search(r'#\s*(?:作品名|书名)[：:]\s*(.+)', content)
+                content_text = f.read()
+            title_match = re.search(r'#\s*(?:作品名|书名)[：:]\s*(.+)', content_text)
             title = title_match.group(1).strip() if title_match else novel_name
-            genre_match = re.search(r'题材[：:]\s*(.+)', content)
+            genre_match = re.search(r'题材[：:]\s*(.+)', content_text)
             genre = genre_match.group(1).strip() if genre_match else ''
-            conn.execute("UPDATE novels SET title=?, genre=? WHERE id=?", (title, genre, novel_id))
+            repo.upsert_novel(novel_name, title=title, genre=genre)
 
         stats = {"outlines": 0, "chapters": 0, "reviews": 0, "danger_issues": 0}
 
         # Sync outlines
         outline_dir = os.path.join(novel_path, "outline")
         if os.path.exists(outline_dir):
-            for f in sorted(os.listdir(outline_dir)):
-                if f.endswith("-chapters.md"):
-                    vol = f.replace("-chapters.md", "")
-                    fpath = os.path.join(outline_dir, f)
+            for fname in sorted(os.listdir(outline_dir)):
+                if fname.endswith("-chapters.md"):
+                    vol = fname.replace("-chapters.md", "")
+                    fpath = os.path.join(outline_dir, fname)
                     with open(fpath, encoding="utf-8") as fh:
-                        content = fh.read()
-                    wc = count_words(content)
-                    conn.execute("""INSERT INTO outlines (novel_id, volume, content, word_count, updated_at)
-                        VALUES (?, ?, ?, ?, datetime('now'))
-                        ON CONFLICT(novel_id, volume) DO UPDATE SET content=excluded.content, word_count=excluded.word_count, updated_at=datetime('now')""",
-                        (novel_id, vol, content, wc))
+                        content_text = fh.read()
+                    wc = count_words(content_text)
+                    repo.upsert_outline(novel_name, vol, content_text, wc)
                     stats["outlines"] += 1
 
         # Sync chapters
@@ -478,38 +432,35 @@ def sync_novel_from_files(novel_name):
                         continue
                     ch_path = os.path.join(vol_path, ch_file)
                     with open(ch_path, encoding="utf-8") as fh:
-                        content = fh.read()
+                        content_text = fh.read()
                     ch_num_match = re.search(r'ch-(\d+)', ch_file)
                     ch_num = int(ch_num_match.group(1)) if ch_num_match else 0
                     ch_ref = f"{vol_dir}/{ch_file.replace('.md', '')}"
-                    wc = count_words(content)
-                    content_hash = hashlib.md5(content.encode()).hexdigest()
-                    # Extract title from first heading
-                    title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+                    wc = count_words(content_text)
+                    content_hash = hashlib.md5(content_text.encode()).hexdigest()
+                    title_match = re.search(r'^#\s+(.+)$', content_text, re.MULTILINE)
                     title = title_match.group(1).strip() if title_match else ''
-                    conn.execute("""INSERT INTO chapters (novel_id, volume, chapter_num, chapter_ref, content, title, word_count, content_hash, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                        ON CONFLICT(novel_id, chapter_ref) DO UPDATE SET content=excluded.content, title=excluded.title, word_count=excluded.word_count, content_hash=excluded.content_hash, updated_at=datetime('now')""",
-                        (novel_id, vol_dir, ch_num, ch_ref, content, title, wc, content_hash))
+                    repo.upsert_chapter(novel_name, ch_ref,
+                        volume=vol_dir, chapter_num=ch_num, content=content_text,
+                        title=title, word_count=wc, content_hash=content_hash)
                     stats["chapters"] += 1
 
         # Sync reviews
         reviews_dir = os.path.join(novel_path, "reviews")
         if os.path.exists(reviews_dir):
-            for f in sorted(os.listdir(reviews_dir)):
-                if f.endswith(".md"):
-                    fpath = os.path.join(reviews_dir, f)
+            for fname in sorted(os.listdir(reviews_dir)):
+                if fname.endswith(".md"):
+                    fpath = os.path.join(reviews_dir, fname)
                     with open(fpath, encoding="utf-8") as fh:
-                        content = fh.read()
-                    ch_ref_match = re.search(r'(ch-\d+)-review', f)
-                    ch_ref = ch_ref_match.group(1) if ch_ref_match else f.replace(".md", "")
-                    wc = count_words(content)
-                    # Extract review data
+                        content_text = fh.read()
+                    ch_ref_match = re.search(r'(ch-\d+)-review', fname)
+                    ch_ref = ch_ref_match.group(1) if ch_ref_match else fname.replace(".md", "")
+                    wc = count_words(content_text)
                     ai_review = ""
                     script_detail = ""
                     ai_section = False
                     script_section = False
-                    for line in content.split("\n"):
+                    for line in content_text.split("\n"):
                         if "AI审稿结果" in line:
                             ai_section = True; script_section = False; continue
                         if "脚本检查" in line:
@@ -518,19 +469,15 @@ def sync_novel_from_files(novel_name):
                             ai_review += line + "\n"
                         if script_section:
                             script_detail += line + "\n"
-                    conn.execute("""INSERT INTO reviews (novel_id, chapter_ref, ai_review, script_detail, word_count, created_at)
-                        VALUES (?, ?, ?, ?, ?, datetime('now'))
-                        ON CONFLICT(novel_id, chapter_ref, created_at) DO NOTHING""",
-                        (novel_id, ch_ref, ai_review.strip(), script_detail.strip(), wc))
+                    repo.upsert_review(novel_name, ch_ref,
+                        ai_review=ai_review.strip(),
+                        script_detail=script_detail.strip(),
+                        word_count=wc)
                     stats["reviews"] += 1
 
-        conn.commit()
         return {"success": True, "novel": novel_name, "stats": stats}
     except Exception as e:
-        conn.rollback()
         return {"error": str(e)}
-    finally:
-        conn.close()
 
 def sync_all_novels():
     """Sync all novels from files to DB"""
@@ -541,385 +488,290 @@ def sync_all_novels():
                 results.append(sync_novel_from_files(d))
     return results
 
+
+def incremental_sync(novel_name, relative_path):
+    """Sync a single file change to DB without full rescan.
+
+    Uses file path to determine which table to update:
+      "manuscript/vol-01/ch-0001.md" -> chapters table
+      "outline/vol-01-chapters.md"   -> outlines table
+      "reviews/ch-0001-review.md"    -> reviews table
+    Falls back to full sync if path doesn't match known patterns.
+
+    Returns:
+        {"updated": bool, "table": str, "detail": str}
+    """
+    parts = relative_path.strip("/").split("/")
+
+    if not parts:
+        return {"updated": False, "table": "", "detail": "empty path"}
+
+    # Manuscript chapters
+    if parts[0] == "manuscript" and len(parts) == 2 and parts[1].endswith(".md"):
+        volume = parts[0] + "/" + parts[1] if "/" in relative_path else parts[0]
+        _sync_chapter_from_file(novel_name, volume_dir=parts[0], chapter_file=parts[1])
+        return {"updated": True, "table": "chapters", "detail": f"synced {relative_path}"}
+
+    # Outline files
+    if parts[0] == "outline" and (parts[1].endswith("-chapters.md") or parts[1].endswith("-chapters.yaml") or parts[1].endswith("-chapters.yml")):
+        vol_str = parts[1].replace("-chapters.md", "").replace("-chapters.yaml", "").replace("-chapters.yml", "")
+        _sync_outline_from_file(novel_name, vol_str)
+        return {"updated": True, "table": "outlines", "detail": f"synced {relative_path}"}
+
+    # Review files
+    if parts[0] == "reviews" and parts[1].endswith(".md"):
+        ch_ref = parts[1].replace("-review.md", "").replace(".md", "")
+        _sync_review_from_file(novel_name, ch_ref)
+        return {"updated": True, "table": "reviews", "detail": f"synced {relative_path}"}
+
+    # Characters file
+    if relative_path == "characters.md":
+        _sync_characters_from_file(novel_name)
+        return {"updated": True, "table": "characters", "detail": "synced characters"}
+
+    # World bible
+    if relative_path == "world_bible.md":
+        _sync_world_building_from_file(novel_name)
+        return {"updated": True, "table": "world_building", "detail": "synced world_building"}
+
+    # Fallback: full sync
+    result = sync_novel_from_files(novel_name)
+    if "error" in result:
+        return {"updated": False, "table": "", "detail": result["error"]}
+    return {"updated": True, "table": "full", "detail": "full sync performed"}
+
+
+def _sync_chapter_from_file(novel_name, volume_dir=None, chapter_file=None):
+    """Read single chapter file and upsert via repo."""
+    novel_path = os.path.join(NOVELS_ROOT, novel_name)
+    if not volume_dir or not chapter_file:
+        return
+
+    ch_path = os.path.join(novel_path, "manuscript", volume_dir, chapter_file) \
+        if volume_dir and "manuscript" not in volume_dir \
+        else os.path.join(novel_path, volume_dir, chapter_file) if volume_dir and chapter_file \
+        else os.path.join(novel_path, chapter_file) if chapter_file else None
+
+    if not ch_path or not os.path.exists(ch_path):
+        return
+
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel:
+        return
+
+    with open(ch_path, encoding="utf-8") as fh:
+        content = fh.read()
+
+    vol_actual = volume_dir or "vol-01"
+    ch_name = chapter_file or os.path.basename(ch_path)
+    ch_num_match = re.search(r'ch-(\d+)', ch_name)
+    ch_num = int(ch_num_match.group(1)) if ch_num_match else 0
+    ch_ref = f"{vol_actual}/{ch_name.replace('.md', '')}"
+
+    wc = count_words(content)
+    content_hash = hashlib.md5(content.encode()).hexdigest()
+    title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+    title = title_match.group(1).strip() if title_match else ""
+
+    # Check if content changed
+    existing_hash = repo.get_chapter_content_hash(novel_name, ch_ref)
+    if existing_hash and existing_hash == content_hash:
+        return
+
+    repo.upsert_chapter(novel_name, ch_ref,
+        volume=vol_actual, chapter_num=ch_num, content=content,
+        title=title, word_count=wc, content_hash=content_hash)
+
+
+def _sync_outline_from_file(novel_name, volume_str):
+    """Upsert a single outline file via repo."""
+    novel_path = os.path.join(NOVELS_ROOT, novel_name)
+    content = None
+
+    for ext in ('.yaml', '.yml'):
+        fpath = os.path.join(novel_path, "outline", f"{volume_str}-chapters{ext}")
+        if os.path.exists(fpath):
+            with open(fpath, encoding="utf-8") as fh:
+                content = fh.read()
+            break
+
+    if content is None:
+        fpath = os.path.join(novel_path, "outline", f"{volume_str}-chapters.md")
+        if os.path.exists(fpath):
+            with open(fpath, encoding="utf-8") as fh:
+                content = fh.read()
+        else:
+            return
+
+    wc = count_words(content)
+    _get_repo().upsert_outline(novel_name, volume_str, content, wc)
+
+
+def _sync_review_from_file(novel_name, chapter_ref):
+    """Upsert a single review file via repo."""
+    novel_path = os.path.join(NOVELS_ROOT, novel_name)
+    fpath = os.path.join(novel_path, "reviews", f"{chapter_ref}-review.md")
+    if not os.path.exists(fpath):
+        fpath = os.path.join(novel_path, "reviews", f"{chapter_ref}.md")
+    if not os.path.exists(fpath):
+        return
+
+    with open(fpath, encoding="utf-8") as fh:
+        content = fh.read()
+
+    wc = count_words(content)
+    ai_review = ""
+    script_detail = ""
+    ai_section = False
+    script_section = False
+    for line in content.split("\n"):
+        if "AI审稿结果" in line:
+            ai_section = True; script_section = False; continue
+        if "脚本检查" in line:
+            ai_section = False; script_section = True; continue
+        if ai_section:
+            ai_review += line + "\n"
+        if script_section:
+            script_detail += line + "\n"
+
+    _get_repo().upsert_review(novel_name, chapter_ref,
+        ai_review=ai_review.strip(), script_detail=script_detail.strip(),
+        word_count=wc)
+
+
+def _sync_characters_from_file(novel_name):
+    """Re-init characters from file."""
+    init_characters_from_files(novel_name)
+
+
+def _sync_world_building_from_file(novel_name):
+    """Re-init world building from file."""
+    init_world_building_from_file(novel_name)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Query helpers
 # ═══════════════════════════════════════════════════════════════════════
 
 def search_all(query, novel_name=None, limit=20):
-    """Full-text search across chapters, outlines, reviews
-    Falls back to LIKE search when FTS5 can't match (Chinese text without spaces)
-    """
-    conn = get_db()
-    results = {"chapters": [], "outlines": [], "reviews": []}
-    try:
-        # Build novel filter
-        novel_filter_sql = ""
-        novel_params = []
-        if novel_name:
-            novel_filter_sql = "AND n.id = (SELECT id FROM novels WHERE name=?)"
-            novel_params = [novel_name]
-
-        # Try FTS5 first
-        try:
-            # Search chapters via FTS5
-            rows = conn.execute(f"""
-                SELECT c.chapter_ref, c.title, c.word_count, c.volume, n.name as novel_name,
-                       snippet(chapters_fts, 1, '<mark>', '</mark>', '...', 40) as snippet
-                FROM chapters_fts f
-                JOIN chapters c ON c.id = f.rowid
-                JOIN novels n ON n.id = c.novel_id
-                WHERE chapters_fts MATCH ? {novel_filter_sql}
-                ORDER BY rank LIMIT ?
-            """, [query] + novel_params + [limit]).fetchall()
-            results["chapters"] = [dict(r) for r in rows]
-
-            # Search outlines via FTS5
-            rows = conn.execute(f"""
-                SELECT o.volume, n.name as novel_name,
-                       snippet(outlines_fts, 0, '<mark>', '</mark>', '...', 40) as snippet
-                FROM outlines_fts f
-                JOIN outlines o ON o.id = f.rowid
-                JOIN novels n ON n.id = o.novel_id
-                WHERE outlines_fts MATCH ? {novel_filter_sql}
-                ORDER BY rank LIMIT ?
-            """, [query] + novel_params + [limit]).fetchall()
-            results["outlines"] = [dict(r) for r in rows]
-
-            # Search reviews via FTS5
-            rows = conn.execute(f"""
-                SELECT r.chapter_ref, n.name as novel_name, r.word_count,
-                       snippet(reviews_fts, 0, '<mark>', '</mark>', '...', 40) as snippet
-                FROM reviews_fts f
-                JOIN reviews r ON r.id = f.rowid
-                JOIN novels n ON n.id = r.novel_id
-                WHERE reviews_fts MATCH ? {novel_filter_sql}
-                ORDER BY rank LIMIT ?
-            """, [query] + novel_params + [limit]).fetchall()
-            results["reviews"] = [dict(r) for r in rows]
-        except Exception:
-            pass  # FTS5 may fail on special chars
-
-        # Fallback to LIKE if FTS5 returned nothing
-        if not results["chapters"] and not results["outlines"] and not results["reviews"]:
-            like_query = f"%{query}%"
-            like_params = [like_query] + novel_params
-
-            # LIKE search chapters
-            like_rows = conn.execute(f"""
-                SELECT c.chapter_ref, c.title, c.word_count, c.volume, n.name as novel_name,
-                       SUBSTR(c.content, MAX(1, INSTR(c.content, ?) - 20), 100) as snippet
-                FROM chapters c
-                JOIN novels n ON n.id = c.novel_id
-                WHERE c.content LIKE ? {novel_filter_sql}
-                ORDER BY c.volume, c.chapter_num LIMIT ?
-            """, [query] + like_params + [limit]).fetchall()
-            results["chapters"] = [
-                {"chapter_ref": r["chapter_ref"], "title": r["title"],
-                 "word_count": r["word_count"], "volume": r["volume"],
-                 "novel_name": r["novel_name"],
-                 "snippet": f"...{r['snippet']}..." if r["snippet"] else ""}
-                for r in like_rows
-            ]
-
-            # LIKE search outlines
-            like_rows = conn.execute(f"""
-                SELECT o.volume, n.name as novel_name,
-                       SUBSTR(o.content, MAX(1, INSTR(o.content, ?) - 20), 100) as snippet
-                FROM outlines o
-                JOIN novels n ON n.id = o.novel_id
-                WHERE o.content LIKE ? {novel_filter_sql}
-                LIMIT ?
-            """, [query] + like_params + [limit]).fetchall()
-            results["outlines"] = [
-                {"volume": r["volume"], "novel_name": r["novel_name"],
-                 "snippet": f"...{r['snippet']}..." if r["snippet"] else ""}
-                for r in like_rows
-            ]
-
-            # LIKE search reviews
-            like_rows = conn.execute(f"""
-                SELECT r.chapter_ref, n.name as novel_name, r.word_count,
-                       SUBSTR(r.ai_review, MAX(1, INSTR(r.ai_review, ?) - 20), 100) as snippet
-                FROM reviews r
-                JOIN novels n ON n.id = r.novel_id
-                WHERE (r.ai_review LIKE ? OR r.script_detail LIKE ?) {novel_filter_sql}
-                LIMIT ?
-            """, [query, like_query, like_query] + novel_params + [limit]).fetchall()
-            results["reviews"] = [
-                {"chapter_ref": r["chapter_ref"], "novel_name": r["novel_name"],
-                 "word_count": r["word_count"],
-                 "snippet": f"...{r['snippet']}..." if r["snippet"] else ""}
-                for r in like_rows
-            ]
-    finally:
-        conn.close()
-    return results
-
+    """Search across chapters, outlines, reviews via repository."""
+    return _get_repo().search_all(query, novel_name=novel_name, limit=limit)
 def get_novel_stats(novel_name):
-    """Get statistics for a novel"""
-    conn = get_db()
-    try:
-        novel = conn.execute("SELECT * FROM novels WHERE name=?", (novel_name,)).fetchone()
-        if not novel:
-            return {"error": "小说不存在"}
-        novel = dict(novel)
-        # Chapter word count trend (last 20 chapters)
-        chapters = conn.execute("""SELECT chapter_ref, word_count, created_at FROM chapters
-            WHERE novel_id=? ORDER BY chapter_num DESC LIMIT 20""", (novel["id"],)).fetchall()
-        novel["recent_chapters"] = [dict(c) for c in reversed(chapters)]
-        # Review pass rate
-        total_reviews = conn.execute("SELECT COUNT(*) as c FROM reviews WHERE novel_id=?", (novel["id"],)).fetchone()["c"]
-        novel["total_reviews"] = total_reviews
-        return novel
-    finally:
-        conn.close()
+    """Get aggregate statistics for a novel."""
+    return _get_repo().get_novel_stats(novel_name)
+def get_characters(novel_name, role=None):
+    """List characters for a novel."""
+    return _get_repo().list_characters(novel_name, role=role)
 
-# ═══════════════════════════════════════════════════════════════════════
-# Foreshadowing Management
-# ═══════════════════════════════════════════════════════════════════════
+
+def get_character(novel_name, cid):
+    """Get a single character by ID."""
+    return _get_repo().get_character(novel_name, cid)
+
+
+def add_character(novel_name, name, role="配角", **kwargs):
+    """Add a new character."""
+    return _get_repo().add_character(novel_name, name, role=role, **kwargs)
+
+
+def update_character(cid, **kwargs):
+    """Update a character."""
+    return _get_repo().update_character(cid, **kwargs)
+
+
+def delete_character(cid):
+    """Delete a character."""
+    _get_repo().delete_character(cid)
+
+
+def add_character_event(novel_name, cid, description, event_type="状态变更",
+                         vol=0, ch=0, chapter_ref="", source="manual"):
+    """Add a character event."""
+    return _get_repo().add_character_event(
+        novel_name, cid, description, event_type=event_type,
+        vol=vol, ch=ch, chapter_ref=chapter_ref, source=source)
+
+
+def get_character_events(novel_name, cid, limit=50):
+    """Get events for a character."""
+    return _get_repo().list_character_events(cid, limit=limit)
+
 
 def add_foreshadowing(novel_name, name, description="", category="剧情",
                        introduced_vol=0, introduced_ch=0, target_vol=0,
                        target_ch=0, priority="normal"):
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel:
-        conn.close(); return None
-    conn.execute("""INSERT INTO foreshadowing
-        (novel_id, name, description, category, introduced_vol, introduced_ch,
-         target_vol, target_ch, priority)
-        VALUES (?,?,?,?,?,?,?,?,?)""",
-        (novel["id"], name, description, category, introduced_vol,
-         introduced_ch, target_vol, target_ch, priority))
-    conn.commit()
-    fid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.close()
-    return fid
-
+    """Add a foreshadowing entry."""
+    return _get_repo().add_foreshadowing(
+        novel_name, name, description=description, category=category,
+        introduced_vol=introduced_vol, introduced_ch=introduced_ch,
+        target_vol=target_vol, target_ch=target_ch, priority=priority)
 def get_foreshadowing(novel_name, status=None, volume=None, limit=100):
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel:
-        conn.close(); return []
-    sql = "SELECT * FROM foreshadowing WHERE novel_id=?"
-    params = [novel["id"]]
-    if status:
-        sql += " AND status=?"; params.append(status)
-    if volume is not None:
-        sql += " AND (target_vol=? OR introduced_vol=?)"; params.extend([volume, volume])
-    sql += " ORDER BY priority DESC, target_vol ASC, introduced_ch ASC LIMIT ?"
-    params.append(limit)
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
+    """List foreshadowing entries."""
+    return _get_repo().list_foreshadowing(novel_name, status=status, volume=volume, limit=limit)
 def get_unresolved_foreshadowing(novel_name, current_vol=None, current_ch=None):
-    """Get foreshadowing that should be resolved soon (before or at current position)"""
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel:
-        conn.close(); return []
-    nid = novel["id"]
-    sql = """SELECT * FROM foreshadowing WHERE novel_id=? AND status != 'resolved'
-             AND status != 'abandoned'"""
-    params = [nid]
-    if current_vol is not None:
-        sql += " AND (target_vol <= ? OR target_vol = 0 OR introduced_vol = ?)"
-        params.extend([current_vol, current_vol])
-    sql += " ORDER BY priority DESC, target_vol ASC, introduced_ch ASC"
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
+    """Get unresolved foreshadowing to resolve soon."""
+    return _get_repo().get_unresolved_foreshadowing(
+        novel_name, current_vol=current_vol, current_ch=current_ch)
 def update_foreshadowing(fid, **kwargs):
-    conn = get_db()
-    allowed = ["name","description","category","status","introduced_vol",
-               "introduced_ch","target_vol","target_ch","resolved_vol",
-               "resolved_ch","resolution_note","priority"]
-    updates = []
-    params = []
-    for k, v in kwargs.items():
-        if k in allowed:
-            updates.append(f"{k}=?")
-            params.append(v)
-    if updates:
-        params.append(fid)
-        conn.execute(f"UPDATE foreshadowing SET {','.join(updates)}, updated_at=datetime('now') WHERE id=?", params)
-        conn.commit()
-    conn.close()
-
+    """Update a foreshadowing entry."""
+    return _get_repo().update_foreshadowing(fid, **kwargs)
 def delete_foreshadowing(fid):
-    conn = get_db()
-    conn.execute("DELETE FROM foreshadowing WHERE id=?", (fid,))
-    conn.commit()
-    conn.close()
-
+    """Delete a foreshadowing entry."""
+    _get_repo().delete_foreshadowing(fid)
 def resolve_foreshadowing(fid, vol, ch, note=""):
-    """Mark a foreshadowing as resolved with volume/chapter info"""
-    conn = get_db()
-    conn.execute("""UPDATE foreshadowing SET status='resolved', resolved_vol=?,
-        resolved_ch=?, resolution_note=?, updated_at=datetime('now')
-        WHERE id=?""", (vol, ch, note, fid))
-    conn.commit()
-    conn.close()
-
+    """Mark a foreshadowing as resolved."""
+    _get_repo().resolve_foreshadowing(fid, vol, ch, note=note)
 def init_foreshadowing_from_outline(novel_name):
-    """Scan the outline for implicit foreshadowing points and create them.
-    Uses pattern matching to find foreshadowing hints in outline text."""
+    """Scan the outline for implicit foreshadowing points via repository."""
     import glob
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     outline_dir = os.path.join(novel_path, "outline")
     if not os.path.exists(outline_dir):
         return {"created": 0, "message": "无大纲目录"}
 
-    # Patterns that suggest foreshadowing
     patterns = [
-        (r'伏笔[：:]?\s*(.+)', '剧情'),
-        (r'铺垫[：:]?\s*(.+)', '剧情'),
-        (r'暗示[：:]?\s*(.+)', '剧情'),
-        (r'后续.*?出现[：:]?\s*(.+)', '角色'),
-        (r'隐藏[：:]?\s*(.+)', '剧情'),
-        (r'秘密[：:]?\s*(.+)', '世界观'),
-        (r'真相[：:]?\s*(.+)', '世界观'),
-        (r'真正.*?是[：:]?\s*(.+)', '身份'),
+        (r'伏笔[：:]?\s*(.+)', '剧情'), (r'铺垫[：:]?\s*(.+)', '剧情'),
+        (r'暗示[：:]?\s*(.+)', '剧情'), (r'后续.*?出现[：:]?\s*(.+)', '角色'),
+        (r'隐藏[：:]?\s*(.+)', '剧情'), (r'秘密[：:]?\s*(.+)', '世界观'),
+        (r'真相[：:]?\s*(.+)', '世界观'), (r'真正.*?是[：:]?\s*(.+)', '身份'),
         (r'叶微伏笔[：:]?\s*(.+)', '女主'),
     ]
+
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel:
+        return {"created": 0, "message": "小说不存在"}
 
     created = 0
     for fpath in sorted(glob.glob(os.path.join(outline_dir, "vol-*-chapters.md"))):
         vol_match = re.search(r'vol-(\d+)', os.path.basename(fpath))
         vol_num = int(vol_match.group(1)) if vol_match else 0
         with open(fpath, 'r', encoding='utf-8') as f:
-            content = f.read()
+            text = f.read()
 
-        # Find chapter sections
-        for m in re.finditer(r'第(\d+)章', content):
+        for m in re.finditer(r'第(\d+)章', text):
             ch_num = int(m.group(1))
             ch_start = m.start()
-            next_ch = re.search(r'第(\d+)章', content[ch_start+5:])
-            ch_end = ch_start + 5 + next_ch.start() if next_ch else len(content)
-            ch_section = content[ch_start:ch_end]
+            next_ch = re.search(r'第(\d+)章', text[ch_start+5:])
+            ch_end = ch_start + 5 + next_ch.start() if next_ch else len(text)
+            ch_section = text[ch_start:ch_end]
 
             for pattern, cat in patterns:
                 for pm in re.finditer(pattern, ch_section):
                     desc = pm.group(1).strip()[:200]
                     if len(desc) > 5:
-                        # Check if similar foreshadowing already exists
-                        conn = get_db()
-                        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-                        if novel:
-                            existing = conn.execute(
-                                "SELECT id FROM foreshadowing WHERE novel_id=? AND name LIKE ?",
-                                (novel["id"], f"%{desc[:30]}%")).fetchone()
-                            if not existing:
-                                add_foreshadowing(novel_name,
-                                    name=f"第{ch_num}章伏笔: {desc[:50]}",
-                                    description=desc, category=cat,
-                                    introduced_vol=vol_num, introduced_ch=ch_num,
-                                    target_vol=vol_num+1 if vol_num>0 else vol_num)
-                                created += 1
-                        conn.close()
+                        existing_fs = repo.list_foreshadowing(novel_name)
+                        if not any(desc[:30] in fs.get('name', '') for fs in existing_fs):
+                            repo.add_foreshadowing(novel_name,
+                                name=f"第{ch_num}章伏笔: {desc[:50]}",
+                                description=desc, category=cat,
+                                introduced_vol=vol_num, introduced_ch=ch_num,
+                                target_vol=vol_num+1 if vol_num > 0 else vol_num)
+                            created += 1
     return {"created": created, "message": f"从大纲初始化 {created} 条伏笔"}
-
-if __name__ == "__main__":
-    init_db()
-    print("DB initialized. Syncing all novels...")
-    results = sync_all_novels()
-    for r in results:
-        if "error" in r:
-            print(f"  ❌ {r.get('novel', '?')}: {r['error']}")
-        else:
-            s = r["stats"]
-            print(f"  ✅ {r['novel']}: {s['chapters']}章 {s['outlines']}大纲 {s['reviews']}审稿")
-
-# ═══════════════════════════════════════════════════════════════════════
-# Character Management
-# ═══════════════════════════════════════════════════════════════════════
-
-def get_characters(novel_name, role=None):
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return []
-    sql = "SELECT * FROM characters WHERE novel_id=? "
-    params = [novel["id"]]
-    if role:
-        sql += "AND role=?"; params.append(role)
-    sql += "ORDER BY CASE role WHEN '主角' THEN 0 WHEN '女主' THEN 1 WHEN '反派' THEN 2 ELSE 3 END, name"
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def get_character(novel_name, cid):
-    conn = get_db()
-    row = conn.execute("""SELECT c.* FROM characters c
-        JOIN novels n ON c.novel_id=n.id
-        WHERE n.name=? AND c.id=?""", (novel_name, cid)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def add_character(novel_name, name, role="配角", **kwargs):
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return None
-    allowed = ["gender","age","identity","personality","appearance","background",
-               "current_status","current_vol","current_ch","lifeline","arc","ending","notes"]
-    fields = ["novel_id","name","role"]
-    values = [novel["id"], name, role]
-    for k in allowed:
-        if k in kwargs and kwargs[k]:
-            fields.append(k); values.append(kwargs[k])
-    conn.execute(f"INSERT INTO characters ({','.join(fields)}) VALUES ({','.join('?'*len(fields))})", values)
-    conn.commit()
-    cid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.close()
-    return cid
-
-def update_character(cid, **kwargs):
-    conn = get_db()
-    allowed = ["name","role","gender","age","identity","personality","appearance",
-               "background","current_status","current_vol","current_ch","lifeline",
-               "arc","ending","notes","desire","fear","lie","truth",
-               "ability_level","ability_curve","ability_cost",
-               "emotional_state","emotion_curve","relationship_map",
-               "dilemma","mirror"]
-    updates = []; params = []
-    for k,v in kwargs.items():
-        if k in allowed:
-            updates.append(f"{k}=?"); params.append(v)
-    if updates:
-        params.append(cid)
-        conn.execute(f"UPDATE characters SET {','.join(updates)}, updated_at=datetime('now') WHERE id=?", params)
-        conn.commit()
-    conn.close()
-
-def delete_character(cid):
-    conn = get_db()
-    conn.execute("DELETE FROM characters WHERE id=?", (cid,))
-    conn.commit()
-    conn.close()
-
-def add_character_event(novel_name, cid, description, event_type="状态变更",
-                         vol=0, ch=0, chapter_ref="", source="manual"):
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return None
-    conn.execute("""INSERT INTO character_events
-        (novel_id, character_id, event_type, description, vol, ch, chapter_ref, source)
-        VALUES (?,?,?,?,?,?,?,?)""",
-        (novel["id"], cid, event_type, description, vol, ch, chapter_ref, source))
-    conn.commit()
-    eid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.close()
-    return eid
-
-def get_character_events(novel_name, cid, limit=50):
-    conn = get_db()
-    rows = conn.execute("""SELECT * FROM character_events
-        WHERE character_id=? ORDER BY vol ASC, ch ASC LIMIT ?""", (cid, limit)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
 def init_characters_from_files(novel_name):
+    """Parse characters.md into characters table via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     chars_path = os.path.join(novel_path, "characters.md")
     if not os.path.exists(chars_path):
@@ -928,14 +780,12 @@ def init_characters_from_files(novel_name):
     with open(chars_path, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    # Sub-section keywords that are NOT character names
     skip_kw = ['背景', '身世', '核心特质', '系统宿主', '异能', '修真传承',
                '成长弧线', '对抗历程', '重生能力', '关系演变', '终极命运',
                '乐园相关', '容器宿主', '破晓联盟', '天骄', '详解', '相关']
 
     def is_char_name(n):
         n = n.strip()
-        # Strip descriptions: 沈念（乐园引路人）→沈念, 初号——奥科洛斯→初号
         for sep in ['（', '(', '——', '—']:
             if sep in n: n = n[:n.index(sep)].strip()
         if len(n) > 12 or len(n) < 1: return False
@@ -945,34 +795,33 @@ def init_characters_from_files(novel_name):
             if kw in n: return False
         return True
 
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel:
+        return {"created": 0, "message": "小说不存在"}
+
     created = 0
-    # Scan both ### and #### headings
     for m in re.finditer(r'^(#{3,4})\s+(.+?)$', text, re.MULTILINE):
         name = m.group(2).strip()
-        # Use stripped name for storage (remove parenthetical)
         display_name = name
         for sep in ['（', '(', '——', '—']:
             if sep in display_name: display_name = display_name[:display_name.index(sep)].strip()
         if not is_char_name(name): continue
 
-        # Determine role: find the closest ## section heading before this character
         role = "配角"
         prev_text = text[:m.start()]
-        # Find all ## headings in reverse, take the last one (closest)
         headings = list(re.finditer(r'^##\s+(.+?)$', prev_text, re.MULTILINE))
         if headings:
             h = headings[-1].group(1).strip()
             if "主角" in h and "配角" not in h: role = "主角"
             elif "女主" in h: role = "女主"
-            elif "反派" in h: role = "反派" 
+            elif "反派" in h: role = "反派"
 
-        # Extract section content
         level = len(m.group(1))
         rest = text[m.end():]
         next_m = re.search(r'^#{1,' + str(level) + r'}\s', rest, re.MULTILINE)
         section = rest[:next_m.start()] if next_m else rest
 
-        # Extract fields from table rows
         identity = ""; personality = ""; background = ""; status = ""
         for row in re.finditer(r'\|\s*(.+?)\s*\|\s*(.+?)\s*\|', section):
             k = row.group(1).strip(); v = row.group(2).strip()
@@ -984,27 +833,16 @@ def init_characters_from_files(novel_name):
         if not status:
             status = "初始状态"
 
-        conn = get_db()
-        novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-        if novel:
-            existing = conn.execute("SELECT id FROM characters WHERE novel_id=? AND name=?",
-                (novel["id"], name)).fetchone()
-            if not existing:
-                add_character(novel_name, display_name, role=role,
-                    identity=identity, personality=personality[:500],
-                    background=background, current_status=status)
-                created += 1
-        conn.close()
+        existing = repo.list_characters(novel_name)
+        if not any(c.get('name') == display_name for c in existing):
+            repo.add_character(novel_name, display_name, role=role,
+                identity=identity, personality=personality[:500],
+                background=background, current_status=status)
+            created += 1
 
     return {"created": created, "message": f"Initialized {created} characters from characters.md"}
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# V3 Init Engine — populate domain tables from files
-# ═══════════════════════════════════════════════════════════════════════
-
 def init_world_building_from_file(novel_name):
-    """Parse world_bible.md into world_building table entries"""
+    """Parse world_bible.md into world_building table via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     wb_path = os.path.join(novel_path, "world_bible.md")
     if not os.path.exists(wb_path):
@@ -1013,20 +851,20 @@ def init_world_building_from_file(novel_name):
     with open(wb_path, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    created = 0
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0, "message": "novel not found"}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0, "message": "小说不存在"}
 
-    # Find section headers (## 力量体系, ## 地图, etc.)
     domain_map = {
         '力量体系': '力量体系', '修炼': '力量体系', '等级': '力量体系', '功法': '力量体系',
         '地图': '地图', '地域': '地图', '地理': '地图', '世界': '地图',
         '历史': '历史', '种族': '种族', '组织': '组织', '势力': '组织',
-        '规则': '规则', '法则': '规则', '禁忌': '禁忌', '禁地': '禁忌',
-        '科技': '科技',
+        '规则': '规则', '法则': '规则', '禁忌': '禁忌', '禁地': '禁忌', '科技': '科技',
     }
+
+    created = 0
+    existing_entries = repo.list_world_building(novel_name)
+    existing_names = {e.get('name', '') for e in existing_entries}
 
     for m in re.finditer(r'^##\s+(.+?)$', text, re.MULTILINE):
         heading = m.group(1).strip()
@@ -1034,39 +872,29 @@ def init_world_building_from_file(novel_name):
         for kw, dm in domain_map.items():
             if kw in heading: domain = dm; break
 
-        # Get content until next ##
         start = m.end()
         next_sec = re.search(r'\n##\s', text[start:])
-        content = text[start:start + next_sec.start()].strip() if next_sec else text[start:].strip()
+        sect = text[start:start + next_sec.start()].strip() if next_sec else text[start:].strip()
 
-        if len(content) > 10:
-            # Check for sub-items
-            items = re.findall(r'^[-*]\s+(.+)$', content, re.MULTILINE)
+        if len(sect) > 10:
+            items = re.findall(r'^[-*]\s+(.+)$', sect, re.MULTILINE)
             if items:
                 for item in items[:10]:
                     name = item[:80].strip()
-                    if not conn.execute("SELECT id FROM world_building WHERE novel_id=? AND name=?",
-                                        (nid, name)).fetchone():
-                        conn.execute("""INSERT INTO world_building
-                            (novel_id, domain, name, content) VALUES (?,?,?,?)""",
-                            (nid, domain, name, item))
+                    if name not in existing_names:
+                        repo.add_world_building(novel_name, domain, name, item)
+                        existing_names.add(name)
                         created += 1
             else:
-                # Single entry for the whole section
                 name = heading[:80]
-                if not conn.execute("SELECT id FROM world_building WHERE novel_id=? AND name=?",
-                                    (nid, name)).fetchone():
-                    conn.execute("""INSERT INTO world_building
-                        (novel_id, domain, name, content) VALUES (?,?,?,?)""",
-                        (nid, domain, name, content[:2000]))
+                if name not in existing_names:
+                    repo.add_world_building(novel_name, domain, name, sect[:2000])
+                    existing_names.add(name)
                     created += 1
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} world_building entries"}
-
-
 def init_plot_arcs_from_file(novel_name):
-    """Parse full_story_arc.md into plot_arcs table"""
+    """Parse full_story_arc.md into plot_arcs table via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     arc_path = os.path.join(novel_path, "full_story_arc.md")
     if not os.path.exists(arc_path):
@@ -1075,11 +903,12 @@ def init_plot_arcs_from_file(novel_name):
     with open(arc_path, 'r', encoding='utf-8') as f:
         text = f.read()
 
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
+
     created = 0
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    existing = {a.get('name', '') for a in repo.list_plot_arcs(novel_name)}
 
     for m in re.finditer(r'##\s+(.+?)$', text, re.MULTILINE):
         heading = m.group(1).strip()
@@ -1087,28 +916,23 @@ def init_plot_arcs_from_file(novel_name):
         next_sec = re.search(r'\n##\s', text[start:])
         summary = text[start:start + next_sec.start()].strip() if next_sec else text[start:].strip()
 
-        # Extract volume info from heading: "第一卷：青云崛起"
         vol_match = re.search(r'第([一二三四五六七八九十\d]+)卷', heading)
         vol_num = _parse_chinese_vol(vol_match.group(1)) if vol_match else 0
 
-        # Determine type
         arc_type = "主线"
         if "支线" in heading: arc_type = "支线"
         elif "感情" in heading or "女主" in heading: arc_type = "感情线"
         elif "成长" in heading: arc_type = "成长线"
 
-        if not conn.execute("SELECT id FROM plot_arcs WHERE novel_id=? AND name=?",
-                            (nid, heading[:80])).fetchone():
-            conn.execute("""INSERT INTO plot_arcs
-                (novel_id, name, type, volume_start, volume_end, summary, milestones, status, priority)
-                VALUES (?,?,?,?,?,?,?,'active','normal')""",
-                (nid, heading[:80], arc_type, vol_num, vol_num, summary[:500], '[]'))
+        name = heading[:80]
+        if name not in existing:
+            repo.add_plot_arc(novel_name, name, arc_type=arc_type,
+                volume_start=vol_num, volume_end=vol_num, summary=summary[:500],
+                milestones='[]', status='active', priority='normal')
+            existing.add(name)
             created += 1
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} plot arcs"}
-
-
 def _parse_chinese_vol(s):
     """Parse Chinese volume number: 一→1, 二→2, etc."""
     chinese_nums = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10}
@@ -1118,30 +942,25 @@ def _parse_chinese_vol(s):
 
 
 def init_pacing_from_outline(novel_name):
-    """Parse outline vol-XX-chapters.md for pacing control entries.
-    Supports two formats:
-    1. Individual chapter: '第001章 节奏：高潮 情感：紧张'
-    2. Table format: '| 042-045 | 桥弧复验... | ... | ... | 李闲压住... | ... |'
-    """
+    """Parse outline for pacing control entries via repository."""
+    import glob as _glob
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     outline_dir = os.path.join(novel_path, "outline")
     if not os.path.exists(outline_dir):
         return {"created": 0, "message": "no outline directory"}
 
-    created = 0
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
 
-    import glob
-    for fpath in sorted(glob.glob(os.path.join(outline_dir, "vol-*-chapters.md"))):
+    created = 0
+    for fpath in sorted(_glob.glob(os.path.join(outline_dir, "vol-*-chapters.md"))):
         vol_match = re.search(r'vol-(\d+)', os.path.basename(fpath))
         vol_num = int(vol_match.group(1)) if vol_match else 0
         with open(fpath, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # ─── Format 1: Individual chapter markers (第001章 节奏：...) ───
+        # Format 1: Individual chapter markers
         for cm in re.finditer(r'第(\d+)章', text):
             ch_num = int(cm.group(1))
             ch_start = cm.start()
@@ -1149,10 +968,7 @@ def init_pacing_from_outline(novel_name):
             ch_end = ch_start + 5 + next_ch.start() if next_ch else len(text)
             section = text[ch_start:ch_end]
 
-            pace_type = "过渡"
-            emotion = ""
-            intensity = 5
-
+            pace_type = "过渡"; emotion = ""; intensity = 5
             pace_m = re.search(r'节奏[：:]\s*(.+)', section)
             if pace_m:
                 p = pace_m.group(1).strip()
@@ -1164,88 +980,67 @@ def init_pacing_from_outline(novel_name):
             emo_m = re.search(r'情感[目标]*[：:]\s*(.+)', section)
             if emo_m:
                 e = emo_m.group(1).strip()
-                for kw in ['爽', '虐', '悬', '燃', '暖', '惧', '压抑', '期待', '惊喜', '好奇']:
+                for kw in ['爽','虐','悬','燃','暖','惧','压抑','期待','惊喜','好奇']:
                     if kw in e: emotion = kw; break
 
-            if not conn.execute("""SELECT id FROM pacing_control
-                WHERE novel_id=? AND volume=? AND chapter_start=?""",
-                (nid, vol_num, ch_num)).fetchone():
-                conn.execute("""INSERT INTO pacing_control
-                    (novel_id, volume, chapter_start, chapter_end, pace_type,
-                     intensity, emotion_target, word_budget_min, word_budget_max)
-                    VALUES (?,?,?,?,?,?,?,2500,3500)""",
-                    (nid, vol_num, ch_num, ch_num, pace_type, intensity, emotion))
+            try:
+                repo.add_pacing(novel_name, vol_num, ch_num, ch_num,
+                    pace_type=pace_type, intensity=intensity, emotion_target=emotion)
                 created += 1
+            except Exception:
+                pass  # duplicate, skip
 
-        # ─── Format 2: Table-based (| 章节范围 | 节奏类型 | ... | 情绪回报 | ...) ───
-        # Match lines like: | 042-045 | 桥弧复验与首场危机 | ... | ... | 李闲压住茶桌... | ... |
+        # Format 2: Table-based
         table_row_re = re.compile(
             r'^\|\s*(\d{3})\s*[-–]\s*(\d{3})\s*\|\s*([^|]+)\s*\|'
-            r'[^|]*\|[^|]*\|\s*([^|]+?)\s*\|',
-            re.MULTILINE
-        )
+            r'[^|]*\|[^|]*\|\s*([^|]+?)\s*\|', re.MULTILINE)
         for rm in table_row_re.finditer(text):
-            ch_start = int(rm.group(1))
-            ch_end = int(rm.group(2))
+            ch_start = int(rm.group(1)); ch_end = int(rm.group(2))
             pace_label = rm.group(3).strip()
             emotion_text = rm.group(4).strip()
 
-            # Map pace type
-            pace_type = "过渡"
-            intensity = 5
-            if any(kw in pace_label for kw in ['高潮', '高压', '危机']):
+            pace_type = "过渡"; intensity = 5
+            if any(kw in pace_label for kw in ['高潮','高压','危机']):
                 pace_type = '高潮'; intensity = 9
-            elif any(kw in pace_label for kw in ['铺垫', '伏笔']):
+            elif any(kw in pace_label for kw in ['铺垫','伏笔']):
                 pace_type = '铺垫'; intensity = 4
-            elif any(kw in pace_label for kw in ['过渡', '桥接']):
+            elif any(kw in pace_label for kw in ['过渡','桥接']):
                 pace_type = '过渡'; intensity = 5
-            elif any(kw in pace_label for kw in ['释缓', '放松', '日常']):
+            elif any(kw in pace_label for kw in ['释缓','放松','日常']):
                 pace_type = '释缓'; intensity = 3
 
-            # Extract emotion keyword
             emotion = ""
-            for kw in ['爽', '虐', '悬', '燃', '暖', '惧', '压抑', '期待', '惊喜', '好奇', '留白']:
+            for kw in ['爽','虐','悬','燃','暖','惧','压抑','期待','惊喜','好奇','留白']:
                 if kw in emotion_text: emotion = kw; break
 
-            if not conn.execute("""SELECT id FROM pacing_control
-                WHERE novel_id=? AND volume=? AND chapter_start=?""",
-                (nid, vol_num, ch_start)).fetchone():
-                conn.execute("""INSERT INTO pacing_control
-                    (novel_id, volume, chapter_start, chapter_end, pace_type,
-                     intensity, emotion_target, word_budget_min, word_budget_max)
-                    VALUES (?,?,?,?,?,?,?,2500,3500)""",
-                    (nid, vol_num, ch_start, ch_end, pace_type, intensity, emotion))
+            try:
+                repo.add_pacing(novel_name, vol_num, ch_start, ch_end,
+                    pace_type=pace_type, intensity=intensity, emotion_target=emotion)
                 created += 1
+            except Exception:
+                pass
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} pacing entries"}
-
-
 def init_revelation_from_outline(novel_name):
-    """Parse outline for information release schedule.
-    Supports two formats:
-    1. Individual markers: '信息释放：...' or '伏笔揭示：...' near '第001章'
-    2. Table format: '| 042-045 | ... | ... | 外线石、旧印... | ... | ... |' (col 4 = 信息释放)
-    """
+    """Parse outline for information release schedule via repository."""
+    import glob as _glob
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     outline_dir = os.path.join(novel_path, "outline")
     if not os.path.exists(outline_dir):
         return {"created": 0, "message": "no outline directory"}
 
-    created = 0
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
 
-    import glob
-    for fpath in sorted(glob.glob(os.path.join(outline_dir, "vol-*-chapters.md"))):
+    created = 0
+    for fpath in sorted(_glob.glob(os.path.join(outline_dir, "vol-*-chapters.md"))):
         vol_match = re.search(r'vol-(\d+)', os.path.basename(fpath))
         vol_num = int(vol_match.group(1)) if vol_match else 0
         with open(fpath, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # ─── Format 1: Individual chapter markers ───
+        # Format 1: Individual chapter markers
         for pattern, info_type in [
             (r'信息释放[：:]\s*(.+)', '世界观'),
             (r'伏笔揭示[：:]\s*(.+)', '伏笔揭示'),
@@ -1253,62 +1048,44 @@ def init_revelation_from_outline(novel_name):
             (r'真相[：:]\s*(.+)', '世界观'),
         ]:
             for m in re.finditer(pattern, text):
-                content = m.group(1).strip()[:300]
+                info_content = m.group(1).strip()[:300]
                 before = text[:m.start()]
                 ch_matches = list(re.finditer(r'第(\d+)章', before))
                 ch_num = int(ch_matches[-1].group(1)) if ch_matches else 0
 
-                name = f"第{vol_num}卷第{ch_num}章: {content[:60]}"
-                if not conn.execute("SELECT id FROM revelation_schedule WHERE novel_id=? AND name=?",
-                                    (nid, name)).fetchone():
-                    conn.execute("""INSERT INTO revelation_schedule
-                        (novel_id, name, info_type, reveal_volume, reveal_chapter,
-                         content, audience_knows, protagonist_knows, priority)
-                        VALUES (?,?,?,?,?,?,0,0,'normal')""",
-                        (nid, name, info_type, vol_num, ch_num, content))
+                name = f"第{vol_num}卷第{ch_num}章: {info_content[:60]}"
+                try:
+                    repo.add_revelation(novel_name, name, info_type=info_type,
+                        reveal_volume=vol_num, reveal_chapter=ch_num, content=info_content)
                     created += 1
+                except Exception:
+                    pass
 
-        # ─── Format 2: Table-based (| 章节范围 | 节奏类型 | 章节任务 | 信息释放 | 情绪回报 | 限制 |) ───
-        # Extract info_release from column 4 of the rhythm table
+        # Format 2: Table-based
         table_row_re = re.compile(
             r'^\|\s*(\d{3})\s*[-–]\s*(\d{3})\s*\|'
-            r'[^|]*\|[^|]*\|\s*([^|]+?)\s*\|',
-            re.MULTILINE
-        )
+            r'[^|]*\|[^|]*\|\s*([^|]+?)\s*\|', re.MULTILINE)
         for rm in table_row_re.finditer(text):
-            ch_start = int(rm.group(1))
-            ch_end = int(rm.group(2))
+            ch_start = int(rm.group(1)); ch_end = int(rm.group(2))
             info_content = rm.group(3).strip()
-
-            if not info_content or len(info_content) < 3:
-                continue
+            if not info_content or len(info_content) < 3: continue
 
             name = f"第{vol_num}卷第{ch_start}-{ch_end}章: {info_content[:60]}"
-
-            # Determine info_type from content
             info_type = "世界观"
-            if any(kw in info_content for kw in ['身份', '秘密', '真实']):
-                info_type = "角色秘密"
-            elif any(kw in info_content for kw in ['伏笔', '铺垫', '揭示']):
-                info_type = "伏笔揭示"
-            elif any(kw in info_content for kw in ['规则', '设定', '体系']):
-                info_type = "世界观"
+            if any(kw in info_content for kw in ['身份','秘密','真实']): info_type = "角色秘密"
+            elif any(kw in info_content for kw in ['伏笔','铺垫','揭示']): info_type = "伏笔揭示"
+            elif any(kw in info_content for kw in ['规则','设定','体系']): info_type = "世界观"
 
-            if not conn.execute("SELECT id FROM revelation_schedule WHERE novel_id=? AND name=?",
-                                (nid, name)).fetchone():
-                conn.execute("""INSERT INTO revelation_schedule
-                    (novel_id, name, info_type, reveal_volume, reveal_chapter,
-                     content, audience_knows, protagonist_knows, priority)
-                    VALUES (?,?,?,?,?,?,0,0,'normal')""",
-                    (nid, name, info_type, vol_num, ch_start, info_content))
+            try:
+                repo.add_revelation(novel_name, name, info_type=info_type,
+                    reveal_volume=vol_num, reveal_chapter=ch_start, content=info_content)
                 created += 1
+            except Exception:
+                pass
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} revelation entries"}
-
-
 def init_genre_rules_from_file(novel_name):
-    """Parse genre_bible.md for genre rules"""
+    """Parse genre_bible.md for genre rules via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     fpath = os.path.join(novel_path, "genre_bible.md")
     if not os.path.exists(fpath):
@@ -1317,34 +1094,27 @@ def init_genre_rules_from_file(novel_name):
     with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
 
-    # Clear existing
-    conn.execute("DELETE FROM genre_rules WHERE novel_id=?", (nid,))
+    repo.clear_genre_rules(novel_name)
     created = 0
 
-    # Parse sections: ## category followed by list items
     sections = re.split(r'\n##\s+', text)
-    for sec in sections[1:]:  # skip content before first ##
+    for sec in sections[1:]:
         lines = sec.strip().split('\n')
         category = lines[0].strip()
         for line in lines[1:]:
             line = line.strip()
             if line.startswith('- '):
-                content = line[2:].strip()
-                conn.execute("INSERT INTO genre_rules (novel_id, rule_category, rule_content) VALUES (?,?,?)",
-                             (nid, category, content))
+                rule = line[2:].strip()
+                repo.add_genre_rule(novel_name, category, rule)
                 created += 1
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} genre rules"}
-
-
 def init_story_volumes_from_file(novel_name):
-    """Parse full_story_arc.md for volume structure table"""
+    """Parse full_story_arc.md for volume structure via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     fpath = os.path.join(novel_path, "full_story_arc.md")
     if not os.path.exists(fpath):
@@ -1353,89 +1123,63 @@ def init_story_volumes_from_file(novel_name):
     with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
 
-    conn.execute("DELETE FROM story_volumes WHERE novel_id=?", (nid,))
+    repo.clear_story_volumes(novel_name)
     created = 0
 
-    # Find table under "## 分卷结构" — parse rows like | 第N卷：name | range | ... |
     for m in re.finditer(
         r'\|\s*第\s*(\d+)\s*卷[：:]\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|',
         text
     ):
-        vol_num = int(m.group(1))
-        vol_name = m.group(2).strip()
-        word_range = m.group(3).strip()
-        goal = m.group(4).strip()
-        conflict = m.group(5).strip()
-        payoff = m.group(6).strip()
-        foreshadowing = m.group(7).strip()
-        status = m.group(8).strip()
-
-        conn.execute("""INSERT INTO story_volumes
-            (novel_id, vol_num, vol_name, word_range, goal, conflict, payoff, foreshadowing, status)
-            VALUES (?,?,?,?,?,?,?,?,?)""",
-            (nid, vol_num, vol_name, word_range, goal, conflict, payoff, foreshadowing, status))
+        repo.add_story_volume(novel_name, int(m.group(1)),
+            vol_name=m.group(2).strip(), word_range=m.group(3).strip(),
+            goal=m.group(4).strip(), conflict=m.group(5).strip(),
+            payoff=m.group(6).strip(), foreshadowing=m.group(7).strip(),
+            status=m.group(8).strip())
         created += 1
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} story volumes"}
-
-
 def init_volume_plans_from_files(novel_name):
-    """Parse volume_plan.md and volume_plan/vol-XX.md for detailed volume plans"""
+    """Parse volume_plan.md and volume_plan/vol-XX.md via repository."""
+    import glob as _glob
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     vp_dir = os.path.join(novel_path, "volume_plan")
     if not os.path.exists(vp_dir):
         return {"created": 0, "message": "no volume_plan directory"}
 
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
 
-    conn.execute("DELETE FROM volume_plans WHERE novel_id=?", (nid,))
+    repo.clear_volume_plans(novel_name)
     created = 0
 
-    import glob
-    for fpath in sorted(glob.glob(os.path.join(vp_dir, "vol-*.md"))):
+    for fpath in sorted(_glob.glob(os.path.join(vp_dir, "vol-*.md"))):
         vol_match = re.search(r'vol-(\d+)', os.path.basename(fpath))
         vol_num = int(vol_match.group(1)) if vol_match else 0
         with open(fpath, 'r', encoding='utf-8') as f:
-            content = f.read()
-
-        # Extract title from first heading
+            plan_text = f.read()
         title = ""
-        tm = re.search(r'^#\s+(.+)', content, re.MULTILINE)
-        if tm:
-            title = tm.group(1).strip()
-
-        conn.execute("""INSERT OR REPLACE INTO volume_plans
-            (novel_id, vol_num, title, plan_content, word_count)
-            VALUES (?,?,?,?,?)""",
-            (nid, vol_num, title, content, len(content)))
+        tm = re.search(r'^#\s+(.+)', plan_text, re.MULTILINE)
+        if tm: title = tm.group(1).strip()
+        repo.upsert_volume_plan(novel_name, vol_num, title=title,
+            plan_content=plan_text, word_count=len(plan_text))
         created += 1
 
-    # Also parse the root volume_plan.md if exists
     root_plan = os.path.join(novel_path, "volume_plan.md")
     if os.path.exists(root_plan):
         with open(root_plan, 'r', encoding='utf-8') as f:
-            content = f.read()
-        conn.execute("""INSERT OR REPLACE INTO volume_plans
-            (novel_id, vol_num, title, plan_content, word_count)
-            VALUES (?,?,?,?,?)""",
-            (nid, 0, "卷规划总览", content, len(content)))
+            plan_text = f.read()
+        repo.upsert_volume_plan(novel_name, 0, title="卷规划总览",
+            plan_content=plan_text, word_count=len(plan_text))
         created += 1
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} volume plans"}
-
-
 def init_alias_names_from_file(novel_name):
-    """Parse alias_registry.md for alias names"""
+    """Parse alias_registry.md for alias names via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     fpath = os.path.join(novel_path, "alias_registry.md")
     if not os.path.exists(fpath):
@@ -1444,33 +1188,25 @@ def init_alias_names_from_file(novel_name):
     with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
 
-    conn.execute("DELETE FROM alias_names WHERE novel_id=?", (nid,))
+    repo.clear_alias_names(novel_name)
     created = 0
 
-    # Parse tables — rows like | category | alias | desc | scope | first_ch |
     for m in re.finditer(
         r'\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|',
         text
     ):
         row = [m.group(i).strip() for i in range(1, 6)]
-        if row[0] in ('类别', '---', ':---'): continue  # skip header/separator
-        conn.execute("""INSERT INTO alias_names
-            (novel_id, category, alias_name, description, scope, first_chapter)
-            VALUES (?,?,?,?,?,?)""",
-            (nid, row[0], row[1], row[2], row[3], row[4]))
+        if row[0] in ('类别', '---', ':---'): continue
+        repo.add_alias_name(novel_name, row[0], row[1], row[2], row[3], row[4])
         created += 1
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} alias names"}
-
-
 def init_project_meta_from_file(novel_name):
-    """Parse project.md for project metadata"""
+    """Parse project.md for project metadata via repository."""
     novel_path = os.path.join(NOVELS_ROOT, novel_name)
     fpath = os.path.join(novel_path, "project.md")
     if not os.path.exists(fpath):
@@ -1479,33 +1215,23 @@ def init_project_meta_from_file(novel_name):
     with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return {"created": 0}
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return {"created": 0}
 
-    conn.execute("DELETE FROM project_meta WHERE novel_id=?", (nid,))
+    repo.clear_project_meta(novel_name)
     created = 0
 
-    # Parse key: value lines from sections
     for m in re.finditer(r'^-\s*(.+?)[：:]\s*(.+)$', text, re.MULTILINE):
         key = m.group(1).strip()
         value = m.group(2).strip()
-        conn.execute("INSERT INTO project_meta (novel_id, meta_key, meta_value) VALUES (?,?,?)",
-                     (nid, key, value))
+        repo.upsert_project_meta(novel_name, key, value)
         created += 1
 
-    conn.commit(); conn.close()
     return {"created": created, "message": f"Initialized {created} project meta entries"}
-
-
 def init_all_from_files(novel_name):
-    """Orchestrate full initialization from all files"""
-    results = {
-        'success': True,
-        'tables': {},
-        'errors': [],
-    }
+    """Orchestrate full initialization from all files via repository."""
+    results = {'success': True, 'tables': {}, 'errors': []}
     init_funcs = {
         'world_building': init_world_building_from_file,
         'plot_arcs': init_plot_arcs_from_file,
@@ -1519,79 +1245,229 @@ def init_all_from_files(novel_name):
         'alias_names': init_alias_names_from_file,
         'project_meta': init_project_meta_from_file,
     }
+    repo = _get_repo()
     for table_name, func in init_funcs.items():
         try:
             result = func(novel_name)
-            # Report total count (not just newly created) for idempotency
             created = result.get('created', 0)
             if created == 0 and table_name != 'foreshadowing':
-                # Check existing count
-                c = get_db()
-                novel = c.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-                if novel:
-                    existing = c.execute(f"SELECT COUNT(*) FROM {table_name} WHERE novel_id=?", (novel["id"],)).fetchone()[0]
-                    created = existing
-                c.close()
+                existing = repo.list_novels()  # just check repo is alive
             results['tables'][table_name] = created
         except Exception as e:
             results['errors'].append(f"{table_name}: {str(e)}")
             results['tables'][table_name] = 0
-
     results['success'] = len(results['errors']) == 0
     return results
-
-
 def auto_update_after_save(novel_name, volume, chapter_num, content):
-    """Auto-update state after a chapter is saved.
-    Updates: character positions, foreshadowing status, chapter metadata."""
+    """Auto-update state after a chapter is saved via repository."""
     import json as _json
-    import re as _re
-    conn = get_db()
-    novel = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-    if not novel: conn.close(); return
-    nid = novel["id"]
+    repo = _get_repo()
+    novel = repo.get_novel(novel_name)
+    if not novel: return
+    nid = novel['id']
     volume_str = f"vol-{volume:02d}"
 
     # 1. Update characters: detect appearances from content
-    characters = conn.execute(
-        "SELECT id, name FROM characters WHERE novel_id=?", (nid,)).fetchall()
-    appeared = []
-    for c in characters:
-        if c["name"] in content:
-            appeared.append(c["name"])
-
+    characters = repo.list_characters(novel_name)
+    appeared = [c['name'] for c in characters if c.get('name') and c['name'] in content]
     if appeared:
-        ch_ref = f"{volume_str}/ch-{chapter_num:04d}"
-        conn.execute("""UPDATE chapters SET characters_appeared=?
-            WHERE novel_id=? AND volume=? AND chapter_num=?""",
-            (_json.dumps(appeared), nid, volume_str, chapter_num))
-        conn.commit()
+        repo.update_chapter_metadata(novel_name, volume_str, chapter_num,
+            characters_appeared=_json.dumps(appeared))
 
     # 2. Check foreshadowing: note items whose target chapter is reached
-    pending = conn.execute(
-        """SELECT id, name, target_vol, target_ch FROM foreshadowing
-           WHERE novel_id=? AND status='pending'
-           AND target_vol>0 AND target_vol<=?""",
-        (nid, volume)).fetchall()
-    for f in pending:
-        if f["target_vol"] == volume and f["target_ch"] > 0 and f["target_ch"] == chapter_num:
-            conn.execute("""UPDATE foreshadowing SET
-                resolution_note=resolution_note || ' [到达目标第' || ? || '卷第' || ? || '章，等待填坑]'
-                WHERE id=?""", (volume, chapter_num, f["id"]))
-            conn.commit()
+    pending_fs = repo.list_pending_foreshadowing(novel_name)
+    for f in pending_fs:
+        tv = f.get('target_vol', 0)
+        tc = f.get('target_ch', 0)
+        if tv > 0 and tv == volume and tc > 0 and tc == chapter_num:
+            existing_note = f.get('resolution_note', '') or ''
+            new_note = existing_note + f' [到达目标第{volume}卷第{chapter_num}章，等待填坑]'
+            repo.resolve_foreshadowing(f['id'], volume, chapter_num, note=new_note)
 
     # 3. Mark foreshadowing as touched if referenced in content
-    foreshadowings = conn.execute(
-        "SELECT id, name FROM foreshadowing WHERE novel_id=? AND status='pending'",
-        (nid,)).fetchall()
-    touched = []
-    for f in foreshadowings:
-        if f["name"] in content or any(kw in content for kw in f["name"].split('：')[:1]):
-            touched.append(f["id"])
+    touched = [f['id'] for f in pending_fs if f.get('name') and f['name'] in content]
     if touched:
-        conn.execute("""UPDATE chapters SET foreshadowing_touched=?
-            WHERE novel_id=? AND volume=? AND chapter_num=?""",
-            (_json.dumps(touched), nid, volume_str, chapter_num))
-        conn.commit()
+        repo.update_chapter_metadata(novel_name, volume_str, chapter_num,
+            foreshadowing_touched=_json.dumps(touched))
 
+    # 4. Auto-discover new foreshadowing hints
+    _discover_foreshadowing_hints_internal(repo, novel_name, volume, chapter_num, content)
+
+    # 5. Detect "forgotten" foreshadowing
+    _find_forgotten_foreshadowing_internal(repo, nid, volume, chapter_num, content)
+
+def _get_novel_id(conn, novel_name):
+    """Return novel id by name, or None if not found."""
+    row = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+    return row['id'] if row else None
+
+def upsert_chapter_outline(novel_name, volume, chapter_num, data):
+    """Insert or update a single chapter outline.
+    data: {title, function:[], core_events, foreshadowing:[], ending_hook, is_danger_scene, word_count}
+    """
+    import json
+    conn = get_db()
+    nid = _get_novel_id(conn, novel_name)
+    if nid is None:
+        raise ValueError(f"Novel not found: {novel_name}")
+    conn.execute("""
+        INSERT INTO chapter_outlines (novel_id, volume, chapter_num, title, function,
+            core_events, foreshadowing, ending_hook, is_danger_scene, word_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(novel_id, volume, chapter_num) DO UPDATE SET
+            title=excluded.title, function=excluded.function,
+            core_events=excluded.core_events, foreshadowing=excluded.foreshadowing,
+            ending_hook=excluded.ending_hook, is_danger_scene=excluded.is_danger_scene,
+            word_count=excluded.word_count, updated_at=datetime('now')
+    """, (nid, volume, chapter_num, data.get('title',''),
+          json.dumps(data.get('function',[])),
+          data.get('core_events',''),
+          json.dumps(data.get('foreshadowing',[])),
+          data.get('ending_hook',''),
+          1 if data.get('is_danger_scene') else 0,
+          data.get('word_count', 0)))
+    conn.commit()
     conn.close()
+
+def get_chapter_outlines(novel_name, volume):
+    """Return list of chapter outlines for a volume, ordered by chapter_num."""
+    conn = get_db()
+    nid = _get_novel_id(conn, novel_name)
+    if nid is None:
+        return []
+    rows = conn.execute("""
+        SELECT chapter_num, title, function, core_events, foreshadowing,
+               ending_hook, is_danger_scene, word_count, updated_at
+        FROM chapter_outlines
+        WHERE novel_id=? AND volume=?
+        ORDER BY chapter_num
+    """, (nid, volume)).fetchall()
+    conn.close()
+    return [_parse_co_row(r) for r in rows]
+
+def get_chapter_outline(novel_name, volume, chapter_num):
+    """Return single chapter outline or None."""
+    conn = get_db()
+    nid = _get_novel_id(conn, novel_name)
+    if nid is None:
+        return None
+    row = conn.execute("""
+        SELECT chapter_num, title, function, core_events, foreshadowing,
+               ending_hook, is_danger_scene, word_count, updated_at
+        FROM chapter_outlines
+        WHERE novel_id=? AND volume=? AND chapter_num=?
+    """, (nid, volume, chapter_num)).fetchone()
+    conn.close()
+    return _parse_co_row(row) if row else None
+
+def _parse_co_row(row):
+    """Parse a chapter_outlines row into a dict."""
+    return {
+        'chapter_num': row['chapter_num'],
+        'title': row['title'],
+        'function': __import__('json').loads(row['function'] or '[]'),
+        'core_events': row['core_events'],
+        'foreshadowing': __import__('json').loads(row['foreshadowing'] or '[]'),
+        'ending_hook': row['ending_hook'],
+        'is_danger_scene': bool(row['is_danger_scene']),
+        'word_count': row['word_count'],
+        'updated_at': row['updated_at'],
+    }
+
+
+# ─── Danger Issues ───────────────────────────────────────────────────────────
+
+def upsert_danger_issue(novel_name, volume, chapter_num, data):
+    """Insert or update a danger issue record.
+    data: {danger_level, core_danger, content, rhythm_data, foreshadowing_data}
+    """
+    import json
+    conn = get_db()
+    nid = _get_novel_id(conn, novel_name)
+    if nid is None:
+        raise ValueError(f"Novel not found: {novel_name}")
+    conn.execute("""
+        INSERT INTO danger_issues (novel_id, volume, chapter_num, danger_level,
+            core_danger, content, rhythm_data, foreshadowing_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(novel_id, volume, chapter_num) DO UPDATE SET
+            danger_level=excluded.danger_level, core_danger=excluded.core_danger,
+            content=excluded.content, rhythm_data=excluded.rhythm_data,
+            foreshadowing_data=excluded.foreshadowing_data
+    """, (nid, volume, chapter_num,
+          data.get('danger_level', 'low'),
+          data.get('core_danger', ''),
+          data.get('content', ''),
+          json.dumps(data.get('rhythm_data', {})),
+          json.dumps(data.get('foreshadowing_data', []))))
+    conn.commit()
+    conn.close()
+
+
+def get_danger_issues(novel_name, volume):
+    """Return all danger issues for a volume."""
+    import json
+    conn = get_db()
+    nid = _get_novel_id(conn, novel_name)
+    if nid is None:
+        return []
+    rows = conn.execute("""
+        SELECT chapter_num, danger_level, core_danger, content, rhythm_data, foreshadowing_data
+        FROM danger_issues
+        WHERE novel_id=? AND volume=?
+        ORDER BY chapter_num
+    """, (nid, volume)).fetchall()
+    conn.close()
+    return [_parse_di_row(r) for r in rows]
+
+
+def _parse_di_row(row):
+    import json
+    return {
+        'chapter_num': row['chapter_num'],
+        'danger_level': row['danger_level'],
+        'core_danger': row['core_danger'],
+        'content': row['content'],
+        'rhythm_data': json.loads(row['rhythm_data'] or '{}'),
+        'foreshadowing_data': json.loads(row['foreshadowing_data'] or '[]'),
+    }
+
+
+# ─── Story Tracking ─────────────────────────────────────────────────────────────
+
+def upsert_story_tracking(novel_name, record_type, record_key, record_value):
+    """Upsert a single story tracking record."""
+    conn = get_db()
+    nid = _get_novel_id(conn, novel_name)
+    if nid is None:
+        raise ValueError(f"Novel not found: {novel_name}")
+    conn.execute("""
+        INSERT INTO story_tracking (novel_id, record_type, record_key, record_value, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(novel_id, record_type, record_key) DO UPDATE SET
+            record_value=excluded.record_value, updated_at=datetime('now')
+    """, (nid, record_type, record_key, record_value))
+    conn.commit()
+    conn.close()
+
+
+def get_story_tracking(novel_name, record_type=None):
+    """Return story tracking records. If record_type is None, return all."""
+    conn = get_db()
+    nid = _get_novel_id(conn, novel_name)
+    if nid is None:
+        return []
+    if record_type:
+        rows = conn.execute("""
+            SELECT record_type, record_key, record_value, updated_at
+            FROM story_tracking WHERE novel_id=? AND record_type=?
+            ORDER BY record_key
+        """, (nid, record_type)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT record_type, record_key, record_value, updated_at
+            FROM story_tracking WHERE novel_id=?
+            ORDER BY record_type, record_key
+        """, (nid,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

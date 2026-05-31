@@ -1,4 +1,4 @@
-"""Novel Agent Web Portal - 直接连接DeepSeek的写作Web Portal"""
+"""Novel Agent Web Portal - AI写作Web Portal (MiniMax / Anthropic-compatible API)"""
 import json
 import os
 import re
@@ -14,7 +14,10 @@ import httpx
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
-import sqlite3 as _sqlite3
+try:
+    import sqlite3 as _sqlite3
+except ImportError:
+    _sqlite3 = None  # MySQL mode — not available
 
 from content_db import (
     get_db as get_content_db, init_db as init_content_db,
@@ -49,7 +52,7 @@ if os.path.exists(_HERMES_ENV):
                 if _val and _val != "***":  # skip redacted placeholders
                     os.environ.setdefault(_key, _val)
 
-# ─── DeepSeek User Config Persistence ──────────────────────────────────────
+# ─── User Config Persistence ───────────────────────────────────────────────
 
 DEEPSEEK_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deepseek_config.json")
 
@@ -63,33 +66,8 @@ USAGE_DB_PATH = os.path.join(_PORTAL_DIR, "usage.db")
 # ─── Usage DB ──────────────────────────────────────────────────────────────
 
 def _init_usage_db():
-    """Initialize the usage tracking database."""
-    conn = _sqlite3.connect(USAGE_DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS usage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            model TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            novel TEXT DEFAULT '',
-            prompt_tokens INTEGER DEFAULT 0,
-            completion_tokens INTEGER DEFAULT 0,
-            total_tokens INTEGER DEFAULT 0,
-            cost_estimate REAL DEFAULT 0.0,
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_usage_created_at ON usage(created_at)
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_usage_operation ON usage(operation)
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model)
-    """)
-    conn.commit()
-    conn.close()
-
+    """No-op: Tables created by ensure_unified_schema() via ORM."""
+    pass
 
 def log_token_usage(model, operation, prompt_tokens, completion_tokens, novel=""):
     """Log token usage to usage.db. Non-blocking, errors are silent."""
@@ -97,30 +75,26 @@ def log_token_usage(model, operation, prompt_tokens, completion_tokens, novel=""
         total_tokens = prompt_tokens + completion_tokens
         cost = _estimate_cost(model, prompt_tokens, completion_tokens)
 
-        conn = _sqlite3.connect(USAGE_DB_PATH)
-        conn.execute(
-            "INSERT INTO usage (model, operation, novel, prompt_tokens, completion_tokens, total_tokens, cost_estimate, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-            (model, operation, novel, prompt_tokens, completion_tokens, total_tokens, cost)
-        )
-        conn.commit()
-        conn.close()
+        from repository import get_repo
+        get_repo().log_usage(model, operation, prompt_tokens, completion_tokens, novel=novel, cost=cost)
     except Exception:
         pass  # tracking failure must not block main flow
 
 
 def _estimate_cost(model, prompt_tokens, completion_tokens):
-    """Estimate cost in USD based on DeepSeek pricing.
-
-    deepseek-chat (v3): $0.27/M input, $1.10/M output
-    deepseek-reasoner (r1): $0.14/M input, $0.28/M output
+    """Estimate cost in USD based on model pricing.
+    Supports MiniMax M2.7, DeepSeek V3/R1 pricing tiers.
     """
     model_lower = model.lower()
     if "reasoner" in model_lower or "r1" in model_lower:
         input_price = 0.14 / 1_000_000
         output_price = 0.28 / 1_000_000
+    elif "minimax" in model_lower or "m2" in model_lower:
+        # MiniMax M2.7 pricing (adjust if needed)
+        input_price = 0.27 / 1_000_000
+        output_price = 1.10 / 1_000_000
     else:
-        # deepseek-chat / v3
+        # default / deepseek-chat / v3
         input_price = 0.27 / 1_000_000
         output_price = 1.10 / 1_000_000
     return round(prompt_tokens * input_price + completion_tokens * output_price, 6)
@@ -326,7 +300,45 @@ def get_novel_status(novel_name):
     return info
 
 
-# ─── DeepSeek API ───────────────────────────────────────────────────────────
+# ─── AI API ────────────────────────────────────────────────────────────────
+
+def _is_anthropic_api(api_base):
+    """Detect if the API uses Anthropic Messages format based on URL."""
+    return "/anthropic" in api_base
+
+
+def _build_anthropic_payload(messages, system_prompt, model, temperature, max_tokens, top_p, stream):
+    """Build Anthropic Messages API request payload."""
+    payload = {
+        "model": model,
+        "messages": messages,  # Anthropic expects messages without system role
+        "max_tokens": max_tokens,
+        "stream": stream,
+    }
+    if system_prompt:
+        payload["system"] = system_prompt
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if top_p is not None:
+        payload["top_p"] = top_p
+    return payload
+
+
+def _build_openai_payload(messages, system_prompt, model, temperature, max_tokens, top_p, stream):
+    """Build OpenAI-compatible API request payload."""
+    full_messages = []
+    if system_prompt:
+        full_messages.append({"role": "system", "content": system_prompt})
+    full_messages.extend(messages)
+    return {
+        "model": model,
+        "messages": full_messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+        "stream": stream,
+    }
+
 
 def deepseek_chat(messages, system_prompt=None, temperature=None, max_tokens=None, top_p=None, stream=False, operation=None, novel=""):
     cfg = get_active_deepseek_config()
@@ -335,58 +347,84 @@ def deepseek_chat(messages, system_prompt=None, temperature=None, max_tokens=Non
     model = cfg["model"]
 
     if not api_key:
-        return {"success": False, "error": "DEEPSEEK_API_KEY 未配置，请在设置页面中配置"}
+        return {"success": False, "error": "API Key 未配置，请在设置页面中配置"}
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    is_anthropic = _is_anthropic_api(api_base)
 
-    full_messages = []
-    if system_prompt:
-        full_messages.append({"role": "system", "content": system_prompt})
-    full_messages.extend(messages)
-
-    payload = {
-        "model": model,
-        "messages": full_messages,
-        "temperature": temperature if temperature is not None else cfg["temperature"],
-        "max_tokens": max_tokens if max_tokens is not None else cfg["max_tokens"],
-        "top_p": top_p if top_p is not None else cfg["top_p"],
-        "stream": stream,
-    }
+    if is_anthropic:
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        endpoint = f"{api_base}/v1/messages"
+        temperature_val = temperature if temperature is not None else cfg["temperature"]
+        max_tokens_val = max_tokens if max_tokens is not None else cfg["max_tokens"]
+        top_p_val = top_p if top_p is not None else cfg["top_p"]
+        payload = _build_anthropic_payload(
+            messages, system_prompt, model,
+            temperature_val, max_tokens_val, top_p_val, stream,
+        )
+    else:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        endpoint = f"{api_base}/chat/completions"
+        temperature_val = temperature if temperature is not None else cfg["temperature"]
+        max_tokens_val = max_tokens if max_tokens is not None else cfg["max_tokens"]
+        top_p_val = top_p if top_p is not None else cfg["top_p"]
+        payload = _build_openai_payload(
+            messages, system_prompt, model,
+            temperature_val, max_tokens_val, top_p_val, stream,
+        )
 
     if not stream:
         try:
             with httpx.Client(timeout=300) as client:
-                resp = client.post(
-                    f"{api_base}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
+                resp = client.post(endpoint, headers=headers, json=payload)
                 if resp.status_code != 200:
                     return {
                         "success": False,
                         "error": f"API错误 {resp.status_code}: {resp.text}",
                     }
                 data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-                usage = data.get("usage", {})
-                # Log token usage
-                if operation and usage:
-                    log_token_usage(
-                        model=model,
-                        operation=operation,
-                        prompt_tokens=usage.get("prompt_tokens", 0),
-                        completion_tokens=usage.get("completion_tokens", 0),
-                        novel=novel,
-                    )
+
+                if is_anthropic:
+                    # Anthropic response format
+                    content_blocks = data.get("content", [])
+                    content = ""
+                    for block in content_blocks:
+                        if block.get("type") == "text":
+                            content += block.get("text", "")
+                    usage = data.get("usage", {})
+                    if operation and usage:
+                        log_token_usage(
+                            model=model,
+                            operation=operation,
+                            prompt_tokens=usage.get("input_tokens", 0),
+                            completion_tokens=usage.get("output_tokens", 0),
+                            novel=novel,
+                        )
+                else:
+                    # OpenAI response format
+                    content = data["choices"][0]["message"]["content"]
+                    usage = data.get("usage", {})
+                    if operation and usage:
+                        log_token_usage(
+                            model=model,
+                            operation=operation,
+                            prompt_tokens=usage.get("prompt_tokens", 0),
+                            completion_tokens=usage.get("completion_tokens", 0),
+                            novel=novel,
+                        )
                 return {"success": True, "content": content, "usage": usage}
         except Exception as e:
             return {"success": False, "error": str(e)}
     else:
         # Return the client + payload for streaming
-        return {"__stream__": True, "payload": payload, "headers": headers, "api_base": api_base}
+        return {"__stream__": True, "payload": payload, "headers": headers,
+                "api_base": api_base, "is_anthropic": is_anthropic, "endpoint": endpoint}
 
 
 # ─── React Frontend Static Serving ──────────────────────────────────────────
@@ -520,6 +558,232 @@ def api_edit_chapter(novel_name, ch_ref):
     })
 
 
+@app.route("/api/novels/<novel_name>/chapters/<path:ch_ref>", methods=["DELETE"])
+def api_delete_chapter(novel_name, ch_ref):
+    """Delete a chapter with state rollback. Only the latest chapter can be deleted."""
+    import re as _re
+    from content_db import get_db as _cdb
+
+    # Determine volume and chapter number
+    ch_match = _re.search(r'ch-(\d+)', ch_ref)
+    if not ch_match:
+        return jsonify({"success": False, "error": "无效的章节引用"}), 400
+    target_ch_num = int(ch_match.group(1))
+
+    vol_str = "vol-01"
+    if "/" in ch_ref:
+        vol_str = ch_ref.split("/")[0]
+    elif "-ch-" in ch_ref:
+        vol_str = ch_ref.split("-ch-")[0]
+    vol_num = int(vol_str.replace("vol-", "")) if vol_str.startswith("vol-") else 0
+
+    novels_dir = get_novels_dir()
+    novel_path = os.path.join(novels_dir, novel_name)
+    manuscript_dir = os.path.join(novel_path, "manuscript")
+
+    if not os.path.isdir(manuscript_dir):
+        return jsonify({"success": False, "error": "手稿目录不存在"}), 404
+
+    # ── Check: this must be the latest chapter ──
+    all_chapters = []
+    for vol_dir in sorted(os.listdir(manuscript_dir)):
+        vp = os.path.join(manuscript_dir, vol_dir)
+        if not os.path.isdir(vp) or vol_dir.startswith('.'):
+            continue
+        for f in os.listdir(vp):
+            cm = _re.search(r'ch-(\d+)', f)
+            if cm and f.endswith('.md'):
+                all_chapters.append((vol_dir, int(cm.group(1)), f))
+
+    if not all_chapters:
+        return jsonify({"success": False, "error": "没有可删除的章节"}), 404
+
+    all_chapters.sort(key=lambda x: (x[0], x[1]))
+    latest_vol, latest_ch, latest_file = all_chapters[-1]
+    latest_ref = f"{latest_vol}/ch-{latest_ch:04d}" if len(str(latest_ch)) <= 4 else f"{latest_vol}/ch-{latest_ch:03d}"
+
+    # Normalize ch_ref for comparison — compare by volume + chapter number
+    def _parse_ref(ref):
+        """Parse chapter ref to (vol_str, ch_num)."""
+        ref = ref.replace('-ch-', '/ch-')
+        parts = ref.split('/')
+        vol_p = parts[0] if len(parts) > 1 else 'vol-01'
+        ch_p = parts[-1] if '/' in ref else parts[0]
+        m = __import__('re').search(r'ch-(\d+)', ch_p)
+        return (vol_p, int(m.group(1)) if m else 0)
+
+    req_vol, req_ch = _parse_ref(ch_ref)
+    latest_vol_p, latest_ch_p = _parse_ref(latest_ref)
+
+    if (req_vol, req_ch) != (latest_vol_p, latest_ch_p):
+        return jsonify({
+            "success": False,
+            "error": f"只能从最新章节开始删除。当前最新: {latest_ref}（第{latest_ch}章），你尝试删除: {ch_ref}",
+            "latest_chapter": latest_ref,
+        }), 400
+
+    # ── Delete chapter file ──
+    ch_path = os.path.join(manuscript_dir, f"{ch_ref}.md")
+    if not os.path.exists(ch_path):
+        # Try alternate path
+        alt_path = os.path.join(manuscript_dir, latest_vol, latest_file)
+        if os.path.exists(alt_path):
+            ch_path = alt_path
+        else:
+            return jsonify({"success": False, "error": "章节文件不存在"}), 404
+
+    # Read content before deleting (for rollback info)
+    chapter_content = ""
+    try:
+        with open(ch_path, "r", encoding="utf-8") as f:
+            chapter_content = f.read()
+    except Exception:
+        pass
+
+    os.remove(ch_path)
+
+    # ── Rollback state ──
+    rollback_log = []
+
+    try:
+        repo = None
+        try:
+            from repository import get_repo
+            repo = get_repo()
+        except Exception:
+            pass
+
+        if repo:
+            # 1. Delete chapter from DB
+            try:
+                repo.upsert_chapter(novel_name, ch_ref, volume=vol_str,
+                    chapter_num=target_ch_num, content="__DELETED__",
+                    title="", word_count=0, content_hash="")
+                # Actually remove the record
+                import sqlite3 as _sq
+                conn = _sq.connect(os.path.join(_PORTAL_DIR, "content.db"))
+                conn.execute("DELETE FROM chapters WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
+                           (novel_name, f"%{ch_ref}%"))
+                # Also clean up partial refs
+                conn.execute("DELETE FROM chapters WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
+                           (novel_name, f"{vol_str}/ch-{target_ch_num:03d}%"))
+                conn.execute("DELETE FROM chapters WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
+                           (novel_name, f"{vol_str}/ch-{target_ch_num:04d}%"))
+                conn.commit()
+                conn.close()
+                rollback_log.append("已从数据库删除章节记录")
+            except Exception as e:
+                rollback_log.append(f"数据库删除异常: {e}")
+
+            # 2. Delete associated reviews
+            try:
+                conn = _sq.connect(os.path.join(_PORTAL_DIR, "content.db"))
+                conn.execute("DELETE FROM reviews WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
+                           (novel_name, f"%{ch_ref}%"))
+                conn.execute("DELETE FROM reviews WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
+                           (novel_name, f"%ch-{target_ch_num:04d}%"))
+                conn.execute("DELETE FROM reviews WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
+                           (novel_name, f"%ch-{target_ch_num:03d}%"))
+                # Also delete review files
+                reviews_dir = os.path.join(novel_path, "reviews")
+                if os.path.isdir(reviews_dir):
+                    import glob as _g
+                    for rp in _g.glob(os.path.join(reviews_dir, f"*{target_ch_num:04d}*")):
+                        os.remove(rp)
+                        rollback_log.append(f"已删除审稿文件: {os.path.basename(rp)}")
+                    for rp in _g.glob(os.path.join(reviews_dir, f"*{target_ch_num:03d}*")):
+                        os.remove(rp)
+                        rollback_log.append(f"已删除审稿文件: {os.path.basename(rp)}")
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                rollback_log.append(f"审稿删除异常: {e}")
+
+            # 3. Roll back foreshadowing resolved at this chapter
+            try:
+                fs_list = repo.list_foreshadowing(novel_name, status="resolved")
+                count = 0
+                for f_item in fs_list:
+                    rv = f_item.get("resolved_vol", 0)
+                    rc = f_item.get("resolved_ch", 0)
+                    if rv == vol_num and rc == target_ch_num:
+                        repo.update_foreshadowing(f_item["id"],
+                            status="pending", resolved_vol=0, resolved_ch=0,
+                            resolution_note="")
+                        count += 1
+                if count:
+                    rollback_log.append(f"已回滚 {count} 条伏笔状态")
+            except Exception as e:
+                rollback_log.append(f"伏笔回滚异常: {e}")
+
+            # 4. Update stage gate — decrement current chapter
+            gate_file = os.path.join(novel_path, "state", "stage_gate.json")
+            if os.path.exists(gate_file):
+                try:
+                    import json as _j
+                    gate = _j.loads(open(gate_file).read())
+                    old_ch = gate.get("current_chapter", 0)
+                    if old_ch >= target_ch_num:
+                        gate["current_chapter"] = max(0, target_ch_num - 1)
+                        # Find previous chapter to set as current
+                        prev_found = False
+                        for vd, cn, fn in reversed(all_chapters[:-1]):
+                            gate["current_chapter"] = cn
+                            gate["current_volume"] = int(vd.replace("vol-", ""))
+                            prev_found = True
+                            break
+                        if not prev_found:
+                            gate["current_chapter"] = 0
+                            gate["current_volume"] = 0
+                        gate["updated_at"] = __import__('datetime').datetime.now().isoformat()
+                        os.makedirs(os.path.dirname(gate_file), exist_ok=True)
+                        with open(gate_file, "w") as gf:
+                            _j.dump(gate, gf, ensure_ascii=False, indent=2)
+                        rollback_log.append(f"已更新阶段进度: 当前章节 {old_ch} → {gate['current_chapter']}")
+                except Exception as e:
+                    rollback_log.append(f"阶段回滚异常: {e}")
+
+            # 5. Update character current_ch
+            try:
+                chars = repo.list_characters(novel_name)
+                updated = 0
+                for c in chars:
+                    if c.get("current_vol") == vol_num and c.get("current_ch") == target_ch_num:
+                        # Find previous position
+                        repo.update_character(c["id"], current_vol=0, current_ch=0)
+                        updated += 1
+                if updated:
+                    rollback_log.append(f"已重置 {updated} 个角色位置")
+            except Exception as e:
+                rollback_log.append(f"角色状态回滚异常: {e}")
+
+            # 6. Re-sync from filesystem to update DB stats
+            try:
+                from content_db import sync_novel_from_files
+                sync_novel_from_files(novel_name)
+            except Exception:
+                pass
+
+    except Exception as e:
+        rollback_log.append(f"回滚异常: {e}")
+
+    # ── Clean up empty manuscript volume dir ──
+    for vol_dir in sorted(os.listdir(manuscript_dir)):
+        vp = os.path.join(manuscript_dir, vol_dir)
+        if os.path.isdir(vp) and not vol_dir.startswith('.'):
+            remaining = [f for f in os.listdir(vp) if not f.startswith('.')]
+            if not remaining:
+                os.rmdir(vp)
+                rollback_log.append(f"已清理空卷目录: {vol_dir}")
+
+    return jsonify({
+        "success": True,
+        "message": f"已删除第{target_ch_num}章并回滚相关状态",
+        "deleted_chapter": ch_ref,
+        "rollback_log": rollback_log,
+    })
+
+
 @app.route("/api/novels/<novel_name>/reviews/<ch_ref>")
 def api_read_review(novel_name, ch_ref):
     content = read_novel_file(novel_name, "reviews", f"{ch_ref}-review.md")
@@ -536,6 +800,91 @@ def api_novel_status(novel_name):
     if content is None:
         return jsonify({"success": False, "error": "状态文件不存在"}), 404
     return jsonify({"success": True, "content": content})
+
+
+@app.route("/api/novels/<novel_name>/gate-status")
+def api_gate_status(novel_name):
+    """Return stage gate progress with auto-detection.
+
+    Checks file existence to determine which phases are complete.
+    Writing page uses this to show prerequisites and block generation.
+    """
+    novel_path = os.path.join(get_novels_dir(), novel_name)
+    if not os.path.isdir(novel_path):
+        return jsonify({"initialized": False, "error": "小说目录不存在"}), 404
+
+    PHASES = [
+        ("phase1_opening", "开书设定", ["project.md"]),
+        ("phase2_arc", "长线剧情", ["full_story_arc.md"]),
+        ("phase3_volume_outline", "卷级章纲", ["outline"]),
+        ("phase4_chapter_planning", "章节规划", ["volume_plan.md", "volume_plan"]),
+        ("phase5_writing", "正文写作", ["manuscript"]),
+        ("phase6_review", "编辑审稿", ["reviews"]),
+        ("phase7_status_update", "状态更新", ["state/current_status.md"]),
+    ]
+
+    WRITING_PREREQS = ["phase1_opening", "phase3_volume_outline"]
+
+    phases = {}
+    for phase_key, label, indicators in PHASES:
+        completed = False
+        detail = ""
+        for ind in indicators:
+            ind_path = os.path.join(novel_path, ind)
+            if os.path.exists(ind_path):
+                # For directories, check they're non-empty
+                if os.path.isdir(ind_path):
+                    contents = os.listdir(ind_path)
+                    contents = [c for c in contents if not c.startswith('.')]
+                    if contents:
+                        completed = True
+                        detail = f"{ind}/ ({len(contents)} 个文件)"
+                        break
+                else:
+                    completed = True
+                    detail = ind
+                    break
+        if not completed:
+            detail = f"缺少: {indicators[0]}"
+
+        phases[phase_key] = {
+            "status": "completed" if completed else "pending",
+            "label": label,
+            "detail": detail,
+            "is_writing_prereq": phase_key in WRITING_PREREQS,
+        }
+
+    # Try to load stage_gate.json for additional metadata
+    gate_file = os.path.join(novel_path, "state", "stage_gate.json")
+    current_volume = 0
+    current_chapter = 0
+    if os.path.exists(gate_file):
+        try:
+            import json
+            gate_data = json.loads(open(gate_file).read())
+            current_volume = gate_data.get("current_volume", 0)
+            current_chapter = gate_data.get("current_chapter", 0)
+            # Merge gate file status overrides
+            for pkey, pval in gate_data.get("stages", {}).items():
+                if pkey in phases and pval == "completed":
+                    phases[pkey]["status"] = pval
+        except Exception:
+            pass
+
+    writing_ready = all(
+        phases[p]["status"] == "completed" for p in WRITING_PREREQS
+    )
+
+    return jsonify({
+        "initialized": True,
+        "novel": novel_name,
+        "phases": phases,
+        "phase_order": [p[0] for p in PHASES],
+        "writing_ready": writing_ready,
+        "writing_prereqs": WRITING_PREREQS,
+        "current_volume": current_volume,
+        "current_chapter": current_chapter,
+    })
 
 
 @app.route("/api/novels/<novel_name>/outline/<vol_ref>")
@@ -556,8 +905,63 @@ def api_edit_outline(novel_name, vol_ref):
     if not content:
         return jsonify({"success": False, "error": "内容不能为空"}), 400
 
-    write_novel_file(novel_name, content, "outline", f"{vol_ref}-chapters.md")
+    # Save as YAML (not MD)
+    write_novel_file(novel_name, content, "outline", f"{vol_ref}-chapters.yaml")
+
+    # Sync chapter outlines to DB (only from .yaml file)
+    outline_yaml_path = os.path.join(get_novels_dir(), novel_name, "outline", f"{vol_ref}-chapters.yaml")
+    if os.path.exists(outline_yaml_path):
+        try:
+            from content_db import upsert_chapter_outline
+            import yaml
+            with open(outline_yaml_path, encoding='utf-8') as f:
+                parsed = yaml.safe_load(f)
+            if parsed and 'chapters' in parsed:
+                for ch in parsed['chapters']:
+                    upsert_chapter_outline(novel_name, vol_ref, int(ch['number']), {
+                        'title': ch.get('title', ''),
+                        'function': ch.get('function', []),
+                        'core_events': ch.get('core_events', ''),
+                        'foreshadowing': ch.get('foreshadowing', []),
+                        'ending_hook': ch.get('ending_hook', ''),
+                        'is_danger_scene': ch.get('is_danger_scene', False),
+                        'word_count': ch.get('word_count', 0),
+                    })
+        except Exception as e:
+            logging.warning(f"[outline_sync] {e}")
+
     return jsonify({"success": True, "message": "大纲已保存", "vol": vol_ref})
+
+
+@app.route("/api/novels/<novel_name>/chapter-outlines/<vol_ref>")
+def api_get_chapter_outlines(novel_name, vol_ref):
+    """Return all chapter outlines for a volume."""
+    try:
+        from content_db import get_chapter_outlines
+        rows = get_chapter_outlines(novel_name, vol_ref)
+        return jsonify({"success": True, "volume": vol_ref, "chapters": rows})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>", methods=["PUT"])
+def api_put_chapter_outline(novel_name, vol_ref, ch_num):
+    """Update a single chapter outline."""
+    data = request.json
+    try:
+        from content_db import upsert_chapter_outline
+        upsert_chapter_outline(novel_name, vol_ref, ch_num, {
+            'title': data.get('title', ''),
+            'function': data.get('function', []),
+            'core_events': data.get('core_events', ''),
+            'foreshadowing': data.get('foreshadowing', []),
+            'ending_hook': data.get('ending_hook', ''),
+            'is_danger_scene': data.get('is_danger_scene', False),
+            'word_count': data.get('word_count', 0),
+        })
+        return jsonify({"success": True, "message": f"第{ch_num}章大纲已更新"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>")
@@ -965,7 +1369,7 @@ def api_export_novel(novel_name):
 
 @app.route("/api/ai/chat", methods=["POST"])
 def api_ai_chat():
-    """Direct DeepSeek chat"""
+    """Direct AI chat"""
     data = request.json
     messages = data.get("messages", [])
     system = data.get("system", "")
@@ -983,10 +1387,14 @@ def api_ai_chat():
 
 @app.route("/api/ai/stream", methods=["POST"])
 def api_ai_stream():
-    """SSE streaming DeepSeek chat"""
+    """SSE streaming AI chat (supports both Anthropic and OpenAI formats)"""
     data = request.json
     messages = data.get("messages", [])
     system = data.get("system", "")
+    user = data.get("user", "")
+    # Support {system, user} format from useSSEStream
+    if not messages and (system or user):
+        messages = [{"role": "user", "content": user}] if user else []
     temperature = data.get("temperature")
     max_tokens = data.get("max_tokens")
     top_p = data.get("top_p")
@@ -1001,65 +1409,117 @@ def api_ai_stream():
     if not api_key:
         return jsonify({"success": False, "error": "API Key 未配置"}), 400
 
-    full_messages = []
-    if system:
-        full_messages.append({"role": "system", "content": system})
-    full_messages.extend(messages)
+    is_anthropic = _is_anthropic_api(api_base)
+    temperature_val = temperature if temperature is not None else cfg["temperature"]
+    max_tokens_val = max_tokens if max_tokens is not None else cfg["max_tokens"]
+    top_p_val = top_p if top_p is not None else cfg["top_p"]
 
-    payload = {
-        "model": model,
-        "messages": full_messages,
-        "temperature": temperature if temperature is not None else cfg["temperature"],
-        "max_tokens": max_tokens if max_tokens is not None else cfg["max_tokens"],
-        "top_p": top_p if top_p is not None else cfg["top_p"],
-        "stream": True,
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    if is_anthropic:
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        endpoint = f"{api_base}/v1/messages"
+        payload = _build_anthropic_payload(
+            messages, system, model,
+            temperature_val, max_tokens_val, top_p_val, stream=True,
+        )
+    else:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        endpoint = f"{api_base}/chat/completions"
+        payload = _build_openai_payload(
+            messages, system, model,
+            temperature_val, max_tokens_val, top_p_val, stream=True,
+        )
 
     def generate():
         stream_usage = {}
         try:
             with httpx.Client(timeout=300) as client:
-                with client.stream("POST", f"{api_base}/chat/completions", headers=headers, json=payload) as resp:
+                with client.stream("POST", endpoint, headers=headers, json=payload) as resp:
                     if resp.status_code != 200:
-                        yield f"data: {json.dumps({'error': f'API错误 {resp.status_code}', 'type': 'error'})}\\n\\n"
+                        yield f"data: {json.dumps({'error': f'API错误 {resp.status_code}', 'type': 'error'})}\n\n"
                         return
                     full_text = []
-                    for line in resp.iter_lines():
-                        if line.startswith("data: "):
-                            chunk_str = line[6:]
-                            if chunk_str == "[DONE]":
-                                yield f"data: {json.dumps({'type': 'done', 'content': ''.join(full_text)})}\\n\\n"
-                                # Log token usage from stream
-                                if stream_usage:
-                                    try:
-                                        log_token_usage(
-                                            model=model,
-                                            operation=operation or "stream-generate",
-                                            prompt_tokens=stream_usage.get("prompt_tokens", 0),
-                                            completion_tokens=stream_usage.get("completion_tokens", 0),
-                                            novel=novel,
-                                        )
-                                    except Exception:
-                                        pass
-                                break
-                            try:
-                                chunk = json.loads(chunk_str)
-                                delta = chunk["choices"][0].get("delta", {})
-                                content = delta.get("content")
-                                if content:  # filter null/empty
-                                    full_text.append(content)
-                                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\\n\\n"
-                                # Capture usage from any chunk that has it
-                                if "usage" in chunk:
-                                    stream_usage = chunk["usage"]
-                            except json.JSONDecodeError:
-                                continue
+
+                    if is_anthropic:
+                        # Anthropic SSE streaming format
+                        current_event = None
+                        for line in resp.iter_lines():
+                            if line.startswith("event: "):
+                                current_event = line[7:].strip()
+                            elif line.startswith("data: "):
+                                data_str = line[6:]
+                                try:
+                                    chunk = json.loads(data_str)
+                                    event_type = chunk.get("type", "")
+
+                                    if event_type == "content_block_delta":
+                                        delta = chunk.get("delta", {})
+                                        text = delta.get("text", "")
+                                        if text:
+                                            full_text.append(text)
+                                            yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
+
+                                    elif event_type == "message_delta":
+                                        usage = chunk.get("usage", {})
+                                        if usage:
+                                            stream_usage = {
+                                                "prompt_tokens": usage.get("input_tokens", 0),
+                                                "completion_tokens": usage.get("output_tokens", 0),
+                                            }
+
+                                    elif event_type == "message_stop":
+                                        yield f"data: {json.dumps({'type': 'done', 'content': ''.join(full_text)})}\n\n"
+                                        if stream_usage:
+                                            try:
+                                                log_token_usage(
+                                                    model=model,
+                                                    operation=operation or "stream-generate",
+                                                    prompt_tokens=stream_usage.get("prompt_tokens", 0),
+                                                    completion_tokens=stream_usage.get("completion_tokens", 0),
+                                                    novel=novel,
+                                                )
+                                            except Exception:
+                                                pass
+                                except json.JSONDecodeError:
+                                    continue
+                    else:
+                        # OpenAI SSE streaming format
+                        for line in resp.iter_lines():
+                            if line.startswith("data: "):
+                                chunk_str = line[6:]
+                                if chunk_str == "[DONE]":
+                                    yield f"data: {json.dumps({'type': 'done', 'content': ''.join(full_text)})}\n\n"
+                                    if stream_usage:
+                                        try:
+                                            log_token_usage(
+                                                model=model,
+                                                operation=operation or "stream-generate",
+                                                prompt_tokens=stream_usage.get("prompt_tokens", 0),
+                                                completion_tokens=stream_usage.get("completion_tokens", 0),
+                                                novel=novel,
+                                            )
+                                        except Exception:
+                                            pass
+                                    break
+                                try:
+                                    chunk = json.loads(chunk_str)
+                                    delta = chunk["choices"][0].get("delta", {})
+                                    content = delta.get("content")
+                                    if content:
+                                        full_text.append(content)
+                                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                                    if "usage" in chunk:
+                                        stream_usage = chunk["usage"]
+                                except json.JSONDecodeError:
+                                    continue
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\\n\\n"
+            yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -1208,7 +1668,8 @@ def api_create_novel():
 @app.route("/api/novels/<novel_name>/generate-chapter", methods=["POST"])
 def api_generate_chapter(novel_name):
     data = request.json
-    chapter_num = data.get("chapter_num", "")
+    chapter_num_raw = data.get("chapter_num", "")
+    chapter_num = str(chapter_num_raw) if not isinstance(chapter_num_raw, str) else chapter_num_raw
     volume = data.get("volume", "vol-01")
     style = data.get("style", "")
     user_instructions = data.get("instructions", "")
@@ -1223,6 +1684,7 @@ def api_generate_chapter(novel_name):
     # v3: Use context builder (DB-driven, 9-layer with token budget)
     vol_num_raw = volume.replace("vol-", "")
     vol_int = int(vol_num_raw) if vol_num_raw.isdigit() else 1
+    chapter_num = str(chapter_num) if not isinstance(chapter_num, str) else chapter_num
     ch_int = int(chapter_num) if chapter_num.isdigit() else 1
 
     from context_builder import build_context as _build_ctx
@@ -1277,7 +1739,7 @@ def api_review_chapter(novel_name):
     chapter_ref = data.get("chapter_ref", "")
     volume = data.get("volume", "vol-01")
     chapter_num = data.get("chapter_num", "")
-
+    chapter_num = str(chapter_num) if not isinstance(chapter_num, str) else chapter_num
     ch_padded = chapter_num.zfill(4) if chapter_num.isdigit() else chapter_num
     if not chapter_ref:
         chapter_ref = f"{volume}/ch-{ch_padded}"
@@ -1286,6 +1748,7 @@ def api_review_chapter(novel_name):
     if not ch_content:
         return jsonify({"success": False, "error": f"章节不存在: {chapter_ref}"}), 404
 
+    logging.info(f"[review] novel={novel_name} chapter_ref={chapter_ref} volume={volume} chapter_num={chapter_num} word_count_from_file={count_words(ch_content)}")
     full_ch_path = os.path.join(get_novels_dir(), novel_name, "manuscript", f"{chapter_ref}.md")
     script_results = {}
 
@@ -1361,7 +1824,7 @@ suggestions:
                 conn.execute("""INSERT INTO reviews (novel_id, chapter_ref, ai_review, script_detail,
                     wc_ok, compliance_ok, forbidden_ok, bcontrast_count, judgment_groups, tell_count, word_count)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(novel_id, chapter_ref, created_at) DO UPDATE SET
+                    ON CONFLICT(novel_id, chapter_ref) DO UPDATE SET
                     ai_review=excluded.ai_review, script_detail=excluded.script_detail,
                     wc_ok=excluded.wc_ok, compliance_ok=excluded.compliance_ok, forbidden_ok=excluded.forbidden_ok,
                     bcontrast_count=excluded.bcontrast_count, judgment_groups=excluded.judgment_groups, tell_count=excluded.tell_count""",
@@ -1403,6 +1866,11 @@ suggestions:
         "success": True,
         "ai_review": result.get("content", ""),
         "word_count": count_words(ch_content),
+        "wc_ok": analyze.get("success") and bool(__import__("re").search(r"min_2500_ok:\s*true", analyze.get("stdout", ""))),
+        "compliance_ok": compliance.get("success"),
+        "forbidden_ok": forbidden.get("success"),
+        "bcontrast_count": int(__import__("re").search(r"binary_contrast_count:\s*(\d+)", analyze.get("stdout", "")).group(1)) if __import__("re").search(r"binary_contrast_count:\s*(\d+)", analyze.get("stdout", "")) else 0,
+        "tell_count": int(__import__("re").search(r"simple_judgment_groups:\s*(\d+)", analyze.get("stdout", "")).group(1)) if __import__("re").search(r"simple_judgment_groups:\s*(\d+)", analyze.get("stdout", "")) else 0,
         "script_results": {
             "analyze": {"stdout": analyze.get("stdout", ""), "success": analyze.get("success", False)},
             "compliance": {"stdout": compliance.get("stdout", ""), "success": compliance.get("success", False)},
@@ -1417,7 +1885,6 @@ def api_optimize_chapter(novel_name):
     data = request.json
     chapter_ref = data.get("chapter_ref", "")
     volume = data.get("volume", "vol-01")
-    chapter_num = data.get("chapter_num", "")
     review_text = data.get("review_text", "")
     script_issues = data.get("script_issues", "")
 
@@ -1578,34 +2045,46 @@ def api_test_config():
     if not cfg["api_key"]:
         return jsonify({"success": False, "error": "API Key 未配置"})
 
-    headers = {
-        "Authorization": f"Bearer {cfg['api_key']}",
-        "Content-Type": "application/json",
-    }
+    is_anthropic = _is_anthropic_api(cfg["api_base"])
 
-    payload = {
-        "model": cfg["model"],
-        "messages": [{"role": "user", "content": "Hello, reply with exactly 'OK' if you can read this."}],
-        "max_tokens": 10,
-        "stream": False,
-    }
+    if is_anthropic:
+        headers = {
+            "x-api-key": cfg["api_key"],
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        endpoint = f"{cfg['api_base']}/v1/messages"
+        payload = {
+            "model": cfg["model"],
+            "messages": [{"role": "user", "content": "Reply with exactly 'OK'."}],
+            "max_tokens": 10,
+        }
+    else:
+        headers = {
+            "Authorization": f"Bearer {cfg['api_key']}",
+            "Content-Type": "application/json",
+        }
+        endpoint = f"{cfg['api_base']}/chat/completions"
+        payload = {
+            "model": cfg["model"],
+            "messages": [{"role": "user", "content": "Hello, reply with exactly 'OK' if you can read this."}],
+            "max_tokens": 10,
+            "stream": False,
+        }
 
     try:
         with httpx.Client(timeout=15) as client:
-            resp = client.post(
-                f"{cfg['api_base']}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+            resp = client.post(endpoint, headers=headers, json=payload)
             if resp.status_code != 200:
                 return jsonify({
                     "success": False,
                     "error": f"API错误 {resp.status_code}: {resp.text[:500]}",
                 })
             data = resp.json()
+            provider_name = "MiniMax" if is_anthropic else "API"
             return jsonify({
                 "success": True,
-                "message": "✅ DeepSeek API 连接成功！",
+                "message": f"✅ {provider_name} 连接成功！",
                 "model": data.get("model", cfg["model"]),
                 "usage": data.get("usage", {}),
             })
@@ -1759,6 +2238,47 @@ WIZARD_STEPS = [
 
 TOTAL_STEPS = len(WIZARD_STEPS)
 
+@app.route("/api/styles")
+def api_styles():
+    """Return available writing styles from DB presets + distilled JSON fingerprints."""
+    styles = []
+    try:
+        from repository import get_repo
+        repo = get_repo()
+        db_styles = repo.list_style_presets()
+        for s in db_styles:
+            styles.append({
+                "name": s.get("name", ""),
+                "description": s.get("description", ""),
+                "prompt": s.get("prompt", ""),
+                "distilled": False,
+            })
+    except Exception:
+        pass
+
+    # Add distilled style fingerprints from agent-system/styles/
+    import glob as _glob
+    styles_dir = os.path.join(NOVEL_AGENT_ROOT, "agent-system", "styles")
+    if os.path.isdir(styles_dir):
+        import json as _json
+        for fpath in sorted(_glob.glob(os.path.join(styles_dir, "*.json"))):
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+                name = data.get("author") or data.get("name") or os.path.splitext(os.path.basename(fpath))[0]
+                desc = data.get("style_notes") or data.get("description") or data.get("source", "")
+                styles.append({
+                    "name": name,
+                    "description": desc[:200] if desc else "",
+                    "distilled": True,
+                    "dialogue_ratio": data.get("dialogue_ratio", 0),
+                    "sentence_length_mean": data.get("sentence_length_mean", 0),
+                })
+            except Exception:
+                pass
+
+    return jsonify({"success": True, "styles": styles})
+
 
 @app.route("/api/wizard/step", methods=["POST"])
 def api_wizard_step():
@@ -1818,7 +2338,7 @@ def api_wizard_step():
             "is_last": False,
         })
 
-    # --- AI type: call DeepSeek ---
+    # --- AI type: call AI model ---
     context_parts = []
     label_map = {
         "name": "书名", "genre": "题材", "subgenre": "细分", "word_goal": "篇幅",
@@ -1888,9 +2408,49 @@ def api_wizard_step():
 # ─── Config DB ──────────────────────────────────────────────────────────────
 
 def get_config_db():
-    conn = _sqlite3.connect(CONFIG_DB_PATH)
-    conn.row_factory = _sqlite3.Row
-    return conn
+    """Return a repository-backed config connection wrapper."""
+    from repository import get_repo
+    return _RepoConfigWrapper(get_repo())
+
+
+class _RepoConfigWrapper:
+    """Repository-backed config connection for backward compat."""
+    def __init__(self, repo):
+        self._repo = repo
+    def execute(self, sql, params=None):
+        return _RepoConfigCursor(self._repo, sql, params)
+    def close(self):
+        pass
+    def commit(self):
+        pass
+
+
+class _RepoConfigCursor:
+    def __init__(self, repo, sql, params):
+        self._repo = repo
+        self._sql = sql.lower()
+        self._results = []
+        self._idx = 0
+        self._parse()
+    
+    def _parse(self):
+        sql = self._sql
+        if "banned_words" in sql:
+            self._results = [dict(r) for r in self._repo.list_banned_words()]
+        elif "compliance_rules" in sql:
+            self._results = [dict(r) for r in self._repo.list_compliance_rules()]
+        elif "style_presets" in sql:
+            self._results = [dict(r) for r in self._repo.list_style_presets()]
+        elif "alias_registry" in sql:
+            self._results = [dict(r) for r in self._repo.list_alias_registry()]
+        elif "deepseek_config" in sql:
+            cfg = self._repo.load_all_config()
+            self._results = [{"config_key": k, "config_value": v} for k, v in cfg.items()]
+    
+    def fetchall(self):
+        return self._results
+    def fetchone(self):
+        return self._results[0] if self._results else None
 
 @app.route("/api/config-db/<table>")
 def api_config_list(table):
@@ -2064,7 +2624,6 @@ def api_workflow_preflight(novel_name):
     """Run all pre-generation enforcement scripts. Returns pass/fail for each."""
     data = request.json or {}
     volume = data.get("volume", "vol-01")
-    chapter_num = data.get("chapter_num", "")
 
     novel_path = os.path.join(get_novels_dir(), novel_name)
     results = {}
@@ -2083,6 +2642,7 @@ def api_workflow_preflight(novel_name):
         "detail": f"outline/vol-{vol_num}-chapters.md {'存在' if outline_ok else '缺失'}"}
 
     # 3. Danger issue check
+    chapter_num = str(chapter_num) if not isinstance(chapter_num, str) else chapter_num
     ch_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
     di_path = os.path.join(novel_path, "outline", f"danger_issue_{volume}", f"danger_issue_{ch_padded}.md")
     di_ok = os.path.exists(di_path)
@@ -2158,7 +2718,8 @@ def api_enforce_pipeline(novel_name):
     """
     data = request.json or {}
     volume = data.get("volume", "vol-01")
-    chapter_num = data.get("chapter_num", "")
+    chapter_num_raw = data.get("chapter_num", "")
+    chapter_num = str(chapter_num_raw) if not isinstance(chapter_num_raw, str) else chapter_num_raw
     chapter_ref = data.get("chapter_ref", "")
 
     novel_path = os.path.join(get_novels_dir(), novel_name)
@@ -3101,7 +3662,7 @@ if __name__ == "__main__":
     print(f"  小说写作 Agent Web Portal — NovelForge")
     print(f"{'='*60}")
     print(f"  📂 项目目录: {NOVEL_AGENT_ROOT}")
-    print(f"  🤖 DeepSeek: {api_key_status} ({config_source})")
+    print(f"  🤖 AI API: {api_key_status} ({config_source})")
     print(f"  📡 API Base: {cfg['api_base']}")
     print(f"  🧠 模型: {cfg['model']}")
     print(f"  🌡️  温度: {cfg['temperature']} / MaxTokens: {cfg['max_tokens']} / TopP: {cfg['top_p']}")
