@@ -597,6 +597,43 @@ class Repository:
             ).limit(limit).all()
             return _rows_to_dicts(rows)
 
+    def get_world_building_volume_plus_global(
+        self, novel_name: str, volume: int, local_limit: int = 5, global_limit: int = 5
+    ) -> List[Dict]:
+        """Get local-volume world building (vol-1..vol+1) PLUS a global sample.
+
+        The "global" half is the rest of the world's important settings
+        (e.g. 八神体系 in 大强成神啦) that may be referenced even when the
+        scene is set in an earlier volume. Without the global sample, late-
+        stage lore that the LLM needs to foreshadow properly gets dropped.
+        """
+        with repo_session() as s:
+            nid = self._get_novel_id(s, novel_name)
+            if not nid: return []
+            # Local: this volume's window (vol-1..vol+1) + global entries
+            local_q = s.query(WorldBuilding).filter(
+                WorldBuilding.novel_id == nid,
+                or_(
+                    WorldBuilding.related_vol == 0,
+                    WorldBuilding.related_vol.between(max(1, volume - 1), volume + 1),
+                )
+            ).limit(local_limit)
+            local_ids = {r.id for r in local_q.all()}
+
+            # Global: entries related to later volumes (related_vol > vol+1)
+            global_q = s.query(WorldBuilding).filter(
+                WorldBuilding.novel_id == nid,
+                WorldBuilding.related_vol > volume + 1,
+                ~WorldBuilding.id.in_(local_ids),
+            ).limit(global_limit)
+            global_rows = global_q.all()
+
+            # Re-fetch local to preserve order
+            local_rows = s.query(WorldBuilding).filter(
+                WorldBuilding.id.in_(local_ids)
+            ).all()
+            return _rows_to_dicts(local_rows) + _rows_to_dicts(global_rows)
+
     def add_world_building(self, novel_name: str, domain: str, name: str, content: str,
                            related_vol: int = 0, related_ch: int = 0, tags: str = "") -> Optional[int]:
         with repo_session() as s:
@@ -871,6 +908,33 @@ class Repository:
             return row.meta_value if row else None
 
     def list_project_meta(self, novel_name: str) -> List[Dict]:
+        """Return all (meta_key, meta_value) rows for a novel.
+        Used by context_builder Layer 1 to feed the full project setting
+        (乐园, 八位古神, 叛神系统, ...) into the LLM prompt.
+        """
+        with repo_session() as s:
+            nid = self._get_novel_id(s, novel_name)
+            if not nid: return []
+            rows = s.query(ProjectMeta).filter(ProjectMeta.novel_id == nid).all()
+            return [{"meta_key": r.meta_key, "meta_value": r.meta_value} for r in rows]
+
+    def list_genre_rules(self, novel_name: str) -> List[Dict]:
+        """Return all genre_rules for a novel. Empty list if novel has none.
+
+        context_builder assembles these into the prompt so the LLM knows the
+        type-level constraints (must-haves, pacing, reader expectations).
+        """
+        with repo_session() as s:
+            nid = self._get_novel_id(s, novel_name)
+            if not nid: return []
+            rows = s.query(GenreRule).filter(GenreRule.novel_id == nid).all()
+            return [
+                {"rule_category": r.rule_category, "rule_content": r.rule_content,
+                 "is_required": r.is_required}
+                for r in rows
+            ]
+
+    def list_project_meta(self, novel_name: str) -> List[Dict]:
         with repo_session() as s:
             nid = self._get_novel_id(s, novel_name)
             if not nid: return []
@@ -1031,6 +1095,16 @@ class Repository:
     def list_style_presets(self) -> List[Dict]:
         with repo_session() as s:
             return _rows_to_dicts(s.query(StylePreset).all())
+
+    def get_style_preset_by_name(self, name: str) -> Optional[Dict]:
+        """Look up a single style preset by name. Returns None if not found.
+
+        Used by context_builder to resolve frontend style strings like
+        "辰东风" → the actual prompt content stored in style_presets.prompt.
+        """
+        with repo_session() as s:
+            row = s.query(StylePreset).filter(StylePreset.name == name).first()
+            return _row_to_dict(row) if row else None
 
     # ═══════════════════════════════════════════════════════════════
     # Usage DB

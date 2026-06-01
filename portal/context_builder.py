@@ -20,6 +20,7 @@ Architecture:
 
 import os
 import sys
+import json
 
 sys.path.insert(0, os.path.dirname(__file__))
 from token_budget import TokenBudget
@@ -268,8 +269,44 @@ def _build_chapter_context(novel_name, volume, chapter_num):
     return "\n\n".join(parts)
 
 
+def _load_character_from_md(novel_name, character_name):
+    """Extract a character's section from novels/{name}/characters.md.
+
+    Finds `### {character_name}` heading and returns content until the next
+    `## ` (H2) heading — including all `###` subsections like 背景与身世,
+    核心特质, 成长弧线. Returns "" if not found.
+    """
+    md_path = os.path.join(
+        os.path.dirname(__file__), "..", "novels", novel_name, "characters.md"
+    )
+    if not os.path.exists(md_path):
+        return ""
+    try:
+        with open(md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        return ""
+
+    import re as _re
+    # Match heading: "### {name}" on its own line
+    pattern = _re.compile(rf"^###\s+{_re.escape(character_name)}\s*$", _re.MULTILINE)
+    m = pattern.search(content)
+    if not m:
+        return ""
+    start = m.end()
+    # End at next H2 (## xxx) — this is where the next role section starts
+    next_h2 = _re.search(r"^##\s+", content[start:], _re.MULTILINE)
+    end = start + next_h2.start() if next_h2 else len(content)
+    return content[start:end].strip()
+
+
 def _build_character_context(novel_name, volume, chapter_num):
-    """Get relevant character info from DB (characters appearing in this volume)"""
+    """Get relevant character info from DB (characters appearing in this volume).
+
+    DB columns (identity/personality/current_status/emotional_state) are often
+    short stubs — when background / personality / current_status is empty,
+    fall back to novels/{name}/characters.md for the rich section.
+    """
     chars = db.get_characters(novel_name)
     if not chars:
         return ""
@@ -287,6 +324,22 @@ def _build_character_context(novel_name, volume, chapter_num):
         if c.get("current_status"): info += f"\n- 当前状态：{c['current_status'][:200]}"
         if c.get("emotional_state"): info += f"\n- 情感：{c['emotional_state'][:200]}"
         parts.append(info)
+
+        # ── Fallback to characters.md when key DB fields are sparse ──
+        # The DB's "rich" fields (background/arc/lifeline) are often empty
+        # stubs — the MD file is the only source of truth for deep character
+        # setting (成长弧线, 背景与身世, 核心特质). Trigger on those three.
+        deep_fields_empty = not any([
+            (c.get("background") or "").strip(),
+            (c.get("arc") or "").strip(),
+            (c.get("lifeline") or "").strip(),
+        ])
+        if deep_fields_empty:
+            md_section = _load_character_from_md(novel_name, c["name"])
+            if md_section:
+                # Trim to fit per-character budget (~400 tokens)
+                trimmed = _truncate_to_tokens(md_section, 400)
+                parts.append(f"#### 📜 档案补充（来自 characters.md）\n{trimmed}")
     return "\n\n".join(parts)
 
 
@@ -336,14 +389,24 @@ def _build_foreshadowing_context(novel_name, volume):
 
 
 def _build_world_context(novel_name, volume, chapter_num):
-    """Active world-building entries for this volume via repository"""
+    """Active world-building entries — current-volume (5) + later-volume sample (5).
+
+    The later-volume sample ensures cross-volume lore (e.g. 八神体系, 外星
+    种族) is not dropped from the prompt just because the current chapter is
+    in an early volume. Without this, the LLM can't foreshadow properly.
+    """
     from repository import get_repo
-    rows = get_repo().get_world_building_for_volume(novel_name, volume, limit=10)
+    rows = get_repo().get_world_building_volume_plus_global(
+        novel_name, volume, local_limit=5, global_limit=5
+    )
     if not rows:
         return ""
-    parts = ["## 世界观要点"]
+    parts = ["## 世界观要点（当前卷 5 条 + 全局设定 5 条）"]
     for r in rows:
-        parts.append(f"- [{r.get('domain', '')}] {r.get('name', '')}: {r.get('content', '')[:200]}")
+        # Mark later-volume entries so the LLM knows they're cross-volume
+        rv = r.get("related_vol", 0)
+        scope = "全局" if (rv and rv > volume + 1) else "本卷"
+        parts.append(f"- [{scope}|{r.get('domain', '')}] {r.get('name', '')}: {r.get('content', '')[:200]}")
     return "\n".join(parts)
 
 def _build_pacing_context(novel_name, volume, chapter_num):
@@ -434,13 +497,71 @@ def _build_banned_compliance_context():
     return "\n".join(parts)
 
 
+def _load_style_fingerprint(author_name):
+    """Load statistical fingerprint JSON for an author.
+
+    Looks for `agent-system/styles/{name}.json` — strips trailing 风 so
+    "辰东风" → "辰东.json", "番茄风" → "番茄.json". Returns a compact
+    multi-line string with the most actionable stats, or "" if not found.
+    """
+    # Normalize: "辰东风" → "辰东", "番茄风" → "番茄"
+    clean = author_name.rstrip("风").rstrip("风")
+    base_dir = os.path.join(os.path.dirname(__file__), "..", "agent-system", "styles")
+    fp_path = os.path.join(base_dir, f"{clean}.json")
+    if not os.path.exists(fp_path):
+        return ""
+    try:
+        with open(fp_path, "r", encoding="utf-8") as f:
+            data = json.loads(f.read())
+    except Exception:
+        return ""
+
+    lines = []
+    slm = data.get("sentence_length_mean")
+    if isinstance(slm, (int, float)):
+        lines.append(f"- 平均句长：{slm} 字")
+    dr = data.get("dialogue_ratio")
+    if isinstance(dr, (int, float)):
+        lines.append(f"- 对话占比：{dr:.0%}")
+    vr = data.get("vocabulary_richness")
+    if isinstance(vr, (int, float)):
+        lines.append(f"- 词汇丰富度：{vr:.2f}")
+    td = data.get("transition_density")
+    if isinstance(td, (int, float)):
+        lines.append(f"- 转折词密度：{td}")
+    # Top 5 transitions
+    trans = data.get("transitions") or {}
+    if isinstance(trans, dict) and trans:
+        top = sorted(trans.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        top_str = "、".join(f"{w}({n})" for w, n in top)
+        lines.append(f"- 常用转折词：{top_str}")
+    # Top 3 openers
+    openers = data.get("sentence_openers") or []
+    if isinstance(openers, list) and openers:
+        top3 = openers[:3]
+        top3_str = "、".join(
+            f"\"{o.get('opener','')}\"({o.get('frequency', 0):.0%})"
+            for o in top3 if isinstance(o, dict)
+        )
+        if top3_str:
+            lines.append(f"- 常用句首：{top3_str}")
+    notes = data.get("style_notes")
+    if notes:
+        lines.append(f"- 风格摘要：{notes}")
+    if not lines:
+        return ""
+    return "\n".join(lines)
+
+
 def _build_style_context(style, instructions, novel_name):
     """Build style guidance.
 
     Resolves the frontend style string (e.g. "辰东风 50%, 默认 50%") into the
-    actual style_presets.prompt content from the DB. Falls back to a
-    novel-specific style.md if present.
+    actual style_presets.prompt content from the DB. Augments with statistical
+    fingerprints from agent-system/styles/*.json. Falls back to a novel-
+    specific style.md if present.
     """
+    import json as _json
     from repository import get_repo
     parts = []
 
@@ -458,14 +579,17 @@ def _build_style_context(style, instructions, novel_name):
             pass
 
     if style_md_text:
-        # Trim verbose markdown to fit budget. Keep the most useful sections.
-        trimmed = _truncate_to_tokens(style_md_text, 600)
+        # Cap at 150 so style_presets (prompt + fingerprint) has room within
+        # the 500-token Layer 9 budget. style.md is verbose (5KB); the LLM
+        # only needs the salient style summary here.
+        trimmed = _truncate_to_tokens(style_md_text, 150)
         parts.append(f"## 本书专属风格（来自 style.md）\n{trimmed}")
 
-    # ── 2. Resolve preset names → prompt content ──
+    # ── 2. Resolve preset names → prompt content + fingerprint ──
     # Frontend sends: "辰东风 50%, 默认 50%"
     # We split by comma, look each name up in style_presets, and assemble
-    # the actual descriptions rather than just echoing the name.
+    # the actual descriptions rather than just echoing the name. Augment
+    # with the statistical fingerprint from agent-system/styles/*.json.
     if style:
         repo = get_repo()
         style_chunks = []
@@ -481,15 +605,33 @@ def _build_style_context(style, instructions, novel_name):
             else:
                 name, weight = token.strip(), 100
             preset = repo.get_style_preset_by_name(name)
+            prompt_block = ""
             if preset and preset.get("prompt"):
-                style_chunks.append(
-                    f"### {name}（权重 {weight}%）\n{preset['prompt']}"
-                )
+                prompt_block = preset['prompt']
             elif preset:
-                style_chunks.append(f"### {name}（权重 {weight}%）\n（无 prompt 内容）")
+                prompt_block = "（无 prompt 内容）"
             else:
                 # Unknown name — keep it visible so the LLM at least knows.
-                style_chunks.append(f"### {name}（权重 {weight}%，未在 DB 中找到）")
+                prompt_block = "（未在 DB 中找到）"
+
+            # Try to load the statistical fingerprint for this author.
+            fingerprint = _load_style_fingerprint(name)
+
+            # Fingerprint (statistical) is more actionable than the prompt's
+            # prose — put it first so budget cuts from the end preserve it.
+            if fingerprint:
+                chunk = (
+                    f"### {name}（权重 {weight}%）\n"
+                    f"#### 风格指纹（来自 {name} 的句法统计）\n"
+                    f"{fingerprint}\n\n"
+                    f"#### 风格描述（来自 style_presets）\n"
+                    f"{prompt_block}"
+                )
+            else:
+                chunk = f"### {name}（权重 {weight}%）\n{prompt_block}"
+            # Cap each chunk at 250 tok so 2 chunks + style.md fit in 500.
+            chunk = _truncate_to_tokens(chunk, 250)
+            style_chunks.append(chunk)
 
         if style_chunks:
             parts.append("## 写作风格预设（来自 style_presets）\n" + "\n\n".join(style_chunks))
