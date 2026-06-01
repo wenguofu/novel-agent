@@ -6,12 +6,14 @@ Architecture:
   Layer 0: Core Instructions (500 tok)
   Layer 1: Project Meta (300 tok)
   Layer 2: Chapter Context — outline + danger_issue + prev ending (800 tok)
+  Layer 2.5: Genre Rules — type-level contract (500 tok, NEW)
   Layer 3: Characters (2000 tok) — vector search top-3
   Layer 4: Foreshadowing (1500 tok) — DB filter by target_vol
   Layer 5: World Building (1500 tok) — vector search top-5
   Layer 6: Pacing/Emotion (500 tok) — DB filter by vol/ch
   Layer 7: Revelation (500 tok) — DB filter by reveal_vol
   Layer 8: Plot Arcs (1000 tok) — DB filter by vol range
+  Layer 8.5: Banned Words + Compliance (200 tok, NEW)
   Layer 9: Style (500 tok) — user config
   Total max: 10000 tokens
 """
@@ -105,10 +107,10 @@ def build_context(params):
     budget.allocate("核心指令", core_tokens)
     layers.append({"name": "核心指令", "content": CORE_INSTRUCTIONS, "tokens_used": core_tokens})
 
-    # LAYER 1: Project Meta
+    # LAYER 1: Project Meta (novel row + full project_meta 14 keys)
     meta_text = _build_project_meta(novel_name)
     meta_tokens = _count_tokens(meta_text)
-    allocated = budget.allocate("项目元信息", min(meta_tokens, 300))
+    allocated = budget.allocate("项目元信息", min(meta_tokens, 500))
     layers.append({"name": "项目元信息", "content": _truncate_to_tokens(meta_text, allocated), "tokens_used": allocated})
 
     # LAYER 2: Chapter Context (outline + danger + prev)
@@ -122,6 +124,12 @@ def build_context(params):
     char_tokens = _count_tokens(char_text)
     allocated = budget.allocate("角色上下文", min(char_tokens, 2000))
     layers.append({"name": "角色上下文", "content": _truncate_to_tokens(char_text, allocated), "tokens_used": allocated})
+
+    # LAYER 3.5: Genre Rules (type-level constraints — must-haves, pacing, reader expectations)
+    gr_text = _build_genre_rules_context(novel_name)
+    gr_tokens = _count_tokens(gr_text)
+    allocated = budget.allocate("类型规则", min(gr_tokens, 500))
+    layers.append({"name": "类型规则", "content": _truncate_to_tokens(gr_text, allocated), "tokens_used": allocated})
 
     # LAYER 4: Foreshadowing (DB query)
     fs_text = _build_foreshadowing_context(novel_name, volume)
@@ -152,6 +160,12 @@ def build_context(params):
     arc_tokens = _count_tokens(arc_text)
     allocated = budget.allocate("剧情弧线", min(arc_tokens, 1000))
     layers.append({"name": "剧情弧线", "content": _truncate_to_tokens(arc_text, allocated), "tokens_used": allocated})
+
+    # LAYER 8.5: Banned Words + Compliance Rules (hard constraints from config DB)
+    bw_text = _build_banned_compliance_context()
+    bw_tokens = _count_tokens(bw_text)
+    allocated = budget.allocate("禁用词与合规", min(bw_tokens, 200))
+    layers.append({"name": "禁用词与合规", "content": _truncate_to_tokens(bw_text, allocated), "tokens_used": allocated})
 
     # LAYER 9: Style + Instructions
     style_text = _build_style_context(style, instructions, novel_name)
@@ -187,15 +201,34 @@ def build_context(params):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _build_project_meta(novel_name):
-    """Extract project metadata via repository"""
+    """Extract project metadata via repository.
+
+    Loads BOTH the novel row (title/genre/word_goal) and the full project_meta
+    table (14 keys — 八位古神, 叛神系统, 乐园, etc. for 大强成神啦). The DB
+    rows are the authoritative core-setting source.
+    """
     from repository import get_repo
-    novel = get_repo().get_novel(novel_name)
+    repo = get_repo()
+    novel = repo.get_novel(novel_name)
     if not novel:
         return ""
-    return f"""## 项目信息
-- 书名：{novel.get('title') or novel_name}
-- 类型：{novel.get('genre') or '未设置'}
-- 目标篇幅：{novel.get('word_goal') or '未设置'}"""
+
+    parts = ["## 项目信息"]
+    parts.append(f"- 书名：{novel.get('title') or novel_name}")
+    parts.append(f"- 类型：{novel.get('genre') or '未设置'}")
+    parts.append(f"- 目标篇幅：{novel.get('word_goal') or '未设置'}")
+
+    # ── Append all project_meta key/value pairs (core setting) ──
+    meta_rows = repo.list_project_meta(novel_name) or []
+    if meta_rows:
+        parts.append("\n## 核心设定（来自 project_meta — 必须严格遵守）")
+        for row in meta_rows:
+            key = (row.get("meta_key") or "").strip()
+            val = (row.get("meta_value") or "").strip()
+            if not key or not val:
+                continue
+            parts.append(f"- **{key}**：{val}")
+    return "\n".join(parts)
 
 def _build_chapter_context(novel_name, volume, chapter_num):
     """Get outline section + danger issue + previous chapter ending via repository"""
@@ -255,6 +288,35 @@ def _build_character_context(novel_name, volume, chapter_num):
         if c.get("emotional_state"): info += f"\n- 情感：{c['emotional_state'][:200]}"
         parts.append(info)
     return "\n\n".join(parts)
+
+
+def _build_genre_rules_context(novel_name):
+    """Get genre rules grouped by category via repository.
+
+    Loads 24 type-level rules (must-haves, pacing, reader expectations) from
+    `genre_rules` table. Required rules are marked with 🔴, optional with 🟡,
+    grouped by `rule_category` so the LLM can quickly scan the type contract.
+    """
+    from repository import get_repo
+    rules = get_repo().list_genre_rules(novel_name)
+    if not rules:
+        return ""
+
+    # Group by rule_category, preserving input order
+    by_category = {}
+    for r in rules:
+        cat = (r.get("rule_category") or "通用").strip() or "通用"
+        by_category.setdefault(cat, []).append(r)
+
+    parts = ["## 类型规则（genre_rules — 必须遵守）"]
+    for cat, items in by_category.items():
+        parts.append(f"### {cat}")
+        for r in items:
+            mark = "🔴" if r.get("is_required") else "🟡"
+            content = (r.get("rule_content") or "").strip()
+            if content:
+                parts.append(f"- {mark} {content}")
+    return "\n".join(parts)
 
 
 def _build_foreshadowing_context(novel_name, volume):
@@ -320,14 +382,121 @@ def _build_plot_arc_context(novel_name, volume):
         parts.append(f"- [{r.get('type', '')}] {r.get('name', '')}: {r.get('summary', '')[:200]}")
     return "\n".join(parts)
 
-def _build_style_context(style, instructions, novel_name):
-    """Build style guidance"""
-    parts = []
-    if style:
-        parts.append(f"写作风格：{style}")
-    if instructions:
-        parts.append(f"用户指示：{instructions}")
+def _build_banned_compliance_context():
+    """Get banned words + compliance rules from config DB via repository.
+
+    These are hard constraints (config-level, not per-novel) — global banned
+    vocabulary plus regulatory rules. LLM is told to avoid these patterns
+    proactively rather than relying on post-hoc checks.
+    """
+    from repository import get_repo
+    repo = get_repo()
+    parts = ["## 禁用词与合规规则（必须遵守）"]
+
+    # ── Compliance rules (highest priority — these are absolute) ──
+    compliance = repo.list_compliance_rules() or []
+    if compliance:
+        parts.append("### 合规规则")
+        for r in compliance:
+            key = (r.get("rule_key") or "").strip()
+            val = (r.get("rule_value") or "").strip()
+            desc = (r.get("description") or "").strip()
+            cat = (r.get("category") or "").strip()
+            head = f"- [{cat}] {key}" if cat else f"- {key}"
+            if val:
+                head += f": {val}"
+            if desc and desc != val:
+                head += f"（{desc}）"
+            parts.append(head)
+
+    # ── Banned words (group by category, keep compact) ──
+    banned = repo.list_banned_words() or []
+    if banned:
+        by_cat = {}
+        for b in banned:
+            cat = (b.get("category") or "通用").strip() or "通用"
+            by_cat.setdefault(cat, []).append(b)
+        parts.append("### 禁用词")
+        for cat, items in by_cat.items():
+            words = []
+            for b in items:
+                word = (b.get("word") or "").strip()
+                repl = (b.get("replacement") or "").strip()
+                if not word:
+                    continue
+                if repl:
+                    words.append(f"{word}→{repl}")
+                else:
+                    words.append(word)
+            if words:
+                parts.append(f"- [{cat}] {'、'.join(words)}")
+
     return "\n".join(parts)
+
+
+def _build_style_context(style, instructions, novel_name):
+    """Build style guidance.
+
+    Resolves the frontend style string (e.g. "辰东风 50%, 默认 50%") into the
+    actual style_presets.prompt content from the DB. Falls back to a
+    novel-specific style.md if present.
+    """
+    from repository import get_repo
+    parts = []
+
+    # ── 1. Novel-specific style.md (highest priority) ──
+    # If novels/{name}/style.md exists, use it as the authoritative style guide.
+    style_md_path = os.path.join(
+        os.path.dirname(__file__), "..", "novels", novel_name, "style.md"
+    )
+    style_md_text = ""
+    if os.path.exists(style_md_path):
+        try:
+            with open(style_md_path, "r", encoding="utf-8") as f:
+                style_md_text = f.read()
+        except Exception:
+            pass
+
+    if style_md_text:
+        # Trim verbose markdown to fit budget. Keep the most useful sections.
+        trimmed = _truncate_to_tokens(style_md_text, 600)
+        parts.append(f"## 本书专属风格（来自 style.md）\n{trimmed}")
+
+    # ── 2. Resolve preset names → prompt content ──
+    # Frontend sends: "辰东风 50%, 默认 50%"
+    # We split by comma, look each name up in style_presets, and assemble
+    # the actual descriptions rather than just echoing the name.
+    if style:
+        repo = get_repo()
+        style_chunks = []
+        for token in style.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            # Parse "name 50%" or just "name"
+            import re as _re
+            m = _re.match(r"^(.+?)\s+(\d+)\s*%$", token)
+            if m:
+                name, weight = m.group(1).strip(), int(m.group(2))
+            else:
+                name, weight = token.strip(), 100
+            preset = repo.get_style_preset_by_name(name)
+            if preset and preset.get("prompt"):
+                style_chunks.append(
+                    f"### {name}（权重 {weight}%）\n{preset['prompt']}"
+                )
+            elif preset:
+                style_chunks.append(f"### {name}（权重 {weight}%）\n（无 prompt 内容）")
+            else:
+                # Unknown name — keep it visible so the LLM at least knows.
+                style_chunks.append(f"### {name}（权重 {weight}%，未在 DB 中找到）")
+
+        if style_chunks:
+            parts.append("## 写作风格预设（来自 style_presets）\n" + "\n\n".join(style_chunks))
+
+    if instructions:
+        parts.append(f"## 用户指示\n{instructions}")
+    return "\n\n".join(parts)
 
 
 def get_context_stats(novel_name: str, volume: int, chapter_num: int) -> dict:
