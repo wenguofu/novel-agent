@@ -2,19 +2,19 @@
 Context Builder — Server-side 9-layer system prompt assembly.
 Replaces the client-side _buildSystemPrompt with DB-driven on-demand loading.
 
-Architecture:
-  Layer 0: Core Instructions (500 tok)
-  Layer 1: Project Meta (300 tok)
-  Layer 2: Chapter Context — outline + danger_issue + prev ending (800 tok)
-  Layer 2.5: Genre Rules — type-level contract (500 tok, NEW)
-  Layer 3: Characters (2000 tok) — vector search top-3
-  Layer 4: Foreshadowing (1500 tok) — DB filter by target_vol
-  Layer 5: World Building (1500 tok) — vector search top-5
-  Layer 6: Pacing/Emotion (500 tok) — DB filter by vol/ch
-  Layer 7: Revelation (500 tok) — DB filter by reveal_vol
-  Layer 8: Plot Arcs (1000 tok) — DB filter by vol range
-  Layer 8.5: Banned Words + Compliance (200 tok, NEW)
-  Layer 9: Style (500 tok) — user config
+Architecture (P3-2 allocation table, total 9500 tok, 500 elastic):
+  Layer 0:    Core Instructions        (500 tok) — from prompts/core_instructions.j2
+  Layer 1:    Project Meta             (500 tok) — novel row + project_meta 14 keys
+  Layer 2:    Chapter Context          (800 tok) — outline + danger_issue + prev
+  Layer 2.5:  Genre Rules              (500 tok) — 24 rules grouped by category (NEW)
+  Layer 3:    Characters              (2000 tok) — DB + characters.md fallback
+  Layer 4:    Foreshadowing           (1000 tok) — DB filter by target_vol
+  Layer 5:    World Building          (1500 tok) — local 5 + global 5 (P2-3)
+  Layer 6:    Pacing/Emotion           (500 tok) — DB filter by vol/ch
+  Layer 7:    Revelation               (500 tok) — DB filter by reveal_vol
+  Layer 8:    Plot Arcs               (1000 tok) — DB filter by vol range
+  Layer 8.5:  Banned + Compliance      (200 tok) — from config DB (NEW)
+  Layer 9:    Style                    (500 tok) — style_presets + style.md + JSON
   Total max: 10000 tokens
 """
 
@@ -31,7 +31,10 @@ import content_db as db
 # Layer Definitions
 # ═══════════════════════════════════════════════════════════════════════
 
-CORE_INSTRUCTIONS = """你是一个专业的长篇网文写作Agent。你的任务是**严格按照项目设定和大纲**写出高质量的小说章节。
+# Fallback copy of the Jinja2 template (portal/prompts/core_instructions.j2)
+# — used only if PromptManager fails to load the .j2. Keep in sync if the
+# .j2 changes.
+_CORE_INSTRUCTIONS_FALLBACK = """你是一个专业的长篇网文写作Agent。你的任务是**严格按照项目设定和大纲**写出高质量的小说章节。
 
 ## ⚠️ 脚本强制约束（必须遵守）
 - 每章不少于2500字，不使用真实地名人名
@@ -46,6 +49,17 @@ CORE_INSTRUCTIONS = """你是一个专业的长篇网文写作Agent。你的任�
 - 必须有明确的章节功能和悬念/钩子结尾
 - 请输出完整的章节正文，以"# 章节标题"开头。
 """
+
+
+def _get_core_instructions() -> str:
+    """Single source of truth: load from Jinja2 template, fall back to literal.
+
+    The hardcoded Python copy was removed in P3-1 — prompts/core_instructions.j2
+    is now the only author-editable location.
+    """
+    from prompt_manager import get_prompt_manager
+    pm = get_prompt_manager()
+    return pm.render_or_default("core_instructions", _CORE_INSTRUCTIONS_FALLBACK)
 
 
 def _count_tokens(text):
@@ -103,10 +117,11 @@ def build_context(params):
     budget = TokenBudget(max_tokens=max_tokens)
     layers = []
 
-    # LAYER 0: Core Instructions (always included)
-    core_tokens = _count_tokens(CORE_INSTRUCTIONS)
+    # LAYER 0: Core Instructions (always included) — loaded from Jinja2
+    core_text = _get_core_instructions()
+    core_tokens = _count_tokens(core_text)
     budget.allocate("核心指令", core_tokens)
-    layers.append({"name": "核心指令", "content": CORE_INSTRUCTIONS, "tokens_used": core_tokens})
+    layers.append({"name": "核心指令", "content": core_text, "tokens_used": core_tokens})
 
     # LAYER 1: Project Meta (novel row + full project_meta 14 keys)
     meta_text = _build_project_meta(novel_name)
@@ -135,7 +150,7 @@ def build_context(params):
     # LAYER 4: Foreshadowing (DB query)
     fs_text = _build_foreshadowing_context(novel_name, volume)
     fs_tokens = _count_tokens(fs_text)
-    allocated = budget.allocate("伏笔待办", min(fs_tokens, 1500))
+    allocated = budget.allocate("伏笔待办", min(fs_tokens, 1000))
     layers.append({"name": "伏笔待办", "content": _truncate_to_tokens(fs_text, allocated), "tokens_used": allocated})
 
     # LAYER 5: World Building (RAG top-5)
