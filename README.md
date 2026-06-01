@@ -38,6 +38,33 @@ DATABASE_URL=mysql+pymysql://user:pass@host:3306/novel_agent python run_v2.py
 3. **审稿** → AI 审稿 + 脚本合规检查（字数/违禁词/句式）
 4. **状态更新** → `auto_update_after_save()` 自动更新角色出场/伏笔状态
 
+### 12 层上下文架构（写作 Prompt）
+
+`portal/context_builder.py` 按预算加载所有可用 DB 资源，组装成 12 层 system prompt。详见 [openspec/specs/context-builder.md](openspec/specs/context-builder.md)。
+
+| # | 名称 | tok | 来源 |
+|---|------|-----|------|
+| 0 | 核心指令 | 500 | `prompts/core_instructions.j2`（jinja2） |
+| 1 | 项目元信息 | 500 | `novels` 行 + 全部 `project_meta` keys |
+| 2 | 章节上下文 | 800 | 卷纲 + danger_issue + 上一章结尾 |
+| 2.5 | 类型规则 | 500 | 24 条 `genre_rules` 按 `rule_category` 分组（🔴必须/🟡可选） |
+| 3 | 角色上下文 | 2000 | `characters` + `novels/{name}/characters.md` 字段缺失时 fallback |
+| 4 | 伏笔待办 | 1000 | 当前卷未填坑伏笔 |
+| 5 | 世界观 | 1500 | 本卷 5 条 + 后续卷 5 条（[本卷] / [全局] 标签） |
+| 6 | 节奏情感 | 500 | `pacing_control`（per chapter） |
+| 7 | 信息释放 | 500 | `revelation_schedule` |
+| 8 | 剧情弧线 | 1000 | `plot_arcs` |
+| 8.5 | 禁用词与合规 | 200 | `banned_words` + `compliance_rules`（config DB） |
+| 9 | 写作风格 | 500 | `style_presets.prompt` + `novels/{name}/style.md` + `agent-system/styles/{author}.json` 指纹 |
+
+**合计 9500 tok 分配 + 500 tok 弹性（cap 10000）**
+
+关键设计（2026-06-02 优化）：
+- **风格名解析**：前端传 `style: "辰东风 50%, 默认 50%"`，后端解析成 实际 prompt 内容 + 风格指纹（句长直方图、对话比、转折词密度）
+- **生成端合规约束**：禁用词 + 合规规则从"事后检查"升级为"事前注入 prompt"，LLM 在生成阶段就看到约束
+- **人物/世界兜底**：DB 字段稀疏时自动从 `characters.md` 读富源；世界观不只读本卷，还加 5 条跨卷设定
+- **core_instructions 单一来源**：jinja2 模板 + Python 兜底
+
 ## 文件结构
 
 ```text
