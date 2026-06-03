@@ -283,9 +283,3 @@ class TestMemoryIntegration:
         # Should have more than 9 layers now (includes memory layers even if empty)
         assert len(result["layers"]) >= 9
 
-    def test_fallback_state_context(self):
-        """Test the fallback state context function."""
-        from context_builder import _build_fallback_state_context
-        result = _build_fallback_state_context("nonexistent_novel", 1, 1)
-        # Should return empty string for nonexistent novel
-        assert isinstance(result, str)

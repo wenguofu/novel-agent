@@ -90,11 +90,12 @@ The `layers` array always has exactly 12 entries (in P3-2 allocation order). Emp
 - `_load_character_from_md` is regex-based (anchors on `^###\s+{name}\s*$`); exotic heading styles would miss silently.
 - `agent-system/styles/*.json` has `sample_size_chars: 0` for some authors — fingerprint numbers are proxy guidance, not measurements; the LLM is told to treat them as guidance via the "风格指纹" label.
 - No memoization; rebuilds context on every call (<50 ms for DB queries).
-- Pre-existing test failure: `test_context_stats_structure` expects `"layers"` key for non-existent novels but `get_context_stats` returns `{"error": "小说不存在"}`. Unchanged by this optimization.
 
 ## Change History
 
 | Date | Change | Summary |
 |------|--------|---------|
 | 2026-06-02 | [writing-prompt-optimization](../changes/writing-prompt-optimization/) | 9 → 12 layers. Added Layer 2.5 (genre rules), Layer 8.5 (banned + compliance), style JSON fingerprint, characters.md fallback, cross-volume world context. P3-2 rebalanced budget to 9500 tok allocated. P3-1 unified core_instructions to jinja2 template. |
+| 2026-06-03 | M1 follow-up | `get_context_stats` now returns the 12-layer structure for nonexistent novels (was returning `{"error": "小说不存在"}`); `test_context_stats_structure` passes. The "Pre-existing test failure" note above was stale and has been removed. |
+| 2026-06-03 | M2 follow-up | Removed orphan `_build_fallback_state_context` from `context_builder.py` and its tautology test (`test_fallback_state_context`) — the function had no production callers and the test only asserted `isinstance(result, str)`. |
 | 2026-05-25 | [novel-agent-v3](../changes/archive/2026-05-25-novel-agent-v3/) | Original 9-layer design. |

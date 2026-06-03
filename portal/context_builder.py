@@ -741,23 +741,3 @@ def get_context_stats(novel_name: str, volume: int, chapter_num: int) -> dict:
         "revelations": len(revelations),
         "layers": layers,
     }
-
-
-def _build_fallback_state_context(novel_name: str, volume: int, chapter_num: int) -> str:
-    """Build a minimal state-context string for fallback / nonexistent novels.
-
-    Returns an empty string when the novel does not exist in the DB (caller
-    can safely concatenate the result). When the novel exists, returns a
-    compact one-liner identifying the volume/chapter so downstream prompts
-    can still anchor to the right position.
-    """
-    if not novel_name:
-        return ""
-    try:
-        from repository import get_repo
-        novel = get_repo().get_novel(novel_name)
-    except Exception:
-        return ""
-    if not novel:
-        return ""
-    return f"[state-context] novel={novel_name} vol={volume} ch={chapter_num}"
