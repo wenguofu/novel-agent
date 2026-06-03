@@ -1,0 +1,13 @@
+# Pre-commit hooks for novel-agent
+# Install: pre-commit install (or run scripts/install-hooks.sh)
+# Run manually: pre-commit run --all-files
+repos:
+  - repo: local
+    hooks:
+      - id: tdd-required-test
+        name: TDD — portal changes require test changes
+        entry: scripts/check_tdd_compliance.sh
+        language: script
+        files: ^portal/.*\.py$|^tests/
+        pass_filenames: false
+        stages: [pre-commit]
