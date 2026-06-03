@@ -694,25 +694,33 @@ def get_context_stats(novel_name: str, volume: int, chapter_num: int) -> dict:
             "layers": [{"name": n, "available": False} for n in layer_names],
         }
 
-    nid = novel['id']
     vol_str = f"vol-{volume:02d}"
 
-    # Probe each layer to decide `available`. Use lightweight DB checks.
+    # Probe each layer to decide `available`. Cache the list-style results so
+    # we can use them for both the `available` flag and the final counts in
+    # the returned dict (avoids duplicate DB roundtrips).
     has_outline = bool(repo.get_outline(novel_name, vol_str))
     has_chapter_ctx = has_outline or bool(repo.get_danger_issue(novel_name, vol_str, chapter_num))
     has_pacing = bool(repo.get_pacing(novel_name, volume, chapter_num))
+
+    characters = repo.list_characters(novel_name)
+    genre_rules = repo.list_genre_rules(novel_name)
+    unresolved_foreshadowing = repo.get_unresolved_foreshadowing(novel_name, volume, chapter_num)
+    world_building = repo.list_world_building(novel_name)
+    revelations = repo.get_revelations_for_volume(novel_name, volume)
+    plot_arcs = repo.list_plot_arcs(novel_name)
 
     layers = [
         {"name": "core_instructions", "available": True},  # always loaded from Jinja2
         {"name": "project_meta", "available": True},       # novel row exists
         {"name": "chapter_context", "available": has_chapter_ctx},
-        {"name": "characters", "available": bool(repo.list_characters(novel_name))},
-        {"name": "genre_rules", "available": bool(repo.list_genre_rules(novel_name))},
-        {"name": "foreshadowing", "available": bool(repo.get_unresolved_foreshadowing(novel_name, volume, chapter_num))},
-        {"name": "world_building", "available": bool(repo.list_world_building(novel_name))},
+        {"name": "characters", "available": bool(characters)},
+        {"name": "genre_rules", "available": bool(genre_rules)},
+        {"name": "foreshadowing", "available": bool(unresolved_foreshadowing)},
+        {"name": "world_building", "available": bool(world_building)},
         {"name": "pacing", "available": has_pacing},
-        {"name": "revelation", "available": bool(repo.get_revelations_for_volume(novel_name, volume))},
-        {"name": "plot_arcs", "available": bool(repo.list_plot_arcs(novel_name))},
+        {"name": "revelation", "available": bool(revelations)},
+        {"name": "plot_arcs", "available": bool(plot_arcs)},
         {"name": "banned_compliance", "available": True},   # always loaded from config DB
         {"name": "style", "available": True},               # style guidance always present
     ]
@@ -725,12 +733,12 @@ def get_context_stats(novel_name: str, volume: int, chapter_num: int) -> dict:
         "novel_exists": True,
         "total_chapters": novel.get('total_chapters', 0),
         "volume_chapters": vol_chapters,
-        "characters": sum(1 for l in layers if l["name"] == "characters") and len(repo.list_characters(novel_name)),
-        "unresolved_foreshadowing": len(repo.get_unresolved_foreshadowing(novel_name, volume, chapter_num)),
-        "world_building": len(repo.list_world_building(novel_name)),
-        "plot_arcs": len(repo.list_plot_arcs(novel_name)),
+        "characters": len(characters),
+        "unresolved_foreshadowing": len(unresolved_foreshadowing),
+        "world_building": len(world_building),
+        "plot_arcs": len(plot_arcs),
         "pacing": 1 if has_pacing else 0,
-        "revelations": len(repo.get_revelations_for_volume(novel_name, volume)),
+        "revelations": len(revelations),
         "layers": layers,
     }
 
