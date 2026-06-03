@@ -107,7 +107,7 @@ novel-agent/
 │   ├── volume_plan/            # 卷规划
 │   └── state/                  # 运行状态 (stage_gate.json, current_status.md)
 ├── openspec/                   # 架构文档
-├── tests/                      # 119 pytest 测试
+├── tests/                      # 152 pytest 测试
 └── scripts/                    # 迁移/升级脚本
 ```
 
