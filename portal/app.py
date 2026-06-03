@@ -2645,6 +2645,7 @@ def api_workflow_preflight(novel_name):
         "detail": f"outline/vol-{vol_num}-chapters.md {'存在' if outline_ok else '缺失'}"}
 
     # 3. Danger issue check
+    chapter_num = data.get("chapter_num", "")
     chapter_num = str(chapter_num) if not isinstance(chapter_num, str) else chapter_num
     ch_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
     di_path = os.path.join(novel_path, "outline", f"danger_issue_{volume}", f"danger_issue_{ch_padded}.md")
