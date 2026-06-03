@@ -76,6 +76,26 @@ def get_engine() -> Engine:
     return _engine
 
 
+def reset_engine(url: Optional[str] = None):
+    """Reset engine + session factory singletons.
+
+    Used by tests (and content_db.init_db) to honor a DB_PATH override.
+    After calling, the next get_engine() call will create a fresh engine
+    bound to ``url`` (or to the current DATABASE_URL if not provided).
+    """
+    global _engine, _SessionLocal, DATABASE_URL
+    if url is not None:
+        DATABASE_URL = url
+    # Dispose old engine to release file handles
+    if _engine is not None:
+        try:
+            _engine.dispose()
+        except Exception:
+            pass
+    _engine = None
+    _SessionLocal = None
+
+
 def get_session_factory() -> sessionmaker:
     """Get or create the session factory."""
     global _SessionLocal

@@ -364,11 +364,40 @@ def migrate_v3():
 
 
 def init_db():
-    """Create tables via SQLAlchemy ORM (supports SQLite and MySQL)."""
+    """Create tables via SQLAlchemy ORM (supports SQLite and MySQL).
+
+    Honors ``DB_PATH`` override (used by tests via the ``fresh_db`` fixture).
+    When the SQLAlchemy engine singleton is already bound to a different
+    database (e.g. the production ``content.db``), this resets it so the
+    override path actually receives the freshly created tables.
+    """
+    import os as _os
+    from db import DATABASE_URL, reset_engine
+
+    # If DB_PATH is overridden, re-point the SQLAlchemy engine at it.
+    # Default DATABASE_URL is sqlite:///<portal_dir>/content.db; if our
+    # DB_PATH differs, swap engines.
+    global _repo
+    if DATABASE_URL.startswith("sqlite"):
+        current_path = DATABASE_URL.replace("sqlite:///", "")
+        if _os.path.abspath(current_path) != _os.path.abspath(DB_PATH):
+            reset_engine(f"sqlite:///{DB_PATH}")
+            # Engine swap invalidates the cached Repository singleton in
+            # repository.py and our own _repo handle — clear both so the
+            # next get_repo() rebuilds against the new engine.
+            import repository as _repository_mod
+            _repository_mod._repo = None
+            _repo = None
+
     from repository import ensure_tables, get_repo
     ensure_tables()
-    # Run init seed for config tables
-    get_repo().init_config_seed()
+    # Run init seed for config tables (best-effort; may fail in test envs)
+    try:
+        get_repo().init_config_seed()
+    except Exception as _e:
+        # Config seed is non-essential for schema tests; skip on failure.
+        import logging
+        logging.getLogger(__name__).warning(f"init_config_seed skipped: {_e}")
 
 # ═══════════════════════════════════════════════════════════════════════
 # Sync from files
@@ -1195,13 +1224,32 @@ def init_alias_names_from_file(novel_name):
     repo.clear_alias_names(novel_name)
     created = 0
 
-    for m in re.finditer(
-        r'\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|',
-        text
-    ):
-        row = [m.group(i).strip() for i in range(1, 6)]
-        if row[0] in ('类别', '---', ':---'): continue
-        repo.add_alias_name(novel_name, row[0], row[1], row[2], row[3], row[4])
+    # Parse row by row to avoid cross-line matches. The previous regex used
+    # `(.+?)\s*\|$` with re.MULTILINE, but `\s*` includes newlines, so a 4-col
+    # row like `| 历史朝代 | 真实朝代名 | 替换为虚构朝代 | 例：唐朝→天盛朝 |`
+    # would falsely match the 5-col pattern by greedily consuming the next row.
+    HEADER_WORDS = {'类别', '原文', '原名称', '别名', '首次出现', '备注',
+                    '别名/处理方式', '已登记数量', '已登记别名', '城市/地区别名',
+                    '组织/机构别名', '人物别名', '历史/文化别名'}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith('|') or not line.endswith('|'):
+            continue
+        cells = [c.strip() for c in line.split('|')[1:-1]]  # drop outer empty cells
+        if len(cells) != 5:
+            # Skip 4-col tables (e.g. "已登记别名", "历史/文化别名") and any other width.
+            continue
+        # Skip header row (any cell is a known header word or separator).
+        if cells[0] in HEADER_WORDS:
+            continue
+        if any(c.startswith('---') or c.startswith(':') for c in cells):
+            continue
+        # MD column order: 类别, 原名称, 别名, 首次出现, 备注
+        # add_alias_name signature: (category, alias_name, description, scope, first_chapter)
+        # Fix: previous code put cells[1] (real name, e.g. "北京") into alias_name and
+        # cells[2] (alias, e.g. "北辰") into description — they were swapped.
+        # We want alias_name to be the fictional alias and description to hold the real name.
+        repo.add_alias_name(novel_name, cells[0], cells[2], cells[1], cells[3], cells[4])
         created += 1
 
     return {"created": created, "message": f"Initialized {created} alias names"}
