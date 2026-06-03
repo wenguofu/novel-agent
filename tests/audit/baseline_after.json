@@ -2,9 +2,9 @@
   {
     "nodeid": "tests/test_context_builder.py::TestContextStats::test_context_stats_structure",
     "original_status": "FAILED",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Modified get_context_stats to return {layers: [...]} structure even for nonexistent novels"
   },
   {
     "nodeid": "tests/test_generate_context.py::TestGenerateChapterUsesV3Context::test_build_context_includes_pacing_when_exists",
@@ -23,9 +23,9 @@
   {
     "nodeid": "tests/test_memory_layer.py::TestMemoryIntegration::test_fallback_state_context",
     "original_status": "FAILED",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Added _build_fallback_state_context helper to context_builder"
   },
   {
     "nodeid": "tests/test_reviews_schema.py::TestReviewsTableComplete::test_reviews_has_all_quality_columns",
