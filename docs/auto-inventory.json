@@ -10,9 +10,13 @@
       "methods": [
         "GET"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "list_novels"
+      ],
       "route": "/api/novels",
-      "tables_read": [],
+      "tables_read": [
+        "novels"
+      ],
       "tables_written": []
     },
     {
@@ -88,7 +92,11 @@
         "update_character"
       ],
       "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>",
-      "tables_read": [],
+      "tables_read": [
+        "chapters",
+        "foreshadowings",
+        "characters"
+      ],
       "tables_written": []
     },
     {
@@ -398,7 +406,9 @@
         "list_style_presets"
       ],
       "route": "/api/styles",
-      "tables_read": [],
+      "tables_read": [
+        "style_presets"
+      ],
       "tables_written": []
     },
     {
@@ -723,9 +733,13 @@
       "methods": [
         "GET"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "get_character"
+      ],
       "route": "/api/characters/<novel_name>/<int:cid>",
-      "tables_read": [],
+      "tables_read": [
+        "characters"
+      ],
       "tables_written": []
     },
     {
@@ -737,9 +751,13 @@
       "methods": [
         "POST"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "add_character"
+      ],
       "route": "/api/characters/<novel_name>",
-      "tables_read": [],
+      "tables_read": [
+        "characters"
+      ],
       "tables_written": []
     },
     {
@@ -752,9 +770,14 @@
         "PUT",
         "DELETE"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "delete_character",
+        "update_character"
+      ],
       "route": "/api/characters/<novel_name>/<int:cid>",
-      "tables_read": [],
+      "tables_read": [
+        "characters"
+      ],
       "tables_written": []
     },
     {
@@ -766,9 +789,13 @@
       "methods": [
         "POST"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "add_character_event"
+      ],
       "route": "/api/characters/<novel_name>/<int:cid>/event",
-      "tables_read": [],
+      "tables_read": [
+        "character_events"
+      ],
       "tables_written": []
     },
     {
@@ -808,9 +835,13 @@
       "methods": [
         "GET"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "get_unresolved_foreshadowing"
+      ],
       "route": "/api/foreshadowing/<novel_name>/unresolved",
-      "tables_read": [],
+      "tables_read": [
+        "unresolved_foreshadowings"
+      ],
       "tables_written": []
     },
     {
@@ -822,9 +853,13 @@
       "methods": [
         "POST"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "add_foreshadowing"
+      ],
       "route": "/api/foreshadowing/<novel_name>",
-      "tables_read": [],
+      "tables_read": [
+        "foreshadowings"
+      ],
       "tables_written": []
     },
     {
@@ -837,9 +872,14 @@
         "PUT",
         "DELETE"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "delete_foreshadowing",
+        "update_foreshadowing"
+      ],
       "route": "/api/foreshadowing/<novel_name>/<int:fid>",
-      "tables_read": [],
+      "tables_read": [
+        "foreshadowings"
+      ],
       "tables_written": []
     },
     {
@@ -851,9 +891,13 @@
       "methods": [
         "POST"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "resolve_foreshadowing"
+      ],
       "route": "/api/foreshadowing/<novel_name>/resolve/<int:fid>",
-      "tables_read": [],
+      "tables_read": [
+        "resolve_foreshadowings"
+      ],
       "tables_written": []
     },
     {
@@ -1065,9 +1109,13 @@
       "methods": [
         "GET"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "search_all"
+      ],
       "route": "/api/content/search",
-      "tables_read": [],
+      "tables_read": [
+        "searchs"
+      ],
       "tables_written": []
     },
     {
@@ -1079,9 +1127,13 @@
       "methods": [
         "GET"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "get_novel_stats"
+      ],
       "route": "/api/content/stats/<novel_name>",
-      "tables_read": [],
+      "tables_read": [
+        "novel_stats"
+      ],
       "tables_written": []
     },
     {
@@ -1135,9 +1187,13 @@
       "methods": [
         "POST"
       ],
-      "repo_calls": [],
+      "repo_calls": [
+        "get_character"
+      ],
       "route": "/api/characters/<novel_name>/<int:cid>/ai-profile",
-      "tables_read": [],
+      "tables_read": [
+        "characters"
+      ],
       "tables_written": []
     },
     {
@@ -1183,6 +1239,1349 @@
       "tables_written": []
     }
   ],
-  "generated_at": "2026-06-03T14:59:39Z",
+  "generated_at": "2026-06-03T15:04:37Z",
+  "repository_index": {
+    "add_alias_name": {
+      "defaults": [
+        "description",
+        "scope",
+        "first_chapter"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "category",
+        "alias_name",
+        "description",
+        "scope",
+        "first_chapter"
+      ],
+      "tables": [
+        "alias_names"
+      ]
+    },
+    "add_alias_registry": {
+      "defaults": [
+        "category",
+        "notes"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "real_name",
+        "alias",
+        "category",
+        "notes"
+      ],
+      "tables": [
+        "alias_registrys"
+      ]
+    },
+    "add_banned_word": {
+      "defaults": [
+        "category",
+        "replacement",
+        "severity"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "word",
+        "category",
+        "replacement",
+        "severity"
+      ],
+      "tables": [
+        "banned_words"
+      ]
+    },
+    "add_character": {
+      "defaults": [
+        "role"
+      ],
+      "docstring": "Add a character, return id.",
+      "params": [
+        "self",
+        "novel_name",
+        "name",
+        "role"
+      ],
+      "tables": [
+        "characters"
+      ]
+    },
+    "add_character_event": {
+      "defaults": [
+        "event_type",
+        "vol",
+        "ch",
+        "chapter_ref",
+        "source"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "cid",
+        "description",
+        "event_type",
+        "vol",
+        "ch",
+        "chapter_ref",
+        "source"
+      ],
+      "tables": [
+        "character_events"
+      ]
+    },
+    "add_compliance_rule": {
+      "defaults": [
+        "description",
+        "category"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "rule_key",
+        "rule_value",
+        "description",
+        "category"
+      ],
+      "tables": [
+        "compliance_rules"
+      ]
+    },
+    "add_foreshadowing": {
+      "defaults": [
+        "description",
+        "category",
+        "introduced_vol",
+        "introduced_ch",
+        "target_vol",
+        "target_ch",
+        "priority"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "name",
+        "description",
+        "category",
+        "introduced_vol",
+        "introduced_ch",
+        "target_vol",
+        "target_ch",
+        "priority"
+      ],
+      "tables": [
+        "foreshadowings"
+      ]
+    },
+    "add_genre_rule": {
+      "defaults": [
+        "is_required"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "rule_category",
+        "rule_content",
+        "is_required"
+      ],
+      "tables": [
+        "genre_rules"
+      ]
+    },
+    "add_pacing": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "chapter_start",
+        "chapter_end"
+      ],
+      "tables": [
+        "pacings"
+      ]
+    },
+    "add_plot_arc": {
+      "defaults": [
+        "arc_type"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "name",
+        "arc_type"
+      ],
+      "tables": [
+        "plot_arcs"
+      ]
+    },
+    "add_revelation": {
+      "defaults": [
+        "info_type",
+        "reveal_volume",
+        "reveal_chapter",
+        "content",
+        "priority"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "name",
+        "info_type",
+        "reveal_volume",
+        "reveal_chapter",
+        "content",
+        "priority"
+      ],
+      "tables": [
+        "revelations"
+      ]
+    },
+    "add_story_volume": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "vol_num"
+      ],
+      "tables": [
+        "story_volumes"
+      ]
+    },
+    "add_style_preset": {
+      "defaults": [
+        "description",
+        "prompt",
+        "is_active"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "name",
+        "description",
+        "prompt",
+        "is_active"
+      ],
+      "tables": [
+        "style_presets"
+      ]
+    },
+    "add_world_building": {
+      "defaults": [
+        "related_vol",
+        "related_ch",
+        "tags"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "domain",
+        "name",
+        "content",
+        "related_vol",
+        "related_ch",
+        "tags"
+      ],
+      "tables": [
+        "world_buildings"
+      ]
+    },
+    "clear_alias_names": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "clear_alias_names"
+      ]
+    },
+    "clear_genre_rules": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "clear_genre_rules"
+      ]
+    },
+    "clear_project_meta": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "clear_project_metas"
+      ]
+    },
+    "clear_story_volumes": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "clear_story_volumes"
+      ]
+    },
+    "clear_volume_plans": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "clear_volume_plans"
+      ]
+    },
+    "clear_world_building": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "clear_world_buildings"
+      ]
+    },
+    "delete_alias_registry": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "aid"
+      ],
+      "tables": [
+        "alias_registrys"
+      ]
+    },
+    "delete_banned_word": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "bid"
+      ],
+      "tables": [
+        "banned_words"
+      ]
+    },
+    "delete_character": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "cid"
+      ],
+      "tables": [
+        "characters"
+      ]
+    },
+    "delete_compliance_rule": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "rid"
+      ],
+      "tables": [
+        "compliance_rules"
+      ]
+    },
+    "delete_foreshadowing": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "fid"
+      ],
+      "tables": [
+        "foreshadowings"
+      ]
+    },
+    "delete_novel": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "novels"
+      ]
+    },
+    "delete_outline": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume"
+      ],
+      "tables": [
+        "outlines"
+      ]
+    },
+    "delete_style_preset": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "sid"
+      ],
+      "tables": [
+        "style_presets"
+      ]
+    },
+    "get_chapter": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "chapter_ref"
+      ],
+      "tables": [
+        "chapters"
+      ]
+    },
+    "get_chapter_by_num": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "chapter_num"
+      ],
+      "tables": [
+        "chapters"
+      ]
+    },
+    "get_chapter_content_hash": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "chapter_ref"
+      ],
+      "tables": [
+        "chapter_content_hashs"
+      ]
+    },
+    "get_character": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "cid"
+      ],
+      "tables": [
+        "characters"
+      ]
+    },
+    "get_config": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "key"
+      ],
+      "tables": [
+        "configs"
+      ]
+    },
+    "get_danger_issue": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "chapter_num"
+      ],
+      "tables": [
+        "danger_issues"
+      ]
+    },
+    "get_foreshadowing_for_volume": {
+      "defaults": [],
+      "docstring": "Get foreshadowing scoped to a specific volume.",
+      "params": [
+        "self",
+        "novel_name",
+        "volume"
+      ],
+      "tables": [
+        "foreshadowing_for_volumes"
+      ]
+    },
+    "get_novel": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "novels"
+      ]
+    },
+    "get_novel_by_id": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "nid"
+      ],
+      "tables": [
+        "novels"
+      ]
+    },
+    "get_novel_stats": {
+      "defaults": [],
+      "docstring": "Get aggregate stats for a novel (word counts, review counts, etc).",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "novel_stats"
+      ]
+    },
+    "get_outline": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume"
+      ],
+      "tables": [
+        "outlines"
+      ]
+    },
+    "get_pacing": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "chapter_num"
+      ],
+      "tables": [
+        "pacings"
+      ]
+    },
+    "get_plot_arcs_for_volume": {
+      "defaults": [],
+      "docstring": "Get active plot arcs spanning the current volume.",
+      "params": [
+        "self",
+        "novel_name",
+        "volume"
+      ],
+      "tables": [
+        "plot_arcs_for_volumes"
+      ]
+    },
+    "get_previous_chapter": {
+      "defaults": [],
+      "docstring": "Get the immediately preceding chapter for continuity.",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "chapter_num"
+      ],
+      "tables": [
+        "previous_chapters"
+      ]
+    },
+    "get_project_meta": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "key"
+      ],
+      "tables": [
+        "project_metas"
+      ]
+    },
+    "get_recent_chapters": {
+      "defaults": [
+        "limit"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "limit"
+      ],
+      "tables": [
+        "recent_chapters"
+      ]
+    },
+    "get_recent_character_events": {
+      "defaults": [
+        "max_chapters"
+      ],
+      "docstring": "Get character events from recent chapters for state tracking.",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "max_chapters"
+      ],
+      "tables": [
+        "recent_character_events"
+      ]
+    },
+    "get_revelations_for_volume": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume"
+      ],
+      "tables": [
+        "revelations_for_volumes"
+      ]
+    },
+    "get_review": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "chapter_ref"
+      ],
+      "tables": [
+        "reviews"
+      ]
+    },
+    "get_review_count": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "review_counts"
+      ]
+    },
+    "get_story_volume": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "vol_num"
+      ],
+      "tables": [
+        "story_volumes"
+      ]
+    },
+    "get_style_preset_by_name": {
+      "defaults": [],
+      "docstring": "Look up a single style preset by name. Returns None if not found.",
+      "params": [
+        "self",
+        "name"
+      ],
+      "tables": [
+        "style_presets"
+      ]
+    },
+    "get_total_usage": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "total_usages"
+      ]
+    },
+    "get_unresolved_foreshadowing": {
+      "defaults": [
+        "current_vol",
+        "current_ch"
+      ],
+      "docstring": "Get unresolved foreshadowing that should be resolved soon.",
+      "params": [
+        "self",
+        "novel_name",
+        "current_vol",
+        "current_ch"
+      ],
+      "tables": [
+        "unresolved_foreshadowings"
+      ]
+    },
+    "get_usage_breakdown": {
+      "defaults": [
+        "days"
+      ],
+      "docstring": "Get detailed usage breakdown by model and operation.",
+      "params": [
+        "self",
+        "days"
+      ],
+      "tables": [
+        "usage_breakdowns"
+      ]
+    },
+    "get_usage_stats": {
+      "defaults": [
+        "days"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "days"
+      ],
+      "tables": [
+        "usage_stats"
+      ]
+    },
+    "get_volume_plan": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "vol_num"
+      ],
+      "tables": [
+        "volume_plans"
+      ]
+    },
+    "get_world_building_for_volume": {
+      "defaults": [
+        "limit"
+      ],
+      "docstring": "Get world building entries relevant to current volume.",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "limit"
+      ],
+      "tables": [
+        "world_building_for_volumes"
+      ]
+    },
+    "get_world_building_volume_plus_global": {
+      "defaults": [
+        "local_limit",
+        "global_limit"
+      ],
+      "docstring": "Get local-volume world building (vol-1..vol+1) PLUS a global sample.",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "local_limit",
+        "global_limit"
+      ],
+      "tables": [
+        "world_building_volume_plus_globals"
+      ]
+    },
+    "init_config_seed": {
+      "defaults": [],
+      "docstring": "Seed config tables with default data (idempotent).",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "init_config_seeds"
+      ]
+    },
+    "list_alias_names": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "alias_names"
+      ]
+    },
+    "list_alias_registry": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "alias_registrys"
+      ]
+    },
+    "list_banned_words": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "banned_words"
+      ]
+    },
+    "list_chapters": {
+      "defaults": [
+        "volume"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume"
+      ],
+      "tables": [
+        "chapters"
+      ]
+    },
+    "list_character_events": {
+      "defaults": [
+        "limit"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "cid",
+        "limit"
+      ],
+      "tables": [
+        "character_events"
+      ]
+    },
+    "list_characters": {
+      "defaults": [
+        "role"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "role"
+      ],
+      "tables": [
+        "characters"
+      ]
+    },
+    "list_characters_active_in_volume": {
+      "defaults": [],
+      "docstring": "Characters whose current_vol is within \u00b11 of the given volume.",
+      "params": [
+        "self",
+        "novel_name",
+        "volume"
+      ],
+      "tables": [
+        "characters_active_in_volumes"
+      ]
+    },
+    "list_compliance_rules": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "compliance_rules"
+      ]
+    },
+    "list_foreshadowing": {
+      "defaults": [
+        "status",
+        "volume",
+        "limit"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "status",
+        "volume",
+        "limit"
+      ],
+      "tables": [
+        "foreshadowings"
+      ]
+    },
+    "list_genre_rules": {
+      "defaults": [],
+      "docstring": "Return all genre_rules for a novel. Empty list if novel has none.",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "genre_rules"
+      ]
+    },
+    "list_novels": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "novels"
+      ]
+    },
+    "list_outlines": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "outlines"
+      ]
+    },
+    "list_pending_foreshadowing": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "pending_foreshadowings"
+      ]
+    },
+    "list_plot_arcs": {
+      "defaults": [
+        "status"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "status"
+      ],
+      "tables": [
+        "plot_arcs"
+      ]
+    },
+    "list_project_meta": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "project_metas"
+      ]
+    },
+    "list_recent_usage": {
+      "defaults": [
+        "limit"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "limit"
+      ],
+      "tables": [
+        "recent_usages"
+      ]
+    },
+    "list_reviews": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "reviews"
+      ]
+    },
+    "list_story_volumes": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "story_volumes"
+      ]
+    },
+    "list_style_presets": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "style_presets"
+      ]
+    },
+    "list_volume_plans": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "volume_plans"
+      ]
+    },
+    "list_world_building": {
+      "defaults": [
+        "domain"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "domain"
+      ],
+      "tables": [
+        "world_buildings"
+      ]
+    },
+    "load_all_config": {
+      "defaults": [],
+      "docstring": "Load all config entries as a dict (for get_active_deepseek_config).",
+      "params": [
+        "self"
+      ],
+      "tables": [
+        "load_all_configs"
+      ]
+    },
+    "log_usage": {
+      "defaults": [
+        "prompt_tokens",
+        "completion_tokens",
+        "novel",
+        "cost"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "model",
+        "operation",
+        "prompt_tokens",
+        "completion_tokens",
+        "novel",
+        "cost"
+      ],
+      "tables": [
+        "log_usages"
+      ]
+    },
+    "resolve_foreshadowing": {
+      "defaults": [
+        "note"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "fid",
+        "vol",
+        "ch",
+        "note"
+      ],
+      "tables": [
+        "resolve_foreshadowings"
+      ]
+    },
+    "search_all": {
+      "defaults": [
+        "novel_name",
+        "limit"
+      ],
+      "docstring": "Search across chapters, outlines, reviews. Returns dict compatible with old content_db.search_all().",
+      "params": [
+        "self",
+        "query",
+        "novel_name",
+        "limit"
+      ],
+      "tables": [
+        "searchs"
+      ]
+    },
+    "search_chapters": {
+      "defaults": [
+        "limit"
+      ],
+      "docstring": "Full-text search on chapters using LIKE fallback (FTS5 no longer used).",
+      "params": [
+        "self",
+        "novel_name",
+        "query",
+        "limit"
+      ],
+      "tables": [
+        "search_chapters"
+      ]
+    },
+    "search_outlines": {
+      "defaults": [
+        "limit"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "query",
+        "limit"
+      ],
+      "tables": [
+        "search_outlines"
+      ]
+    },
+    "search_reviews": {
+      "defaults": [
+        "limit"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "query",
+        "limit"
+      ],
+      "tables": [
+        "search_reviews"
+      ]
+    },
+    "set_config": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "key",
+        "value"
+      ],
+      "tables": [
+        "set_configs"
+      ]
+    },
+    "update_alias_registry": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "aid"
+      ],
+      "tables": [
+        "alias_registrys"
+      ]
+    },
+    "update_banned_word": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "bid"
+      ],
+      "tables": [
+        "banned_words"
+      ]
+    },
+    "update_chapter_metadata": {
+      "defaults": [],
+      "docstring": "Update v3 chapter metadata (pace_type, emotional_beat, etc.)",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "chapter_num"
+      ],
+      "tables": [
+        "chapter_metadatas"
+      ]
+    },
+    "update_character": {
+      "defaults": [],
+      "docstring": "Update character fields. Returns True if successful.",
+      "params": [
+        "self",
+        "cid"
+      ],
+      "tables": [
+        "characters"
+      ]
+    },
+    "update_compliance_rule": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "rid"
+      ],
+      "tables": [
+        "compliance_rules"
+      ]
+    },
+    "update_foreshadowing": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "fid"
+      ],
+      "tables": [
+        "foreshadowings"
+      ]
+    },
+    "update_style_preset": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "sid"
+      ],
+      "tables": [
+        "style_presets"
+      ]
+    },
+    "upsert_chapter": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "chapter_ref"
+      ],
+      "tables": [
+        "chapters"
+      ]
+    },
+    "upsert_daily_stats": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "model",
+        "operation",
+        "prompt_tokens",
+        "completion_tokens",
+        "cost"
+      ],
+      "tables": [
+        "daily_stats"
+      ]
+    },
+    "upsert_danger_issue": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "chapter_num",
+        "content"
+      ],
+      "tables": [
+        "danger_issues"
+      ]
+    },
+    "upsert_novel": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name"
+      ],
+      "tables": [
+        "novels"
+      ]
+    },
+    "upsert_outline": {
+      "defaults": [
+        "word_count"
+      ],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "volume",
+        "content",
+        "word_count"
+      ],
+      "tables": [
+        "outlines"
+      ]
+    },
+    "upsert_project_meta": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "key",
+        "value"
+      ],
+      "tables": [
+        "project_metas"
+      ]
+    },
+    "upsert_review": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "chapter_ref"
+      ],
+      "tables": [
+        "reviews"
+      ]
+    },
+    "upsert_volume_plan": {
+      "defaults": [],
+      "docstring": "",
+      "params": [
+        "self",
+        "novel_name",
+        "vol_num"
+      ],
+      "tables": [
+        "volume_plans"
+      ]
+    }
+  },
+  "repository_index_size": 102,
   "source": "portal/app.py"
 }

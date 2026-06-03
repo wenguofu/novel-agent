@@ -136,3 +136,34 @@ def test_endpoint_with_no_repo_or_db_calls_yields_empty_lists():
     root_ep = next(ep for ep in eps if ep.route == "/")
     assert root_ep.repo_calls == []
     assert root_ep.db_calls == []
+
+
+REPO_FIXTURE = Path(__file__).parent / "fixtures" / "mini_repo.py"
+
+
+def test_scan_repository_returns_index_of_methods():
+    from inventory_endpoints import scan_repository_methods
+    index = scan_repository_methods(REPO_FIXTURE)
+    assert "get_novel" in index
+    assert "list_chapters" in index
+    assert "upsert_outline" in index
+    assert index["get_novel"]["docstring"] == "Look up a novel by name."
+
+
+def test_scan_repository_extracts_param_names_and_defaults():
+    from inventory_endpoints import scan_repository_methods
+    index = scan_repository_methods(REPO_FIXTURE)
+    assert "novel_name" in index["get_novel"]["params"]
+    assert "volume" in index["upsert_outline"]["params"]
+    assert "content" in index["upsert_outline"]["params"]
+    assert "word_count" in index["upsert_outline"]["params"]
+    # word_count has default = 0, so it appears in 'defaults' too
+    assert "word_count" in index["upsert_outline"]["defaults"]
+
+
+def test_scan_repository_infers_table_from_method_name():
+    from inventory_endpoints import scan_repository_methods
+    index = scan_repository_methods(REPO_FIXTURE)
+    assert index["get_novel"]["tables"] == ["novels"]
+    assert index["list_chapters"]["tables"] == ["chapters"]
+    assert index["upsert_outline"]["tables"] == ["outlines"]
