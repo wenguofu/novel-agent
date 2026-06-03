@@ -212,7 +212,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/chapters/<path:ch_ref> -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Read a chapter by ref. If `ch_ref` contains a slash (e.g. `vol-01/ch-001`) it's used verbatim; otherwise the manuscript tree is scanned across all `vol-*` dirs and the first match wins. Returns `{content, path, word_count}` or 404. The auto-scan path means callers can use bare `ch-001` and let the server resolve the volume.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/chapters/<path:ch_ref>/edit
@@ -221,7 +221,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Save edited chapter content
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/chapters/<path:ch_ref>/edit -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Save edited chapter content from the React editor. Writes `manuscript/<ch_ref>.md`, then re-syncs content.db and calls `auto_update_after_save` to refresh derived state (chapter outline, story tracking). Rejects empty content with 400. Sync failures are logged but do not fail the request — the file write is the source of truth.
 <!-- /MANUAL -->
 
 #### Endpoint: DELETE /api/novels/<novel_name>/chapters/<path:ch_ref>
@@ -230,7 +230,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Delete a chapter with state rollback. Only the latest chapter can be deleted.
 - **Repository calls**: `upsert_chapter`, `list_foreshadowing`, `list_characters`, `update_foreshadowing`, `update_character`- **DB calls**: none detected- **Tables read**: `chapters`, `foreshadowings`, `characters`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: DELETE_/api/novels/<novel_name>/chapters/<path:ch_ref> -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Delete a chapter with state rollback. Only the *latest* chapter (highest vol + ch_num across the whole manuscript tree) can be deleted — earlier chapters are protected to keep history monotonic. Returns 400 with the actual latest ref if the caller targets a non-latest chapter. The endpoint also rolls back related state in content.db (review row, chapter_outlines flag) so the slot can be re-generated cleanly.
 <!-- /MANUAL -->
 
 #### Endpoint: GET /api/novels/<novel_name>/reviews/<ch_ref>
@@ -239,7 +239,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/reviews/<ch_ref> -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Read a previously-generated review markdown. Tries `reviews/<ch_ref>-review.md` first, falls back to `reviews/<ch_ref>.md` for legacy files. Returns 404 if neither exists. Pure read — used by the review tab in the UI; reviews are produced by `/review-chapter`.
 <!-- /MANUAL -->
 
 #### Endpoint: GET /api/novels/<novel_name>/status
@@ -275,7 +275,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Save edited outline
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/outline/<vol_ref>/edit -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Save edited volume outline. The body's `content` is written to `outline/<vol_ref>-chapters.yaml` (note: stored as YAML, not MD), then parsed and upserted into the `chapter_outlines` table one row per chapter. Each row carries title/function/core_events/foreshadowing/ending_hook/is_danger_scene/word_count. Sync failures are logged but do not fail the write — the YAML file remains the source of truth.
 <!-- /MANUAL -->
 
 #### Endpoint: GET /api/novels/<novel_name>/chapter-outlines/<vol_ref>
@@ -320,7 +320,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Direct AI chat
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/ai/chat -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Non-streaming direct AI call — sends `messages` + `system` to the configured DeepSeek model and returns the full response in one shot. Used by internal callers that don't need streaming (most preflight/postflight chains call `deepseek_chat` directly; this endpoint is mainly for ad-hoc UI debugging). Token usage is logged via the shared `deepseek_chat` helper.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/ai/stream
@@ -329,7 +329,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: SSE streaming AI chat (supports both Anthropic and OpenAI formats)
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/ai/stream -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+SSE streaming wrapper around the active DeepSeek/Anthropic chat model. Accepts either OpenAI-style `messages` or a `{system, user}` pair (used by `useSSEStream` in the React UI for live token streaming). Auto-detects Anthropic vs OpenAI endpoint shape from the configured api_base, normalizes both into `{type: token|done|error}` SSE events, and logs token usage to the DB on completion.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/create
@@ -338,7 +338,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/create -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Create a new novel from a high-level prompt. Body collects `name`, `genre`, `protagonist`, `selling_point`, `word_goal`, `perspective`, `references` and asks DeepSeek to emit five base files (`project.md`, `genre_bible.md`, `world_bible.md`, `characters.md`, `alias_registry.md`) in a single `## FILE: ...` blocked response. The endpoint parses the blocks, writes each file under `novels/<name>/`, scaffolds the standard subdirs (manuscript, outline, reviews, state, volume_plan), and seeds `volume_plan.md` + `state/current_status.md` if the AI didn't. Returns 400 if `name` is missing or already exists.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/generate-chapter
@@ -347,7 +347,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/generate-chapter -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Primary chapter-writing endpoint. Builds the layered prompt via `context_builder`, calls DeepSeek non-streaming, writes the result to `manuscript/<volume>/ch-<NNN>.md`, and re-syncs the content DB. Required body fields: `chapter_num` (string or int); optional: `volume` (default `vol-01`), `style`, `instructions`, `temperature`, `max_tokens`. If the chapter file already exists, a 'continue/rewrite consistently' hint is appended to the system prompt — caller is responsible for backing up first if they want to keep the old draft.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/review-chapter
@@ -356,7 +356,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/review-chapter -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+AI editor pass over an existing chapter. Runs three scripts in parallel (`analyze_chapter`, `check_compliance`, `detect_forbidden_patterns`), then asks DeepSeek for a structured YAML review covering function/character/setting/pacing/danger/hook. Persists the review to `reviews/<ch_id>-review.md`, upserts the `reviews` table in content.db, and returns both the AI verdict and per-script pass/fail flags. Body requires `chapter_ref` (or `volume`+`chapter_num`); the ref is auto-normalized from `vol-01-ch-001` to `vol-01/ch-001`.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/optimize-chapter
@@ -365,7 +365,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: One-click optimize: fix issues found during review
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/optimize-chapter -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+One-click chapter rewrite that consumes a prior review. Body needs `chapter_ref`, `review_text`, and `script_issues`; the endpoint prompts DeepSeek to fix the flagged problems without changing plot/scope. Before overwriting, the current chapter is copied to `manuscript/.bak/<ref>.revN.md` (last 5 revisions retained). Returns the new content but does NOT auto-save it — the UI calls `/chapters/<ref>/edit` to persist.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/run-script
@@ -374,7 +374,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/run-script -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Run an arbitrary enforcement script (one of the allow-listed names in `agent-system/scripts/`) against a file inside the novel's directory. Body needs `script` (filename) and `filepath` (relative to the novel root). Returns the raw `{success, stdout, stderr, returncode}` from `run_script`. Used by the UI's per-chapter script panel and by ad-hoc diagnostics; the workflow endpoints below call the same scripts in fixed sequences.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/file/write
@@ -383,7 +383,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Write/update any file in a novel's directory
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/file/write -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Generic file-write inside a novel's directory. Body needs `path` (relative, no `..`) and non-empty `content`. The path is split on `/` and passed to `write_novel_file`, which creates parent dirs as needed. Used by the React UI to save any auxiliary file (characters, world_bible, alias_registry, etc.) without a dedicated endpoint per file type.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/update-status
@@ -392,7 +392,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/update-status -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Overwrite `state/current_status.md` with the supplied `content`. No validation beyond a non-empty check; the UI's status editor is the primary caller. This is the manual counterpart to the post-chapter auto-update that runs after `/edit`; use it when the writer wants to record narrative state directly.
 <!-- /MANUAL -->
 
 #### Endpoint: GET /api/config
@@ -482,7 +482,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Run all pre-generation enforcement scripts. Returns pass/fail for each.
 - **Repository calls**: `get`- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/workflow/preflight/<novel_name> -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Pre-generation gate. Runs five checks in sequence — stage_gate, outline existence, danger_issue presence, characters.md presence, RAG index status — and returns a `{name, ok, detail}` block for each. Body takes `volume` (default `vol-01`); the danger_issue check is informational and does not block when missing. `all_ok` reflects whether the chapter is safe to generate. Called by the UI's writing page before enabling the 'Generate' button.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/workflow/postflight/<novel_name>
@@ -491,7 +491,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Run all post-generation enforcement scripts.
 - **Repository calls**: `get`- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/workflow/postflight/<novel_name> -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Post-generation gate. Runs five checks — review validation, continuity, rhythm, RAG re-index, stage-gate complete — for the just-written chapter (passed via `chapter_ref`). Unlike preflight, every check must pass for `all_ok=true`; the review-validation step depends on `/review-chapter` having already produced the review file. Side effect: re-indexes the RAG store, so this is *not* a read-only probe.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/enforce-pipeline
@@ -500,7 +500,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: Run the complete enforcement pipeline for a chapter.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/enforce-pipeline -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Full Steps 0-10 enforcement chain — the scripted version of `workflow-new-chapter.md`. Runs stage_gate, RAG check, analyze/forbidden/compliance, review validation, continuity, rhythm, and stage-complete in one shot. Body: `volume`, `chapter_num`, optional `chapter_ref` (auto-derived from vol+num if absent). Returns a `pipeline` dict keyed by step number with `{name, ok, output}` per gate. Heavier than preflight+postflight combined; use for end-of-chapter validation runs.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/context/build
@@ -509,7 +509,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/context/build -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Builds the multi-layer system prompt for chapter writing via `context_builder.build_context`. Returns the assembled prompt plus per-layer token usage so the UI can show a context-health indicator. Read-only — no side effects. Called by both the React writing page and the `generate-chapter` workflow (in which case the prompt is consumed internally rather than returned). Token budget default 10000, configurable via the `max_tokens` request field.
 <!-- /MANUAL -->
 
 #### Endpoint: GET /api/context/stats/<novel_name>/<int:volume>/<int:chapter>
@@ -518,7 +518,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/context/stats/<novel_name>/<int:volume>/<int:chapter> -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Read-only diagnostic — returns per-layer token counts and source-file metadata for the context that *would* be built for the given chapter, without actually assembling the prompt. Used by the writing UI's pre-generation panel to show users what will be injected. Cheaper than `/api/context/build` because it skips the final concatenation.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/rag/query
@@ -527,7 +527,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/rag/query -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Multi-category RAG retrieval over the novel's vector index. Body must include `novel` and `queries` (list of category-keyed query specs); optional `total_max_tokens` (default 10000) caps the combined retrieved context. Delegates to `rag_engine.query_categories`. Returns 400 if either required field is missing. Used internally by `context_builder` and exposed for UI inspection.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/init/full/<novel_name>
@@ -536,7 +536,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/init/full/<novel_name> -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+One-shot domain-DB initializer — calls `content_db.init_all_from_files` to parse `world_bible.md`, plot arcs, pacing, and revelation markers from the novel's source files into the relational tables (world_building, plot_arcs, pacing, revelation). Idempotent: re-running re-syncs. Returns the raw dict from `init_all_from_files` including per-domain counts. Used after `/api/novels/create` or after manual edits to the source files.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/world-building/init
@@ -545,7 +545,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/world-building/init -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Parses `world_bible.md` and upserts entries into the `world_building` table via `content_db.init_world_building_from_file`. Returns `{success, message, created}` where `created` is the row count touched. One of four domain-scoped variants of `/api/init/full` — use this when the writer only edited the world bible and doesn't need a full re-sync.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/plot-arcs/init
@@ -554,7 +554,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/plot-arcs/init -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Parses the plot-arcs source file and upserts into the `plot_arcs` table via `content_db.init_plot_arcs_from_file`. Same shape as the world-building variant: `{success, message, created}`. Trigger this after editing the long-line arc markdown so the writing context picks up the new arcs.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/pacing/init
@@ -563,7 +563,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/pacing/init -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Re-derives pacing markers from the volume outlines (`outline/vol-NN-chapters.yaml`) into the `pacing` table via `content_db.init_pacing_from_outline`. Pacing rows feed the rhythm-check script and the context-builder's pacing layer. Idempotent; safe to call after every outline edit.
 <!-- /MANUAL -->
 
 #### Endpoint: POST /api/novels/<novel_name>/revelation/init
@@ -572,7 +572,7 @@ The 12 layers and their token budgets are documented there.
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/revelation/init -->
-<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+Re-derives revelation/foreshadowing markers from the volume outlines into the `revelation` table via `content_db.init_revelation_from_outline`. Powers the foreshadowing-tracking layer of the writing context. Returns `{success, message, created}` with the row count.
 <!-- /MANUAL -->
 
 #### Endpoint: GET /api/genre_rules/<novel_name>

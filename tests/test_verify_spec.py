@@ -131,20 +131,17 @@ def test_check_5_fails_on_empty_placeholder(tmp_path):
 
 def test_main_runs_5_checks(capsys):
     """The CLI prints one line per check and a summary line. Run it against
-    the real repo — Checks 1-4 should print OK, Check 5 should print FAIL
-    (no Manual Notes written yet — that's Task 8). Exit code should be 1."""
+    the real repo — all 5 Checks should print OK (Task 8 filled the Manual
+    Notes for the 25 core endpoints). Exit code should be 0."""
     import subprocess
     import sys
     result = subprocess.run(
         [sys.executable, "scripts/verify_spec.py"],
         capture_output=True, text=True, cwd="/Users/wgfu/Desktop/novel-agent",
     )
-    assert result.returncode == 1, f"expected exit 1, got {result.returncode}; stdout={result.stdout}"
+    assert result.returncode == 0, f"expected exit 0, got {result.returncode}; stdout={result.stdout}"
     output = result.stdout + result.stderr
-    # All 5 checks should appear
+    # All 5 checks should appear and pass
     for n in range(1, 6):
         assert f"Check {n}" in output, f"Check {n} not in output:\n{output}"
-    # Check 5 must FAIL (no Manual Notes yet)
-    assert "[FAIL] Check 5" in output, f"expected Check 5 FAIL, output:\n{output}"
-    # At least one of Checks 1-4 should be OK
-    assert "[OK] Check 1" in output, f"expected Check 1 OK, output:\n{output}"
+        assert f"[OK] Check {n}" in output, f"expected Check {n} OK, output:\n{output}"
