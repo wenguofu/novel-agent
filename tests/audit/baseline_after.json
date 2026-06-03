@@ -9,16 +9,16 @@
   {
     "nodeid": "tests/test_generate_context.py::TestGenerateChapterUsesV3Context::test_build_context_includes_pacing_when_exists",
     "original_status": "FAILED",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_generate_context.py::TestGenerateChapterUsesV3Context::test_build_context_falls_back_gracefully",
     "original_status": "FAILED",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_memory_layer.py::TestMemoryIntegration::test_fallback_state_context",
@@ -30,16 +30,16 @@
   {
     "nodeid": "tests/test_reviews_schema.py::TestReviewsTableComplete::test_reviews_has_all_quality_columns",
     "original_status": "FAILED",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_reviews_schema.py::TestReviewsTableComplete::test_quality_report_aggregate_queries_work",
     "original_status": "FAILED",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_world_building_table_exists",
@@ -149,113 +149,113 @@
   {
     "nodeid": "tests/test_token_truncation.py::TestTokenTruncation::test_truncation_respects_budget_with_large_content",
     "original_status": "FAILED",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_incremental.py::TestCharacterStateUpdate::test_add_event_updates_status",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_incremental.py::TestCharacterStateUpdate::test_update_character_current_position",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_incremental.py::TestForeshadowingUpdate::test_resolve_foreshadowing",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_incremental.py::TestForeshadowingUpdate::test_unresolved_filter_works",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_incremental.py::TestChapterMetadata::test_update_chapter_pacing",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestWorldBuildingInit::test_wb_init_creates_entries",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestWorldBuildingInit::test_wb_init_domains",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestPlotArcsInit::test_pa_init_creates_entries",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestPacingInit::test_pc_init_creates_entries",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestPacingInit::test_pc_init_correct_pace_type",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestRevelationInit::test_rs_init_creates_entries",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestFullInit::test_full_init_returns_summary",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_init.py::TestFullInit::test_full_init_is_idempotent",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_sidebar.py::TestNovelContextAPI::test_list_novels_returns_data",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_sidebar.py::TestNovelContextAPI::test_genre_rules_requires_novel_id",
     "original_status": "ERROR",
-    "final_status": "PENDING",
-    "category": null,
-    "note": ""
+    "final_status": "PASSED",
+    "category": "F1",
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   }
 ]
