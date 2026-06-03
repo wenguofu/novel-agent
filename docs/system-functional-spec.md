@@ -1,7 +1,7 @@
 # Novel Agent — System Functional Spec
 
 > Machine-generated + manual supplements. Source of truth: `portal/app.py` AST.
-> Auto-generated: 2026-06-03T15:04:37Z. Inventory: 83 endpoints.
+> Auto-generated: 2026-06-03T15:31:45Z. Inventory: 83 endpoints.
 >
 > Regenerate: `python3 scripts/inventory_endpoints.py && python3 scripts/render_spec.py`
 > Verify: `python3 scripts/verify_spec.py` (5 checks).

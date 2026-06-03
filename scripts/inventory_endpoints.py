@@ -65,6 +65,14 @@ def _extract_body_calls(func_node) -> tuple:
       - db/session.<method>() calls (owner is a Name node with id in {"db", "session"})
     Returns (repo_calls, db_calls, []) — tables list is left empty; Task 3 fills it
     via the repository method-name heuristic.
+
+    Known limitation (documented): the walker only inspects calls directly in the
+    endpoint body. Calls 1+ level of indirection deep (e.g. a wrapper class
+    method `self._repo.list_novels()` invoked from a regular function endpoint
+    via `handler.foo()`) are NOT detected. The real `portal/app.py` uses such
+    wrapper classes for `/api/wizard/step` and a few others; those endpoints will
+    show `repo_calls=[]` even though they read/write data. This is acceptable
+    for M2 — Manual Notes (Task 8) cover the high-value endpoints.
     """
     repo_calls: List[str] = []
     db_calls: List[str] = []
