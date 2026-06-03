@@ -1,0 +1,844 @@
+{
+  "endpoint_count": 83,
+  "endpoints": [
+    {
+      "docstring": "",
+      "func_name": "api_list_novels",
+      "key": "GET_/api/novels",
+      "line_no": 457,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_novel_detail",
+      "key": "GET_/api/novels/<novel_name>",
+      "line_no": 468,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_read_file",
+      "key": "GET_/api/novels/<novel_name>/file",
+      "line_no": 487,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/file"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_read_chapter",
+      "key": "GET_/api/novels/<novel_name>/chapters/<path:ch_ref>",
+      "line_no": 499,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>"
+    },
+    {
+      "docstring": "Save edited chapter content",
+      "func_name": "api_edit_chapter",
+      "key": "POST_/api/novels/<novel_name>/chapters/<path:ch_ref>/edit",
+      "line_no": 521,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>/edit"
+    },
+    {
+      "docstring": "Delete a chapter with state rollback. Only the latest chapter can be deleted.",
+      "func_name": "api_delete_chapter",
+      "key": "DELETE_/api/novels/<novel_name>/chapters/<path:ch_ref>",
+      "line_no": 561,
+      "methods": [
+        "DELETE"
+      ],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_read_review",
+      "key": "GET_/api/novels/<novel_name>/reviews/<ch_ref>",
+      "line_no": 787,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/reviews/<ch_ref>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_novel_status",
+      "key": "GET_/api/novels/<novel_name>/status",
+      "line_no": 797,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/status"
+    },
+    {
+      "docstring": "Return stage gate progress with auto-detection.",
+      "func_name": "api_gate_status",
+      "key": "GET_/api/novels/<novel_name>/gate-status",
+      "line_no": 805,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/gate-status"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_read_outline",
+      "key": "GET_/api/novels/<novel_name>/outline/<vol_ref>",
+      "line_no": 890,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/outline/<vol_ref>"
+    },
+    {
+      "docstring": "Save edited outline",
+      "func_name": "api_edit_outline",
+      "key": "POST_/api/novels/<novel_name>/outline/<vol_ref>/edit",
+      "line_no": 900,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/outline/<vol_ref>/edit"
+    },
+    {
+      "docstring": "Return all chapter outlines for a volume.",
+      "func_name": "api_get_chapter_outlines",
+      "key": "GET_/api/novels/<novel_name>/chapter-outlines/<vol_ref>",
+      "line_no": 936,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/chapter-outlines/<vol_ref>"
+    },
+    {
+      "docstring": "Update a single chapter outline.",
+      "func_name": "api_put_chapter_outline",
+      "key": "PUT_/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>",
+      "line_no": 947,
+      "methods": [
+        "PUT"
+      ],
+      "route": "/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_read_danger_issue",
+      "key": "GET_/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>",
+      "line_no": 967,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>"
+    },
+    {
+      "docstring": "Export all chapters of a novel in the requested format.",
+      "func_name": "api_export_novel",
+      "key": "GET_/api/novels/<novel_name>/export",
+      "line_no": 1317,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/novels/<novel_name>/export"
+    },
+    {
+      "docstring": "Direct AI chat",
+      "func_name": "api_ai_chat",
+      "key": "POST_/api/ai/chat",
+      "line_no": 1370,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/ai/chat"
+    },
+    {
+      "docstring": "SSE streaming AI chat (supports both Anthropic and OpenAI formats)",
+      "func_name": "api_ai_stream",
+      "key": "POST_/api/ai/stream",
+      "line_no": 1388,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/ai/stream"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_create_novel",
+      "key": "POST_/api/novels/create",
+      "line_no": 1528,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/create"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_generate_chapter",
+      "key": "POST_/api/novels/<novel_name>/generate-chapter",
+      "line_no": 1668,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/generate-chapter"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_review_chapter",
+      "key": "POST_/api/novels/<novel_name>/review-chapter",
+      "line_no": 1736,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/review-chapter"
+    },
+    {
+      "docstring": "One-click optimize: fix issues found during review",
+      "func_name": "api_optimize_chapter",
+      "key": "POST_/api/novels/<novel_name>/optimize-chapter",
+      "line_no": 1885,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/optimize-chapter"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_run_script",
+      "key": "POST_/api/novels/<novel_name>/run-script",
+      "line_no": 1945,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/run-script"
+    },
+    {
+      "docstring": "Write/update any file in a novel's directory",
+      "func_name": "api_write_novel_file",
+      "key": "POST_/api/novels/<novel_name>/file/write",
+      "line_no": 1959,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/file/write"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_update_status",
+      "key": "POST_/api/novels/<novel_name>/update-status",
+      "line_no": 1976,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/update-status"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_get_config",
+      "key": "GET_/api/config",
+      "line_no": 1990,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/config"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_save_config",
+      "key": "POST_/api/config/save",
+      "line_no": 2011,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/config/save"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_test_config",
+      "key": "POST_/api/config/test",
+      "line_no": 2045,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/config/test"
+    },
+    {
+      "docstring": "Return available writing styles from DB presets + distilled JSON fingerprints.",
+      "func_name": "api_styles",
+      "key": "GET_/api/styles",
+      "line_no": 2244,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/styles"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_wizard_step",
+      "key": "POST_/api/wizard/step",
+      "line_no": 2286,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/wizard/step"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_config_list",
+      "key": "GET_/api/config-db/<table>",
+      "line_no": 2458,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/config-db/<table>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_config_add",
+      "key": "POST_/api/config-db/<table>",
+      "line_no": 2477,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/config-db/<table>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_config_manage",
+      "key": "PUT,DELETE_/api/config-db/<table>/<int:row_id>",
+      "line_no": 2503,
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "route": "/api/config-db/<table>/<int:row_id>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_quality_report",
+      "key": "GET_/api/content/quality-report/<novel_name>",
+      "line_no": 2538,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/content/quality-report/<novel_name>"
+    },
+    {
+      "docstring": "Run all pre-generation enforcement scripts. Returns pass/fail for each.",
+      "func_name": "api_workflow_preflight",
+      "key": "POST_/api/workflow/preflight/<novel_name>",
+      "line_no": 2625,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/workflow/preflight/<novel_name>"
+    },
+    {
+      "docstring": "Run all post-generation enforcement scripts.",
+      "func_name": "api_workflow_postflight",
+      "key": "POST_/api/workflow/postflight/<novel_name>",
+      "line_no": 2669,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/workflow/postflight/<novel_name>"
+    },
+    {
+      "docstring": "Run the complete enforcement pipeline for a chapter.",
+      "func_name": "api_enforce_pipeline",
+      "key": "POST_/api/novels/<novel_name>/enforce-pipeline",
+      "line_no": 2716,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/enforce-pipeline"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_context_build",
+      "key": "POST_/api/context/build",
+      "line_no": 2835,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/context/build"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_context_stats",
+      "key": "GET_/api/context/stats/<novel_name>/<int:volume>/<int:chapter>",
+      "line_no": 2858,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/context/stats/<novel_name>/<int:volume>/<int:chapter>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_rag_query",
+      "key": "POST_/api/rag/query",
+      "line_no": 2870,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/rag/query"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_init_full",
+      "key": "POST_/api/init/full/<novel_name>",
+      "line_no": 2888,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/init/full/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_init_world_building",
+      "key": "POST_/api/novels/<novel_name>/world-building/init",
+      "line_no": 2898,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/world-building/init"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_init_plot_arcs",
+      "key": "POST_/api/novels/<novel_name>/plot-arcs/init",
+      "line_no": 2908,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/plot-arcs/init"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_init_pacing",
+      "key": "POST_/api/novels/<novel_name>/pacing/init",
+      "line_no": 2918,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/pacing/init"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_init_revelation",
+      "key": "POST_/api/novels/<novel_name>/revelation/init",
+      "line_no": 2928,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/revelation/init"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_genre_rules_list",
+      "key": "GET_/api/genre_rules/<novel_name>",
+      "line_no": 2940,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/genre_rules/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_story_volumes_list",
+      "key": "GET_/api/story_volumes/<novel_name>",
+      "line_no": 2954,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/story_volumes/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_volume_plans_list",
+      "key": "GET_/api/volume_plans/<novel_name>",
+      "line_no": 2968,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/volume_plans/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_alias_names_list",
+      "key": "GET_/api/alias_names/<novel_name>",
+      "line_no": 2982,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/alias_names/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_project_meta_list",
+      "key": "GET_/api/project_meta/<novel_name>",
+      "line_no": 2996,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/project_meta/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_characters_list",
+      "key": "GET_/api/characters/<novel_name>",
+      "line_no": 3012,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/characters/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_character_get",
+      "key": "GET_/api/characters/<novel_name>/<int:cid>",
+      "line_no": 3021,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/characters/<novel_name>/<int:cid>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_character_add",
+      "key": "POST_/api/characters/<novel_name>",
+      "line_no": 3033,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/characters/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_character_manage",
+      "key": "PUT,DELETE_/api/characters/<novel_name>/<int:cid>",
+      "line_no": 3051,
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "route": "/api/characters/<novel_name>/<int:cid>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_character_event",
+      "key": "POST_/api/characters/<novel_name>/<int:cid>/event",
+      "line_no": 3072,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/characters/<novel_name>/<int:cid>/event"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_characters_init",
+      "key": "POST_/api/characters/<novel_name>/init",
+      "line_no": 3087,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/characters/<novel_name>/init"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_foreshadowing_list",
+      "key": "GET_/api/foreshadowing/<novel_name>",
+      "line_no": 3099,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/foreshadowing/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_foreshadowing_unresolved",
+      "key": "GET_/api/foreshadowing/<novel_name>/unresolved",
+      "line_no": 3110,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/foreshadowing/<novel_name>/unresolved"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_foreshadowing_add",
+      "key": "POST_/api/foreshadowing/<novel_name>",
+      "line_no": 3121,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/foreshadowing/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_foreshadowing_manage",
+      "key": "PUT,DELETE_/api/foreshadowing/<novel_name>/<int:fid>",
+      "line_no": 3141,
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "route": "/api/foreshadowing/<novel_name>/<int:fid>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_foreshadowing_resolve",
+      "key": "POST_/api/foreshadowing/<novel_name>/resolve/<int:fid>",
+      "line_no": 3158,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/foreshadowing/<novel_name>/resolve/<int:fid>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_foreshadowing_init",
+      "key": "POST_/api/foreshadowing/<novel_name>/init",
+      "line_no": 3169,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/foreshadowing/<novel_name>/init"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_world_building_list",
+      "key": "GET_/api/world_building/<novel_name>",
+      "line_no": 3181,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/world_building/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_world_building_add",
+      "key": "POST_/api/world_building/<novel_name>",
+      "line_no": 3204,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/world_building/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_world_building_manage",
+      "key": "PUT,DELETE_/api/world_building/<novel_name>/<int:row_id>",
+      "line_no": 3231,
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "route": "/api/world_building/<novel_name>/<int:row_id>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_plot_arcs_list",
+      "key": "GET_/api/plot_arcs/<novel_name>",
+      "line_no": 3259,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/plot_arcs/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_plot_arcs_add",
+      "key": "POST_/api/plot_arcs/<novel_name>",
+      "line_no": 3282,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/plot_arcs/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_plot_arcs_manage",
+      "key": "PUT,DELETE_/api/plot_arcs/<novel_name>/<int:row_id>",
+      "line_no": 3316,
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "route": "/api/plot_arcs/<novel_name>/<int:row_id>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_pacing_control_list",
+      "key": "GET_/api/pacing_control/<novel_name>",
+      "line_no": 3347,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/pacing_control/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_pacing_control_add",
+      "key": "POST_/api/pacing_control/<novel_name>",
+      "line_no": 3370,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/pacing_control/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_pacing_control_manage",
+      "key": "PUT,DELETE_/api/pacing_control/<novel_name>/<int:row_id>",
+      "line_no": 3401,
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "route": "/api/pacing_control/<novel_name>/<int:row_id>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_revelation_schedule_list",
+      "key": "GET_/api/revelation_schedule/<novel_name>",
+      "line_no": 3429,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/revelation_schedule/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_revelation_schedule_add",
+      "key": "POST_/api/revelation_schedule/<novel_name>",
+      "line_no": 3452,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/revelation_schedule/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_revelation_schedule_manage",
+      "key": "PUT,DELETE_/api/revelation_schedule/<novel_name>/<int:row_id>",
+      "line_no": 3482,
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "route": "/api/revelation_schedule/<novel_name>/<int:row_id>"
+    },
+    {
+      "docstring": "Delete all .bak backup files for a novel",
+      "func_name": "api_cleanup_bak",
+      "key": "POST_/api/novels/<novel_name>/cleanup-bak",
+      "line_no": 3511,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/novels/<novel_name>/cleanup-bak"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_content_search",
+      "key": "GET_/api/content/search",
+      "line_no": 3531,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/content/search"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_content_stats",
+      "key": "GET_/api/content/stats/<novel_name>",
+      "line_no": 3541,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/content/stats/<novel_name>"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_content_sync",
+      "key": "POST_/api/content/sync",
+      "line_no": 3548,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/content/sync"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_list_templates",
+      "key": "GET_/api/templates",
+      "line_no": 3565,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/templates"
+    },
+    {
+      "docstring": "Return token usage statistics.",
+      "func_name": "api_usage_stats",
+      "key": "GET_/api/usage/stats",
+      "line_no": 3580,
+      "methods": [
+        "GET"
+      ],
+      "route": "/api/usage/stats"
+    },
+    {
+      "docstring": "",
+      "func_name": "api_ai_character_profile",
+      "key": "POST_/api/characters/<novel_name>/<int:cid>/ai-profile",
+      "line_no": 3678,
+      "methods": [
+        "POST"
+      ],
+      "route": "/api/characters/<novel_name>/<int:cid>/ai-profile"
+    },
+    {
+      "docstring": "",
+      "func_name": "serve_react_assets",
+      "key": "GET_/assets/<path:filename>",
+      "line_no": 437,
+      "methods": [
+        "GET"
+      ],
+      "route": "/assets/<path:filename>"
+    },
+    {
+      "docstring": "",
+      "func_name": "index",
+      "key": "GET_/",
+      "line_no": 441,
+      "methods": [
+        "GET"
+      ],
+      "route": "/"
+    },
+    {
+      "docstring": "",
+      "func_name": "index",
+      "key": "GET_/",
+      "line_no": 452,
+      "methods": [
+        "GET"
+      ],
+      "route": "/"
+    }
+  ],
+  "generated_at": "2026-06-03T14:51:41Z",
+  "source": "portal/app.py"
+}
