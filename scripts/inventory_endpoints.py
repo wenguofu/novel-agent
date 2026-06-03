@@ -20,6 +20,10 @@ class Endpoint:
     func_name: str
     line_no: int
     docstring: str
+    repo_calls: List[str]      # e.g. ["list_novels", "get_chapter"]
+    db_calls: List[str]        # e.g. ["add", "commit", "execute"]
+    tables_read: List[str]     # filled in Task 3 via repo signature index
+    tables_written: List[str]  # same
 
 
 def _first_docstring_line(node: ast.FunctionDef) -> str:
@@ -55,6 +59,30 @@ def _route_from_decorator(decorator: ast.expr) -> Optional[str]:
     return None
 
 
+def _extract_body_calls(func_node) -> tuple:
+    """Walk a function body and collect:
+      - repo.<method>() calls (owner is a Name node with id in {"repo", "r"})
+      - db/session.<method>() calls (owner is a Name node with id in {"db", "session"})
+    Returns (repo_calls, db_calls, []) — tables list is left empty; Task 3 fills it
+    via the repository method-name heuristic.
+    """
+    repo_calls: List[str] = []
+    db_calls: List[str] = []
+    for node in ast.walk(func_node):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute):
+            owner = node.func.value
+            attr = node.func.attr
+            if isinstance(owner, ast.Name) and owner.id in ("repo", "r"):
+                if attr not in repo_calls:
+                    repo_calls.append(attr)
+            elif isinstance(owner, ast.Name) and owner.id in ("db", "session"):
+                if attr not in db_calls:
+                    db_calls.append(attr)
+    return repo_calls, db_calls, []
+
+
 def scan_flask_routes(source: Path) -> List[Endpoint]:
     """Parse `source` (a .py file) and return one Endpoint per Flask route.
 
@@ -73,6 +101,7 @@ def scan_flask_routes(source: Path) -> List[Endpoint]:
             methods = _methods_from_decorator(decorator, default=["GET"])
             docstring = _first_docstring_line(node)
             key_parts = ",".join(methods) + "_" + route
+            repo_calls, db_calls, tables = _extract_body_calls(node)
             endpoints.append(Endpoint(
                 key=key_parts,
                 route=route,
@@ -80,6 +109,10 @@ def scan_flask_routes(source: Path) -> List[Endpoint]:
                 func_name=node.name,
                 line_no=decorator.lineno,
                 docstring=docstring,
+                repo_calls=repo_calls,
+                db_calls=db_calls,
+                tables_read=tables,
+                tables_written=[],
             ))
     return endpoints
 

@@ -79,3 +79,60 @@ def test_scan_ignores_undecorated_async_helper():
     endpoints = scan_flask_routes(FIXTURE)
     names = {ep.func_name for ep in endpoints}
     assert "_helper" not in names
+
+
+def test_scan_extracts_repo_calls_from_function_body():
+    """Synthetic source with `repo.list_novels()` should produce endpoint with
+    repo_calls=['list_novels']."""
+    from inventory_endpoints import scan_flask_routes
+    src = '''
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/api/x")
+def api_x():
+    repo = get_repo()
+    return repo.list_novels()
+'''
+    fixture = Path("/tmp/_mini_with_repo.py")
+    fixture.write_text(src)
+    try:
+        eps = scan_flask_routes(fixture)
+        assert eps[0].repo_calls == ["list_novels"]
+    finally:
+        fixture.unlink()
+
+
+def test_scan_extracts_db_calls_from_function_body():
+    """Synthetic source with `session.add(...)` and `db.execute(...)` should
+    produce endpoint with db_calls=['add', 'commit', 'execute']."""
+    from inventory_endpoints import scan_flask_routes
+    src = '''
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/api/x")
+def api_x():
+    session.add(Novel(name="x"))
+    session.commit()
+    rows = db.execute("SELECT 1").fetchall()
+    return rows
+'''
+    fixture = Path("/tmp/_mini_with_db.py")
+    fixture.write_text(src)
+    try:
+        eps = scan_flask_routes(fixture)
+        assert "add" in eps[0].db_calls
+        assert "commit" in eps[0].db_calls
+        assert "execute" in eps[0].db_calls
+    finally:
+        fixture.unlink()
+
+
+def test_endpoint_with_no_repo_or_db_calls_yields_empty_lists():
+    """The fixture mini_app.py has inert function bodies — no repo/db calls."""
+    from inventory_endpoints import scan_flask_routes
+    eps = scan_flask_routes(FIXTURE)
+    root_ep = next(ep for ep in eps if ep.route == "/")
+    assert root_ep.repo_calls == []
+    assert root_ep.db_calls == []

@@ -2,6 +2,7 @@
   "endpoint_count": 83,
   "endpoints": [
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_list_novels",
       "key": "GET_/api/novels",
@@ -9,9 +10,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels"
+      "repo_calls": [],
+      "route": "/api/novels",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_novel_detail",
       "key": "GET_/api/novels/<novel_name>",
@@ -19,9 +24,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_read_file",
       "key": "GET_/api/novels/<novel_name>/file",
@@ -29,9 +38,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/file"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/file",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_read_chapter",
       "key": "GET_/api/novels/<novel_name>/chapters/<path:ch_ref>",
@@ -39,9 +52,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Save edited chapter content",
       "func_name": "api_edit_chapter",
       "key": "POST_/api/novels/<novel_name>/chapters/<path:ch_ref>/edit",
@@ -49,9 +66,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>/edit"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>/edit",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Delete a chapter with state rollback. Only the latest chapter can be deleted.",
       "func_name": "api_delete_chapter",
       "key": "DELETE_/api/novels/<novel_name>/chapters/<path:ch_ref>",
@@ -59,9 +80,19 @@
       "methods": [
         "DELETE"
       ],
-      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>"
+      "repo_calls": [
+        "upsert_chapter",
+        "list_foreshadowing",
+        "list_characters",
+        "update_foreshadowing",
+        "update_character"
+      ],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_read_review",
       "key": "GET_/api/novels/<novel_name>/reviews/<ch_ref>",
@@ -69,9 +100,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/reviews/<ch_ref>"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/reviews/<ch_ref>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_novel_status",
       "key": "GET_/api/novels/<novel_name>/status",
@@ -79,9 +114,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/status"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/status",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Return stage gate progress with auto-detection.",
       "func_name": "api_gate_status",
       "key": "GET_/api/novels/<novel_name>/gate-status",
@@ -89,9 +128,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/gate-status"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/gate-status",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_read_outline",
       "key": "GET_/api/novels/<novel_name>/outline/<vol_ref>",
@@ -99,9 +142,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/outline/<vol_ref>"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/outline/<vol_ref>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Save edited outline",
       "func_name": "api_edit_outline",
       "key": "POST_/api/novels/<novel_name>/outline/<vol_ref>/edit",
@@ -109,9 +156,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/outline/<vol_ref>/edit"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/outline/<vol_ref>/edit",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Return all chapter outlines for a volume.",
       "func_name": "api_get_chapter_outlines",
       "key": "GET_/api/novels/<novel_name>/chapter-outlines/<vol_ref>",
@@ -119,9 +170,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/chapter-outlines/<vol_ref>"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapter-outlines/<vol_ref>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Update a single chapter outline.",
       "func_name": "api_put_chapter_outline",
       "key": "PUT_/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>",
@@ -129,9 +184,13 @@
       "methods": [
         "PUT"
       ],
-      "route": "/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_read_danger_issue",
       "key": "GET_/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>",
@@ -139,9 +198,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Export all chapters of a novel in the requested format.",
       "func_name": "api_export_novel",
       "key": "GET_/api/novels/<novel_name>/export",
@@ -149,9 +212,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/novels/<novel_name>/export"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/export",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Direct AI chat",
       "func_name": "api_ai_chat",
       "key": "POST_/api/ai/chat",
@@ -159,9 +226,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/ai/chat"
+      "repo_calls": [],
+      "route": "/api/ai/chat",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "SSE streaming AI chat (supports both Anthropic and OpenAI formats)",
       "func_name": "api_ai_stream",
       "key": "POST_/api/ai/stream",
@@ -169,9 +240,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/ai/stream"
+      "repo_calls": [],
+      "route": "/api/ai/stream",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_create_novel",
       "key": "POST_/api/novels/create",
@@ -179,9 +254,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/create"
+      "repo_calls": [],
+      "route": "/api/novels/create",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_generate_chapter",
       "key": "POST_/api/novels/<novel_name>/generate-chapter",
@@ -189,9 +268,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/generate-chapter"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/generate-chapter",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_review_chapter",
       "key": "POST_/api/novels/<novel_name>/review-chapter",
@@ -199,9 +282,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/review-chapter"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/review-chapter",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "One-click optimize: fix issues found during review",
       "func_name": "api_optimize_chapter",
       "key": "POST_/api/novels/<novel_name>/optimize-chapter",
@@ -209,9 +296,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/optimize-chapter"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/optimize-chapter",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_run_script",
       "key": "POST_/api/novels/<novel_name>/run-script",
@@ -219,9 +310,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/run-script"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/run-script",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Write/update any file in a novel's directory",
       "func_name": "api_write_novel_file",
       "key": "POST_/api/novels/<novel_name>/file/write",
@@ -229,9 +324,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/file/write"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/file/write",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_update_status",
       "key": "POST_/api/novels/<novel_name>/update-status",
@@ -239,9 +338,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/update-status"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/update-status",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_get_config",
       "key": "GET_/api/config",
@@ -249,9 +352,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/config"
+      "repo_calls": [],
+      "route": "/api/config",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_save_config",
       "key": "POST_/api/config/save",
@@ -259,9 +366,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/config/save"
+      "repo_calls": [],
+      "route": "/api/config/save",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_test_config",
       "key": "POST_/api/config/test",
@@ -269,9 +380,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/config/test"
+      "repo_calls": [],
+      "route": "/api/config/test",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Return available writing styles from DB presets + distilled JSON fingerprints.",
       "func_name": "api_styles",
       "key": "GET_/api/styles",
@@ -279,9 +394,15 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/styles"
+      "repo_calls": [
+        "list_style_presets"
+      ],
+      "route": "/api/styles",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_wizard_step",
       "key": "POST_/api/wizard/step",
@@ -289,9 +410,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/wizard/step"
+      "repo_calls": [],
+      "route": "/api/wizard/step",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_config_list",
       "key": "GET_/api/config-db/<table>",
@@ -299,9 +424,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/config-db/<table>"
+      "repo_calls": [],
+      "route": "/api/config-db/<table>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_config_add",
       "key": "POST_/api/config-db/<table>",
@@ -309,9 +438,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/config-db/<table>"
+      "repo_calls": [],
+      "route": "/api/config-db/<table>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_config_manage",
       "key": "PUT,DELETE_/api/config-db/<table>/<int:row_id>",
@@ -320,9 +453,13 @@
         "PUT",
         "DELETE"
       ],
-      "route": "/api/config-db/<table>/<int:row_id>"
+      "repo_calls": [],
+      "route": "/api/config-db/<table>/<int:row_id>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_quality_report",
       "key": "GET_/api/content/quality-report/<novel_name>",
@@ -330,9 +467,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/content/quality-report/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/content/quality-report/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Run all pre-generation enforcement scripts. Returns pass/fail for each.",
       "func_name": "api_workflow_preflight",
       "key": "POST_/api/workflow/preflight/<novel_name>",
@@ -340,9 +481,15 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/workflow/preflight/<novel_name>"
+      "repo_calls": [
+        "get"
+      ],
+      "route": "/api/workflow/preflight/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Run all post-generation enforcement scripts.",
       "func_name": "api_workflow_postflight",
       "key": "POST_/api/workflow/postflight/<novel_name>",
@@ -350,9 +497,15 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/workflow/postflight/<novel_name>"
+      "repo_calls": [
+        "get"
+      ],
+      "route": "/api/workflow/postflight/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Run the complete enforcement pipeline for a chapter.",
       "func_name": "api_enforce_pipeline",
       "key": "POST_/api/novels/<novel_name>/enforce-pipeline",
@@ -360,9 +513,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/enforce-pipeline"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/enforce-pipeline",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_context_build",
       "key": "POST_/api/context/build",
@@ -370,9 +527,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/context/build"
+      "repo_calls": [],
+      "route": "/api/context/build",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_context_stats",
       "key": "GET_/api/context/stats/<novel_name>/<int:volume>/<int:chapter>",
@@ -380,9 +541,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/context/stats/<novel_name>/<int:volume>/<int:chapter>"
+      "repo_calls": [],
+      "route": "/api/context/stats/<novel_name>/<int:volume>/<int:chapter>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_rag_query",
       "key": "POST_/api/rag/query",
@@ -390,9 +555,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/rag/query"
+      "repo_calls": [],
+      "route": "/api/rag/query",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_init_full",
       "key": "POST_/api/init/full/<novel_name>",
@@ -400,9 +569,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/init/full/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/init/full/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_init_world_building",
       "key": "POST_/api/novels/<novel_name>/world-building/init",
@@ -410,9 +583,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/world-building/init"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/world-building/init",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_init_plot_arcs",
       "key": "POST_/api/novels/<novel_name>/plot-arcs/init",
@@ -420,9 +597,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/plot-arcs/init"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/plot-arcs/init",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_init_pacing",
       "key": "POST_/api/novels/<novel_name>/pacing/init",
@@ -430,9 +611,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/pacing/init"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/pacing/init",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_init_revelation",
       "key": "POST_/api/novels/<novel_name>/revelation/init",
@@ -440,9 +625,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/revelation/init"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/revelation/init",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_genre_rules_list",
       "key": "GET_/api/genre_rules/<novel_name>",
@@ -450,9 +639,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/genre_rules/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/genre_rules/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_story_volumes_list",
       "key": "GET_/api/story_volumes/<novel_name>",
@@ -460,9 +653,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/story_volumes/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/story_volumes/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_volume_plans_list",
       "key": "GET_/api/volume_plans/<novel_name>",
@@ -470,9 +667,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/volume_plans/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/volume_plans/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_alias_names_list",
       "key": "GET_/api/alias_names/<novel_name>",
@@ -480,9 +681,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/alias_names/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/alias_names/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_project_meta_list",
       "key": "GET_/api/project_meta/<novel_name>",
@@ -490,9 +695,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/project_meta/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/project_meta/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_characters_list",
       "key": "GET_/api/characters/<novel_name>",
@@ -500,9 +709,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/characters/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/characters/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_character_get",
       "key": "GET_/api/characters/<novel_name>/<int:cid>",
@@ -510,9 +723,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/characters/<novel_name>/<int:cid>"
+      "repo_calls": [],
+      "route": "/api/characters/<novel_name>/<int:cid>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_character_add",
       "key": "POST_/api/characters/<novel_name>",
@@ -520,9 +737,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/characters/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/characters/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_character_manage",
       "key": "PUT,DELETE_/api/characters/<novel_name>/<int:cid>",
@@ -531,9 +752,13 @@
         "PUT",
         "DELETE"
       ],
-      "route": "/api/characters/<novel_name>/<int:cid>"
+      "repo_calls": [],
+      "route": "/api/characters/<novel_name>/<int:cid>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_character_event",
       "key": "POST_/api/characters/<novel_name>/<int:cid>/event",
@@ -541,9 +766,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/characters/<novel_name>/<int:cid>/event"
+      "repo_calls": [],
+      "route": "/api/characters/<novel_name>/<int:cid>/event",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_characters_init",
       "key": "POST_/api/characters/<novel_name>/init",
@@ -551,9 +780,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/characters/<novel_name>/init"
+      "repo_calls": [],
+      "route": "/api/characters/<novel_name>/init",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_foreshadowing_list",
       "key": "GET_/api/foreshadowing/<novel_name>",
@@ -561,9 +794,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/foreshadowing/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/foreshadowing/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_foreshadowing_unresolved",
       "key": "GET_/api/foreshadowing/<novel_name>/unresolved",
@@ -571,9 +808,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/foreshadowing/<novel_name>/unresolved"
+      "repo_calls": [],
+      "route": "/api/foreshadowing/<novel_name>/unresolved",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_foreshadowing_add",
       "key": "POST_/api/foreshadowing/<novel_name>",
@@ -581,9 +822,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/foreshadowing/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/foreshadowing/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_foreshadowing_manage",
       "key": "PUT,DELETE_/api/foreshadowing/<novel_name>/<int:fid>",
@@ -592,9 +837,13 @@
         "PUT",
         "DELETE"
       ],
-      "route": "/api/foreshadowing/<novel_name>/<int:fid>"
+      "repo_calls": [],
+      "route": "/api/foreshadowing/<novel_name>/<int:fid>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_foreshadowing_resolve",
       "key": "POST_/api/foreshadowing/<novel_name>/resolve/<int:fid>",
@@ -602,9 +851,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/foreshadowing/<novel_name>/resolve/<int:fid>"
+      "repo_calls": [],
+      "route": "/api/foreshadowing/<novel_name>/resolve/<int:fid>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_foreshadowing_init",
       "key": "POST_/api/foreshadowing/<novel_name>/init",
@@ -612,9 +865,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/foreshadowing/<novel_name>/init"
+      "repo_calls": [],
+      "route": "/api/foreshadowing/<novel_name>/init",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_world_building_list",
       "key": "GET_/api/world_building/<novel_name>",
@@ -622,9 +879,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/world_building/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/world_building/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_world_building_add",
       "key": "POST_/api/world_building/<novel_name>",
@@ -632,9 +893,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/world_building/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/world_building/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_world_building_manage",
       "key": "PUT,DELETE_/api/world_building/<novel_name>/<int:row_id>",
@@ -643,9 +908,13 @@
         "PUT",
         "DELETE"
       ],
-      "route": "/api/world_building/<novel_name>/<int:row_id>"
+      "repo_calls": [],
+      "route": "/api/world_building/<novel_name>/<int:row_id>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_plot_arcs_list",
       "key": "GET_/api/plot_arcs/<novel_name>",
@@ -653,9 +922,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/plot_arcs/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/plot_arcs/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_plot_arcs_add",
       "key": "POST_/api/plot_arcs/<novel_name>",
@@ -663,9 +936,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/plot_arcs/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/plot_arcs/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_plot_arcs_manage",
       "key": "PUT,DELETE_/api/plot_arcs/<novel_name>/<int:row_id>",
@@ -674,9 +951,13 @@
         "PUT",
         "DELETE"
       ],
-      "route": "/api/plot_arcs/<novel_name>/<int:row_id>"
+      "repo_calls": [],
+      "route": "/api/plot_arcs/<novel_name>/<int:row_id>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_pacing_control_list",
       "key": "GET_/api/pacing_control/<novel_name>",
@@ -684,9 +965,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/pacing_control/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/pacing_control/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_pacing_control_add",
       "key": "POST_/api/pacing_control/<novel_name>",
@@ -694,9 +979,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/pacing_control/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/pacing_control/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_pacing_control_manage",
       "key": "PUT,DELETE_/api/pacing_control/<novel_name>/<int:row_id>",
@@ -705,9 +994,13 @@
         "PUT",
         "DELETE"
       ],
-      "route": "/api/pacing_control/<novel_name>/<int:row_id>"
+      "repo_calls": [],
+      "route": "/api/pacing_control/<novel_name>/<int:row_id>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_revelation_schedule_list",
       "key": "GET_/api/revelation_schedule/<novel_name>",
@@ -715,9 +1008,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/revelation_schedule/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/revelation_schedule/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_revelation_schedule_add",
       "key": "POST_/api/revelation_schedule/<novel_name>",
@@ -725,9 +1022,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/revelation_schedule/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/revelation_schedule/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_revelation_schedule_manage",
       "key": "PUT,DELETE_/api/revelation_schedule/<novel_name>/<int:row_id>",
@@ -736,9 +1037,13 @@
         "PUT",
         "DELETE"
       ],
-      "route": "/api/revelation_schedule/<novel_name>/<int:row_id>"
+      "repo_calls": [],
+      "route": "/api/revelation_schedule/<novel_name>/<int:row_id>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Delete all .bak backup files for a novel",
       "func_name": "api_cleanup_bak",
       "key": "POST_/api/novels/<novel_name>/cleanup-bak",
@@ -746,9 +1051,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/novels/<novel_name>/cleanup-bak"
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/cleanup-bak",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_content_search",
       "key": "GET_/api/content/search",
@@ -756,9 +1065,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/content/search"
+      "repo_calls": [],
+      "route": "/api/content/search",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_content_stats",
       "key": "GET_/api/content/stats/<novel_name>",
@@ -766,9 +1079,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/content/stats/<novel_name>"
+      "repo_calls": [],
+      "route": "/api/content/stats/<novel_name>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_content_sync",
       "key": "POST_/api/content/sync",
@@ -776,9 +1093,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/content/sync"
+      "repo_calls": [],
+      "route": "/api/content/sync",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_list_templates",
       "key": "GET_/api/templates",
@@ -786,9 +1107,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/templates"
+      "repo_calls": [],
+      "route": "/api/templates",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "Return token usage statistics.",
       "func_name": "api_usage_stats",
       "key": "GET_/api/usage/stats",
@@ -796,9 +1121,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/api/usage/stats"
+      "repo_calls": [],
+      "route": "/api/usage/stats",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_ai_character_profile",
       "key": "POST_/api/characters/<novel_name>/<int:cid>/ai-profile",
@@ -806,9 +1135,13 @@
       "methods": [
         "POST"
       ],
-      "route": "/api/characters/<novel_name>/<int:cid>/ai-profile"
+      "repo_calls": [],
+      "route": "/api/characters/<novel_name>/<int:cid>/ai-profile",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "serve_react_assets",
       "key": "GET_/assets/<path:filename>",
@@ -816,9 +1149,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/assets/<path:filename>"
+      "repo_calls": [],
+      "route": "/assets/<path:filename>",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "index",
       "key": "GET_/",
@@ -826,9 +1163,13 @@
       "methods": [
         "GET"
       ],
-      "route": "/"
+      "repo_calls": [],
+      "route": "/",
+      "tables_read": [],
+      "tables_written": []
     },
     {
+      "db_calls": [],
       "docstring": "",
       "func_name": "index",
       "key": "GET_/",
@@ -836,9 +1177,12 @@
       "methods": [
         "GET"
       ],
-      "route": "/"
+      "repo_calls": [],
+      "route": "/",
+      "tables_read": [],
+      "tables_written": []
     }
   ],
-  "generated_at": "2026-06-03T14:51:41Z",
+  "generated_at": "2026-06-03T14:59:39Z",
   "source": "portal/app.py"
 }
