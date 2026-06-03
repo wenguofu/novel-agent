@@ -65,6 +65,12 @@ DATABASE_URL=mysql+pymysql://user:pass@host:3306/novel_agent python run_v2.py
 - **人物/世界兜底**：DB 字段稀疏时自动从 `characters.md` 读富源；世界观不只读本卷，还加 5 条跨卷设定
 - **core_instructions 单一来源**：jinja2 模板 + Python 兜底
 
+## TDD 流程
+
+`portal/` 改动必须同时改 `tests/`。物理门见 `.pre-commit-config.yaml` (`tdd-required-test` hook)。
+豁免: commit 标题含 `hotfix`。
+基线: `pytest tests/ -q` 当前 0 failed / 0 errors (维护自 2026-06-03, 见 `tests/audit/baseline_after.json`)。
+
 ## 文件结构
 
 ```text
@@ -100,7 +106,7 @@ novel-agent/
 │   ├── volume_plan/            # 卷规划
 │   └── state/                  # 运行状态 (stage_gate.json, current_status.md)
 ├── openspec/                   # 架构文档
-├── tests/                      # 77 pytest 测试
+├── tests/                      # 119 pytest 测试
 └── scripts/                    # 迁移/升级脚本
 ```
 
