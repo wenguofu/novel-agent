@@ -72,6 +72,16 @@ DATABASE_URL=mysql+pymysql://user:pass@host:3306/novel_agent python run_v2.py
 基线: `pytest tests/ -q` 当前 0 failed / 0 errors (维护自 2026-06-03, 见 `tests/audit/baseline_after.json`)。
 审计工具: `python3 scripts/audit_test_failures.py` 重跑确认 0 失败。
 
+## 覆盖率门槛
+`bash scripts/measure_coverage.sh` (CI 跑, pre-commit 不跑) — 门槛 line coverage ≥ 90%。
+当前 M3 基线: 55% (M3.1 follow-up 关闭差距).
+
+## 6 维 Agent Code Review
+每次 commit 后, `.claude/hooks/post-commit` 自动写 `.code-reviews/<sha>.md` (6 维 review 报告)。
+M3 = stub mode (placeholder 报告); 完整 agent 接入见 M3.1。
+跳过: commit 含 `hotfix`。
+安装: `bash scripts/install-hooks.sh`
+
 ## 文件结构
 
 ```text
