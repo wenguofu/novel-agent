@@ -67,9 +67,10 @@ DATABASE_URL=mysql+pymysql://user:pass@host:3306/novel_agent python run_v2.py
 
 ## TDD 流程
 
-`portal/` 改动必须同时改 `tests/`。物理门见 `.pre-commit-config.yaml` (`tdd-required-test` hook)。
+`portal/` 改动必须同时改 `tests/`。物理门**计划在 M3**（`tdd-required-test` hook，见 spec §M3）。
 豁免: commit 标题含 `hotfix`。
 基线: `pytest tests/ -q` 当前 0 failed / 0 errors (维护自 2026-06-03, 见 `tests/audit/baseline_after.json`)。
+审计工具: `python3 scripts/audit_test_failures.py` 重跑确认 0 失败。
 
 ## 文件结构
 

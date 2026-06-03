@@ -46,105 +46,105 @@
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_world_building_columns",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_plot_arcs_table_exists",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_plot_arcs_columns",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_pacing_control_table_exists",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_pacing_control_columns",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_revelation_schedule_table_exists",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_revelation_schedule_columns",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_characters_extended_columns",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_foreshadowing_extended_columns",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestNewTables::test_chapters_extended_columns",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestCRUD::test_world_building_crud",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestCRUD::test_plot_arcs_crud",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestCRUD::test_pacing_control_crud",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_schema.py::TestCRUD::test_revelation_schedule_crud",
     "original_status": "FAILED",
     "final_status": "PASSED",
     "category": "F1",
-    "note": "Added missing column to ensure_unified_schema"
+    "note": "Fixed by engine-binding fix in init_db (Task 4 root cause)"
   },
   {
     "nodeid": "tests/test_token_truncation.py::TestTokenTruncation::test_truncation_respects_budget_with_large_content",
