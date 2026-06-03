@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-06-03T00:00:00Z",
+  "source": "fixture",
+  "repository_index_size": 2,
+  "endpoint_count": 2,
+  "endpoints": [
+    {
+      "key": "GET_/api/novels",
+      "route": "/api/novels",
+      "methods": ["GET"],
+      "func_name": "api_novels",
+      "line_no": 10,
+      "docstring": "List or create novels.",
+      "repo_calls": ["list_novels"],
+      "db_calls": [],
+      "tables_read": ["novels"],
+      "tables_written": []
+    },
+    {
+      "key": "POST_/api/context/build",
+      "route": "/api/context/build",
+      "methods": ["POST"],
+      "func_name": "api_context_build",
+      "line_no": 100,
+      "docstring": "Build 12-layer system prompt.",
+      "repo_calls": ["list_genre_rules", "list_banned_words"],
+      "db_calls": [],
+      "tables_read": ["genre_rules", "banned_words"],
+      "tables_written": []
+    }
+  ],
+  "repository_index": {
+    "list_novels": {"params": [], "defaults": [], "docstring": "List all novels.", "tables": ["novels"]},
+    "list_genre_rules": {"params": ["novel_name"], "defaults": [], "docstring": "List genre rules.", "tables": ["genre_rules"]}
+  }
+}
