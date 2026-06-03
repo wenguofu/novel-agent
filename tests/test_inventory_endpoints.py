@@ -5,10 +5,12 @@ from pathlib import Path
 FIXTURE = Path(__file__).parent / "fixtures" / "mini_app.py"
 REAL_APP = Path(__file__).parent.parent / "portal" / "app.py"
 
-def test_scan_flask_routes_returns_5_from_fixture():
+def test_scan_flask_routes_returns_8_from_fixture():
     from inventory_endpoints import scan_flask_routes
     endpoints = scan_flask_routes(FIXTURE)
-    assert len(endpoints) == 5
+    # Fixture: 5 originals + <int:cid> PUT/DELETE + 4-method CRUD + async def.
+    # The bare `async def _helper` outside any decorator must be ignored.
+    assert len(endpoints) == 8
 
 def test_scan_flask_routes_extracts_route_path():
     from inventory_endpoints import scan_flask_routes
@@ -47,3 +49,33 @@ def test_inventory_real_portal_app_has_83_endpoints():
     endpoints = scan_flask_routes(REAL_APP)
     # Real count from manual grep on 2026-06-03. Update only if endpoints are added/removed.
     assert len(endpoints) == 83, f"expected 83 endpoints, got {len(endpoints)} — portal/app.py changed"
+
+
+def test_scan_handles_int_converter_in_route():
+    from inventory_endpoints import scan_flask_routes
+    endpoints = scan_flask_routes(FIXTURE)
+    by_route = {ep.route: ep.methods for ep in endpoints}
+    assert by_route["/api/characters/<name>/<int:cid>"] == ["PUT", "DELETE"]
+
+
+def test_scan_handles_four_method_list():
+    from inventory_endpoints import scan_flask_routes
+    endpoints = scan_flask_routes(FIXTURE)
+    by_route = {ep.route: ep.methods for ep in endpoints}
+    assert by_route["/api/crud/<int:row_id>"] == ["GET", "POST", "PUT", "DELETE"]
+
+
+def test_scan_handles_async_function_def():
+    from inventory_endpoints import scan_flask_routes
+    endpoints = scan_flask_routes(FIXTURE)
+    async_ep = next(ep for ep in endpoints if ep.route == "/api/async/<name>")
+    assert async_ep.func_name == "api_async"
+
+
+def test_scan_ignores_undecorated_async_helper():
+    """The bare `async def _helper()` in the fixture has no @app.route
+    decorator and must be ignored."""
+    from inventory_endpoints import scan_flask_routes
+    endpoints = scan_flask_routes(FIXTURE)
+    names = {ep.func_name for ep in endpoints}
+    assert "_helper" not in names

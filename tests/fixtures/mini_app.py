@@ -27,3 +27,21 @@ def api_delete_chapter(name, ref):
 def static_files(filename):
     """Serve static assets."""
     return ""
+
+@app.route("/api/characters/<name>/<int:cid>", methods=["PUT", "DELETE"])
+def api_character_ops(name, cid):
+    """Update or delete one character."""
+    return {}
+
+@app.route("/api/crud/<int:row_id>", methods=["GET", "POST", "PUT", "DELETE"])
+def api_crud(row_id):
+    """Generic CRUD endpoint with all four methods."""
+    return {}
+
+async def _helper():  # unrelated async; should be ignored
+    return None
+
+@app.route("/api/async/<name>")
+async def api_async(name):
+    """Async endpoint — exercises AsyncFunctionDef branch."""
+    return {}
