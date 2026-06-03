@@ -113,7 +113,7 @@ novel-agent/
 
 ## API 端点 (主要)
 
-> 完整 83 端点字段级参考（含 Manual Notes、Repo 方法、读写表）见
+> 完整 82 端点字段级参考（含 Manual Notes、Repo 方法、读写表）见
 > [docs/system-functional-spec.md](docs/system-functional-spec.md)。
 > 数据驱动：跑 `python3 scripts/inventory_endpoints.py && python3 scripts/render_spec.py` 重新生成。
 > CI 校验：跑 `python3 scripts/verify_spec.py`（5 项一致性检查）。
