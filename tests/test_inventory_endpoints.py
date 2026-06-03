@@ -43,12 +43,15 @@ def test_scan_flask_routes_extracts_docstring_first_line():
     root_ep = next(ep for ep in endpoints if ep.route == "/")
     assert root_ep.docstring == "Root index — serves the SPA shell."
 
-def test_inventory_real_portal_app_has_83_endpoints():
+def test_inventory_real_portal_app_has_82_endpoints():
     """Integration: scan the real portal/app.py and verify count matches design doc."""
     from inventory_endpoints import scan_flask_routes
     endpoints = scan_flask_routes(REAL_APP)
-    # Real count from manual grep on 2026-06-03. Update only if endpoints are added/removed.
-    assert len(endpoints) == 83, f"expected 83 endpoints, got {len(endpoints)} — portal/app.py changed"
+    # Real count from manual grep on 2026-06-04 (post-dedupe: was 83, now 82).
+    # The 83 came from two `@app.route("/")` decorators on the `index` function
+    # in mutually exclusive if/else branches (React build vs Jinja template);
+    # refactored into a single conditional index() — see commit history.
+    assert len(endpoints) == 82, f"expected 82 endpoints, got {len(endpoints)} — portal/app.py changed"
 
 
 def test_scan_handles_int_converter_in_route():

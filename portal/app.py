@@ -438,20 +438,18 @@ if _HAS_REACT_BUILD:
     def serve_react_assets(filename):
         return send_from_directory(_REACT_ASSETS, filename)
 
-    @app.route("/")
-    def index():
-        return send_from_directory(_REACT_DIST, "index.html")
-
     # SPA fallback: serve index.html for any non-API, non-asset route
     @app.errorhandler(404)
     def spa_fallback(e):
         if not request.path.startswith("/api/"):
             return send_from_directory(_REACT_DIST, "index.html")
         return jsonify({"error": "Not found"}), 404
-else:
-    @app.route("/")
-    def index():
-        return render_template("index.html")
+
+@app.route("/")
+def index():
+    if _HAS_REACT_BUILD:
+        return send_from_directory(_REACT_DIST, "index.html")
+    return render_template("index.html")
 
 
 @app.route("/api/novels")
