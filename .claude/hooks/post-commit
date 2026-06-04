@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# post-commit hook: invoke the 6-dim agent code review.
+# Writes report to .code-reviews/<short-sha>.md
+# Loops until 0 issues or commit message contains 'hotfix'.
+set -euo pipefail
+
+# Don't run if this is a hook-itself commit
+if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qE '^\.claude/hooks/'; then
+    echo "[agent-CR] hook self-change — skipping"
+    exit 0
+fi
+
+# Hotfix bypass
+COMMIT_MSG=$(git log -1 --pretty=%B)
+if echo "$COMMIT_MSG" | grep -qi "hotfix"; then
+    echo "[agent-CR] hotfix detected — skipping"
+    exit 0
+fi
+
+bash agent-system/scripts/post_commit_review.sh "$(git rev-parse HEAD)"

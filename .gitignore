@@ -33,3 +33,6 @@ novels/
 # RAG database
 *.db
 chroma_db/
+
+# M3: agent code review reports
+.code-reviews/
