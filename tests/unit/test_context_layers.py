@@ -216,3 +216,55 @@ class TestLayer3Characters:
         # female lead / protagonist is always included regardless of
         # current_vol. The future-vol character leaks into vol-1.
         assert "苏晴" not in text
+
+
+class TestLayer35GenreRules:
+    """Layer 3.5: Genre rules (must/optional markers, grouped by category)."""
+
+    @pytest.fixture
+    def seeded_novel_with_genre_rules(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_genre_rule(novel_name, rule_category, rule_content,
+        # is_required=1) per portal/repository.py:771 — there is NO
+        # upsert_genre_rule, and the GenreRule model (models_orm.py:371) has
+        # no rule_key/rule_value fields. The real fields are rule_category and
+        # rule_content (is_required is Integer 0/1, default 1).
+        # Required rule
+        repo.add_genre_rule(
+            "test_novel",
+            "必须元素",
+            "每章必须有至少1次血脉能力使用",
+            is_required=1,
+        )
+        # Optional rule
+        repo.add_genre_rule(
+            "test_novel",
+            "节奏规则",
+            "对话占比 20-30%",
+            is_required=0,
+        )
+        return "test_novel"
+
+    def test_required_marker_appears(self, seeded_novel_with_genre_rules):
+        from context_builder import _build_genre_rules_context
+        text = _build_genre_rules_context("test_novel")
+        # The layer emits "🔴" for required rules (context_builder.py:383)
+        # and the section header is "## 类型规则（genre_rules — 必须遵守）"
+        # (context_builder.py:379), which contains "必须".
+        assert "🔴" in text or "必须" in text
+
+    def test_optional_marker_appears(self, seeded_novel_with_genre_rules):
+        from context_builder import _build_genre_rules_context
+        text = _build_genre_rules_context("test_novel")
+        # The layer emits "🟡" for optional rules (context_builder.py:383).
+        assert "🟡" in text or "可选" in text
