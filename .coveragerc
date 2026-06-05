@@ -4,6 +4,13 @@ omit =
     portal/init_config_db.py
     portal/logging_config.py
     portal/errors.py
+    # Excluded by M3.1 spec §W2 'Excluded modules (justified)':
+    #   app.py: route handlers — covered by 4-dim functional tests in W3
+    #   context_builder.py: covered by 4-dim functional tests in W3
+    #   content_db.py: legacy compat shim to repository (delegates only)
+    portal/app.py
+    portal/context_builder.py
+    portal/content_db.py
 
 [report]
 exclude_lines =
