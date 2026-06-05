@@ -2,8 +2,9 @@
 """
 Auto-Patch Script — applies all v3.2 data model upgrades.
 
-This script modifies app.py, content_db.py, and context_builder.py
-to use the new unified repository layer and volume-scoped prompts.
+This script modifies app.py and content_db.py to use the new unified
+repository layer. (Volume-scoped prompts now ship via context_builder.py
+directly — no patching needed.)
 
 Usage:
     python scripts/apply_upgrade.py [--dry-run]
@@ -12,7 +13,6 @@ The script creates .bak backups before modifying any file.
 """
 
 import os
-import re
 import sys
 import shutil
 from pathlib import Path

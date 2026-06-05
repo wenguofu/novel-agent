@@ -41,7 +41,7 @@ Instead of using `run_v2.py`, you can permanently patch the old code. Run:
 python scripts/apply_upgrade.py
 ```
 
-This modifies `app.py`, `content_db.py`, and `context_builder.py` in-place (with `.bak` backups).
+This modifies `app.py` and `content_db.py` in-place (with `.bak` backups).
 
 ---
 
