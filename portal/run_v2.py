@@ -11,7 +11,7 @@ Usage:
 Architecture:
   - content_db.py → delegates to repository.get_repo() for all DB operations
   - app.py → uses repository for config/usage operations
-  - context_builder.py → patched to use volume-scoped ctx_v2
+  - context_builder.py → canonical runtime path (12-layer 2026-06-02 plan)
   - All tables in one database (SQLite or MySQL via DATABASE_URL)
 """
 
@@ -148,18 +148,7 @@ else:
     log.info("MySQL mode: patched app.py → repository layer")
 
 # ═══════════════════════════════════════════════════════════════════════
-# Step 6: Patch context_builder for volume-scoped queries
-# ═══════════════════════════════════════════════════════════════════════
-
-import context_builder as _cb
-from ctx_v2 import build_context as build_context_v2
-
-_cb._build_context_original = _cb.build_context
-_cb.build_context = build_context_v2
-log.info("Context builder → volume-scoped ctx_v2")
-
-# ═══════════════════════════════════════════════════════════════════════
-# Step 7: Done — start server
+# Step 6: Done — start server
 # ═══════════════════════════════════════════════════════════════════════
 
 log.info("=" * 60)
