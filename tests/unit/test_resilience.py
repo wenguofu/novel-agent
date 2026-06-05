@@ -13,14 +13,6 @@ For deterministic time-based tests we use:
     half-open transition
   * unittest.mock.patch on ``resilience.time.sleep`` to assert
     backoff delays without actually sleeping
-
-NOTE on ResponseTimeTracker.stats: the source has a known bug where
-``stats`` (line 184) acquires ``self._lock`` (a non-reentrant
-``threading.Lock``) and then calls ``self.avg_response_time`` (line
-188) which tries to acquire the same lock again — a deadlock. We
-work around it in tests by swapping ``_lock`` for a
-``threading.RLock()`` only for the stats tests, leaving the source
-unmodified.
 """
 import threading
 import time
@@ -38,16 +30,6 @@ from resilience import (
     response_tracker,
     with_retry,
 )
-
-
-@pytest.fixture
-def rlock_tracker():
-    """ResponseTimeTracker with a re-entrant lock so .stats() doesn't
-    deadlock on the known lock-in-stats bug.
-    """
-    t = ResponseTimeTracker(slow_threshold=1.0, critical_threshold=2.0)
-    t._lock = threading.RLock()
-    return t
 
 
 # ── CircuitBreaker — basic state machine ───────────────────────────────
@@ -475,8 +457,8 @@ class TestResponseTimeTracker:
         assert t._total_time == 6.0
         assert t.avg_response_time == 2.0
 
-    def test_stats_returns_dict_with_keys(self, rlock_tracker):
-        t = rlock_tracker
+    def test_stats_returns_dict_with_keys(self):
+        t = ResponseTimeTracker(slow_threshold=1.0, critical_threshold=2.0)
         t.track("op", 0.5)
         t.track("op", 1.5)  # slow
         s = t.stats
@@ -490,26 +472,39 @@ class TestResponseTimeTracker:
         # avg_time should be 1.0 (rounded to 3 places)
         assert s["avg_time"] == 1.0
 
-    def test_stats_with_no_calls(self, rlock_tracker):
-        t = rlock_tracker
+    def test_stats_with_no_calls(self):
+        t = ResponseTimeTracker(slow_threshold=1.0, critical_threshold=2.0)
         s = t.stats
         assert s["total_calls"] == 0
         assert s["slow_calls"] == 0
         assert s["avg_time"] == 0.0
         assert s["slow_rate"] == 0.0
 
-    def test_stats_slow_rate_zero_when_no_calls(self, rlock_tracker):
+    def test_stats_slow_rate_zero_when_no_calls(self):
         """slow_rate uses max(total, 1) — should be 0/1 = 0 when empty."""
-        t = rlock_tracker
+        t = ResponseTimeTracker(slow_threshold=1.0, critical_threshold=2.0)
         assert t.stats["slow_rate"] == 0.0
 
-    def test_stats_avg_rounded(self, rlock_tracker):
-        t = rlock_tracker
+    def test_stats_avg_rounded(self):
+        t = ResponseTimeTracker(slow_threshold=1.0, critical_threshold=2.0)
         t.track("op", 1.0)
         t.track("op", 1.0)
         t.track("op", 1.0)
         # avg = 1.0, rounded to 3 places
         assert t.stats["avg_time"] == 1.0
+
+    def test_stats_works_after_track_no_deadlock(self):
+        """Regression: ResponseTimeTracker.stats used to deadlock because stats
+        acquired _lock and then called avg_response_time which also acquired it.
+        The fix: ResponseTimeTracker._lock is now threading.RLock (hotfix M3.1).
+        This test will hang if anyone reverts the fix to threading.Lock."""
+        t = ResponseTimeTracker(slow_threshold=1.0, critical_threshold=2.0)
+        t.track("op1", 0.5)
+        t.track("op2", 1.5)
+        t.track("op3", 2.5)
+        s = t.stats
+        assert s["total_calls"] == 3
+        assert s["slow_calls"] == 2  # 1.5 (slow) and 2.5 (critical)
 
 
 # ── Module globals ──────────────────────────────────────────────────────
