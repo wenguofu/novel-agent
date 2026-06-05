@@ -342,7 +342,58 @@ class TestTemplates:
 
 # ─── GET /api/usage/stats ──────────────────────────────────────────────
 
+# Schema mirror of the production `usage` table (see
+# portal/models_orm.py::UsageRecord). Kept as a module constant so all
+# tests in TestUsageStats share the same DDL.
+_USAGE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    novel TEXT DEFAULT '',
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    cost_estimate REAL DEFAULT 0.0,
+    created_at TEXT DEFAULT (datetime('now'))
+)
+"""
+
+
 class TestUsageStats:
+    @pytest.fixture(autouse=True)
+    def _tmp_usage_db(self, client, tmp_path, monkeypatch):
+        """Redirect ``app.USAGE_DB_PATH`` to a tmp file with the ``usage`` table.
+
+        The production ``portal/usage.db`` is normally an empty 0-byte file
+        in the test environment (no ``usage`` table), so the endpoint
+        raises ``sqlite3.OperationalError: no such table: usage`` and
+        returns HTTP 500. This fixture creates a tmp DB with the proper
+        schema and one seed row, then points the endpoint at it for the
+        duration of the test. ``monkeypatch`` restores the original path
+        automatically on teardown.
+
+        Note: the ``client`` dependency is intentional — the conftest's
+        ``tmp_db`` fixture reimports the ``app`` module under a fresh
+        ``sys.modules`` entry, so the monkeypatch MUST happen after
+        that reimport (i.e. after ``client`` is materialized).
+        """
+        import sqlite3
+        import app as _app
+        db_path = tmp_path / "usage.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(_USAGE_SCHEMA)
+        # Seed a row so the happy path returns non-zero aggregates.
+        conn.execute(
+            "INSERT INTO usage (model, operation, novel, total_tokens, "
+            "cost_estimate, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            ("test-model", "generate_chapter", "test_novel", 1000, 0.01,
+             "2026-06-04 12:00:00"),
+        )
+        conn.commit()
+        conn.close()
+        monkeypatch.setattr(_app, "USAGE_DB_PATH", str(db_path))
+
     def test_happy_path_returns_stats(self, client):
         res = client.get("/api/usage/stats")
         assert res.status_code == 200
@@ -351,6 +402,11 @@ class TestUsageStats:
         # Well-known top-level keys.
         for key in ("total_tokens", "total_cost", "by_operation", "by_novel"):
             assert key in data, f"missing stat key: {key}"
+        # The seed row should make the totals non-zero.
+        assert data["total_tokens"] == 1000
+        assert data["total_cost"] == 0.01
+        assert "generate_chapter" in data["by_operation"]
+        assert "test_novel" in data["by_novel"]
 
     def test_with_novel_filter(self, client):
         res = client.get("/api/usage/stats?novel=test_novel&days=7")
