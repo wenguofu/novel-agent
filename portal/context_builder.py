@@ -326,8 +326,10 @@ def _build_character_context(novel_name, volume, chapter_num):
     if not chars:
         return ""
 
-    # Filter: protagonist + characters active in current volume
-    relevant = [c for c in chars if c["role"] in ("主角", "女主") or c["current_vol"] >= volume - 1]
+    # Filter: characters active at or before the current volume.
+    # Excludes future-volume characters so the LLM isn't given plot
+    # points it shouldn't know about yet.
+    relevant = [c for c in chars if c["current_vol"] <= volume]
     if len(relevant) > 5:
         relevant = relevant[:5]
 

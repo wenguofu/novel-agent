@@ -306,12 +306,12 @@ class TestCharacter:
 
     def test_list_characters_active_in_volume(self, repo_with_novel):
         repo = repo_with_novel
-        # Main characters always included
-        repo.add_character("n1", "主", role="主角", current_vol=10)
-        repo.add_character("n1", "女主", role="女主", current_vol=10)
-        # Side character within window of vol 2
+        # Main characters in current/past volume — included
+        repo.add_character("n1", "主", role="主角", current_vol=1)
+        repo.add_character("n1", "女主", role="女主", current_vol=2)
+        # Side character in current volume — included
         repo.add_character("n1", "侧", role="配角", current_vol=2)
-        # Side character outside window — should be excluded
+        # Future-volume character (vol=10) — must be excluded
         repo.add_character("n1", "远", role="配角", current_vol=10)
         actives = repo.list_characters_active_in_volume("n1", 2)
         names = [c["name"] for c in actives]
@@ -319,6 +319,18 @@ class TestCharacter:
         assert "女主" in names
         assert "侧" in names
         assert "远" not in names
+
+    def test_list_characters_active_in_volume_excludes_future(self, repo_with_novel):
+        """Regression for M3.2 W3 Bug #1: mains in future vol must be excluded."""
+        repo = repo_with_novel
+        # Main character in FUTURE vol — must NOT leak into current prompt
+        repo.add_character("n1", "未来主角", role="主角", current_vol=10)
+        # Villain active in current vol — included
+        repo.add_character("n1", "当前反派", role="反派", current_vol=1)
+        actives = repo.list_characters_active_in_volume("n1", 1)
+        names = [c["name"] for c in actives]
+        assert "未来主角" not in names
+        assert "当前反派" in names
 
     def test_missing_novel_branches(self, repo):
         assert repo.get_character("ghost", 1) is None

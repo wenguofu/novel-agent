@@ -396,25 +396,20 @@ class Repository:
             s.query(Character).filter(Character.id == cid).delete()
 
     def list_characters_active_in_volume(self, novel_name: str, volume: int) -> List[Dict]:
-        """Characters whose current_vol is within ±1 of the given volume."""
+        """Characters active at or before the given volume (current_vol <= volume).
+
+        Excludes future-volume characters so callers can render a
+        vol-scoped prompt without leaking upcoming plot points.
+        """
         with repo_session() as s:
             nid = self._get_novel_id(s, novel_name)
             if not nid: return []
             rows = s.query(Character).filter(
                 Character.novel_id == nid,
-                Character.current_vol.between(max(1, volume - 1), volume + 1)
+                Character.current_vol <= volume
             ).all()
-            # Always include protagonist + female lead
-            mains = s.query(Character).filter(
-                Character.novel_id == nid,
-                Character.role.in_(["主角", "女主"])
-            ).all()
-            all_chars = {c.id: c for c in rows}
-            for c in mains:
-                if c.id not in all_chars:
-                    all_chars[c.id] = c
             order = {"主角": 0, "女主": 1, "反派": 2}
-            result = sorted(all_chars.values(), key=lambda c: (order.get(c.role, 3), c.name))
+            result = sorted(rows, key=lambda c: (order.get(c.role, 3), c.name))
             return _rows_to_dicts(result)
 
     # ═══════════════════════════════════════════════════════════════
