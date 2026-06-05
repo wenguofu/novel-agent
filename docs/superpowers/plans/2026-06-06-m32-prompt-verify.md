@@ -246,6 +246,8 @@ The 12 layer functions live in `portal/context_builder.py` and use `repository.g
 
 For the integration test (T2.13), we call `context_builder.build_context()` (the orchestrator) with full params and assert the layered output structure.
 
+**Note on repository method names:** The T2.* tasks call `repo.upsert_novel(...)`, `repo.upsert_outline(...)`, `repo.upsert_character(...)`, etc. These method names are inferred from convention; the actual `portal/repository.py` may use slightly different names (e.g., `add_novel`, `insert_outline`, `set_project_meta`). If a method doesn't exist or has a different signature, **adapt the test seed call to match the real method** and add a one-line comment in the test noting the rename. This is the only adaptation point in the plan.
+
 ### Task 2.1: Layer 0 — Core Instructions
 
 **Files:**
