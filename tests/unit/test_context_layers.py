@@ -734,3 +734,97 @@ class TestLayer9Style:
         # "测试风格" in text — verifies weight parsing (P0-2) and
         # header format at the same time.
         assert "### 测试风格（权重 100%）" in text
+
+
+class TestBuildContextIntegration:
+    """Integration: full ``build_context`` orchestrator produces 12 layers.
+
+    End-to-end check that ``portal/context_builder.py:build_context``
+    (lines 89-212) emits the full 12-layer pipeline in the expected
+    order, with the expected top-level return shape (``system_prompt``,
+    ``layers``, ``total_tokens``), and respects the ``max_tokens`` cap.
+
+    This is a STRUCTURAL integration test — it asserts layer order, layer
+    count, and the budget contract. It does NOT check per-layer content
+    regressions (those live in T2.1–T2.12). In particular, the
+    OR-bypass antipattern (T2.4/T2.6 bug class) would not necessarily
+    surface here, because the assertions are structural, not
+    content-based. The T2.4/T2.6 regression tests remain the
+    load-bearing checks for those bugs.
+    """
+
+    @pytest.fixture
+    def fully_seeded_novel(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.upsert_outline(novel_name, volume_str, content_str)
+        # per portal/repository.py:170 — content is a positional str, NOT
+        # a dict. Outline.volume is a String column in models_orm.py:89.
+        # _build_chapter_context (context_builder.py:254) builds the lookup
+        # key as f"vol-{volume:02d}" so for orchestrator's volume=1 (int)
+        # the DB row must be stored under the volume string "vol-01".
+        repo.upsert_outline("test_novel", "vol-01", "第001章\n本章测试。")
+        # Adapted: repo.add_style_preset(name, description=, prompt=) per
+        # portal/repository.py:1315 — there is NO upsert_style_preset; the
+        # real method takes positional `name` plus `description`/`prompt`
+        # kwargs. The plan's "默认" collides with the default seed
+        # "默认" populated by init_config_seed (repository.py:1403) and
+        # add_style_preset has no duplicate check, so we use a unique
+        # name to keep the test hermetic. StylePreset model:
+        # models_orm.py:498-506.
+        repo.add_style_preset(
+            "测试集成风格",
+            description="T2.13 integration test preset",
+            prompt="标准网文风格",
+        )
+        return "test_novel"
+
+    def test_orchestrator_returns_12_layers(self, fully_seeded_novel):
+        from context_builder import build_context
+        result = build_context({
+            "name": "test_novel",
+            "volume": 1,
+            "chapter_num": 1,
+            "style": "测试集成风格 100%",
+            "instructions": "请创作第 1 章",
+            "max_tokens": 10_000,
+        })
+        # Top-level shape per context_builder.py:207-212.
+        assert "system_prompt" in result
+        assert "layers" in result
+        assert "total_tokens" in result
+        # Layer order MUST match the orchestrator at context_builder.py:118-190.
+        # The plan spec at lines 972-976 is correct — verified against
+        # lines 120-189 of the orchestrator above.
+        layer_names = [layer["name"] for layer in result["layers"]]
+        assert layer_names == [
+            "核心指令", "项目元信息", "章节上下文", "角色上下文",
+            "类型规则", "伏笔待办", "世界观", "节奏情感", "信息释放",
+            "剧情弧线", "禁用词与合规", "写作风格",
+        ], f"layer names/order mismatch: {layer_names}"
+
+    def test_orchestrator_respects_token_budget(self, fully_seeded_novel):
+        from context_builder import build_context
+        result = build_context({
+            "name": "test_novel",
+            "volume": 1,
+            "chapter_num": 1,
+            "style": "测试集成风格 100%",
+            "instructions": "请创作第 1 章",
+            "max_tokens": 10_000,
+        })
+        # Budget contract: actual_total comes from _count_tokens of the
+        # assembled system_prompt at context_builder.py:205. Per-layer
+        # allocations are capped in build_context (e.g. line 135 caps
+        # 章节上下文 at 800 tokens), so a properly-bucketed pipeline
+        # stays under the cap.
+        assert result["total_tokens"] <= 10_000
