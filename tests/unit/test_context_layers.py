@@ -451,3 +451,67 @@ class TestLayer6PacingEmotion:
         # chapter 1 of vol 1.
         assert "快节奏" in text or "紧张" in text
         assert "2800" in text or "3200" in text
+
+
+class TestLayer7Revelation:
+    """Layer 7: Revelation (filtered by reveal_vol <= current).
+
+    The layer must include revelation rows whose reveal_vol has arrived
+    and EXCLUDE rows whose reveal_vol is in the future. This prevents
+    the LLM from learning about plot points (e.g., "魔皇是八神之一")
+    before the narrative is supposed to reveal them.
+    """
+
+    @pytest.fixture
+    def seeded_novel_with_revelation(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_revelation(novel_name, name, info_type=...,
+        # reveal_volume=..., reveal_chapter=..., content=..., priority=...)
+        # per portal/repository.py:745 — there is NO upsert_revelation; the
+        # real method is add_revelation. The RevelationSchedule model field
+        # is reveal_volume (NOT reveal_vol) per models_orm.py:359.
+        # Due now: reveal_volume=1, should appear in vol-1 prompt
+        repo.add_revelation(
+            "test_novel",
+            "主角血脉来源",
+            info_type="身份",
+            reveal_volume=1,
+            content="主角是叛神者后裔",
+        )
+        # Future: reveal_volume=3, must NOT appear in vol-1 prompt
+        repo.add_revelation(
+            "test_novel",
+            "魔皇残魂真相",
+            info_type="真相",
+            reveal_volume=3,
+            content="魔皇是八神之一",
+        )
+        return "test_novel"
+
+    def test_current_vol_revelation_appears(self, seeded_novel_with_revelation):
+        from context_builder import _build_revelation_context
+        text = _build_revelation_context("test_novel", 1)
+        # The layer emits "- [第{reveal_chapter}章][{info_type}] {name}: {content}"
+        # per context_builder.py:449. A reveal_volume=1 row matches
+        # the filter in repository.py:739-742 (`reveal_volume == volume`),
+        # so it must appear in the vol-1 prompt.
+        assert "主角血脉来源" in text
+
+    def test_future_revelation_excluded(self, seeded_novel_with_revelation):
+        from context_builder import _build_revelation_context
+        text = _build_revelation_context("test_novel", 1)
+        # A reveal_volume=3 row MUST NOT leak into the vol-1 prompt.
+        # Regression check: the filter in repository.py:739-742 is
+        # `RevelationSchedule.reveal_volume == volume` (exact match, no
+        # OR-bypass clause), so vol-3 revelations cannot appear in vol-1.
+        assert "魔皇残魂" not in text
