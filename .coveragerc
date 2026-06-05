@@ -1,0 +1,15 @@
+[run]
+source = portal
+omit =
+    portal/init_config_db.py
+    portal/logging_config.py
+    portal/errors.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    if TYPE_CHECKING:
+show_missing = true
+fail_under = 90
