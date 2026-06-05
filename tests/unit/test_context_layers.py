@@ -335,3 +335,65 @@ class TestLayer4Foreshadowing:
         # into the vol-1 prompt even though its target_vol=3 (future). The
         # same kind of over-broad OR filter that broke Layer 3 in T2.4.
         assert "叛神者身份" not in text
+
+
+class TestLayer5WorldBuilding:
+    """Layer 5: World building (local 5 + global 5 per P2-3)."""
+
+    @pytest.fixture
+    def seeded_novel_with_world(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_world_building(novel_name, domain, name, content,
+        # related_vol=0, related_ch=0, tags="") per portal/repository.py:637 —
+        # there is NO upsert_world_building; the real method is
+        # add_world_building with positional args (novel_name, domain, name,
+        # content) and related_vol as a kwarg. The WorldBuilding model field
+        # is related_vol (NOT current_vol) per models_orm.py:294.
+        # Local: 3 entries scoped to vol 1 (current volume)
+        for i in range(3):
+            repo.add_world_building(
+                "test_novel",
+                "地理",
+                f"第1卷地点{i}",
+                f"第1卷专属地点{i}的描述",
+                related_vol=1,
+            )
+        # Global: cross-volume lore, marked as world-wide (related_vol=0)
+        # so the LLM has the 八神体系 context even in early chapters for
+        # foreshadowing.
+        repo.add_world_building(
+            "test_novel",
+            "体系",
+            "八神体系",
+            "世界观的八位古神设定",
+            related_vol=0,
+        )
+        return "test_novel"
+
+    def test_local_world_appears(self, seeded_novel_with_world):
+        from context_builder import _build_world_context
+        text = _build_world_context("test_novel", 1, 1)
+        assert isinstance(text, str)
+        # Local entries (related_vol=1) must appear in vol-1 prompt.
+        # _build_world_context emits "{name}: {content}" per entry at
+        # context_builder.py:424, so "第1卷地点" is a substring of the name.
+        assert "第1卷地点" in text
+
+    def test_global_world_appears(self, seeded_novel_with_world):
+        from context_builder import _build_world_context
+        text = _build_world_context("test_novel", 1, 1)
+        # The P2-3 fix: cross-volume world-building (related_vol=0, "global")
+        # must also appear in the prompt so the LLM can foreshadow properly.
+        # The local-query OR-clause in repository.py:617 (`related_vol == 0`)
+        # ensures global entries are returned alongside local ones.
+        assert "八神体系" in text or "八位古神" in text
