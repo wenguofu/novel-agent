@@ -497,7 +497,6 @@ class Repository:
                     or_(
                         Foreshadowing.target_vol <= current_vol,
                         Foreshadowing.target_vol == 0,
-                        Foreshadowing.introduced_vol == current_vol,
                     )
                 )
             rows = q.order_by(Foreshadowing.priority.desc(), Foreshadowing.target_vol.asc(),
