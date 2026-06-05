@@ -2,12 +2,16 @@
 
 Endpoint coverage (9 total):
   GET   /api/novels                          2-dim (happy + wrong method)
-  GET   /api/novels/<n>                      2-dim
-  GET   /api/novels/<n>/file                 2-dim
-  GET   /api/novels/<n>/status               2-dim
-  GET   /api/novels/<n>/gate-status          2-dim
-  GET   /api/novels/<n>/export               2-dim
-  POST  /api/novels/create                   4-dim (happy + missing + not_found? + wrong)
+                                              — list endpoint, no per-resource
+                                                not_found equivalent; empty
+                                                results are an empty list, not
+                                                404, so it stays 2-dim.
+  GET   /api/novels/<n>                      3-dim (happy + not_found + wrong)
+  GET   /api/novels/<n>/file                 3-dim
+  GET   /api/novels/<n>/status               3-dim
+  GET   /api/novels/<n>/gate-status          3-dim
+  GET   /api/novels/<n>/export               3-dim
+  POST  /api/novels/create                   4-dim (happy + missing + duplicate + wrong)
   POST  /api/novels/<n>/file/write           4-dim
   POST  /api/novels/<n>/update-status        4-dim
 
@@ -17,10 +21,12 @@ Notes on path conventions:
     fixture's name ``test_novel`` is plain text and matches the route fine.
   - For /api/novels/<n>/file, ``path`` is a query string param, NOT a URL
     segment, so slashes inside ``path`` are fine. E.g. ``?path=project.md``.
-  - 2-dim endpoints are GET-only; missing-field tests are omitted because
-    they have no JSON body to validate.
+  - GET endpoints are 3-dim (not 4-dim) because they have no JSON body to
+    validate, so there is no ``missing_field`` dimension.
 """
 import pytest
+
+from _helpers import assert_not_found
 
 
 # ─── GET /api/novels ────────────────────────────────────────────────────────
@@ -52,6 +58,13 @@ class TestNovelDetail:
         assert data["success"] is True
         assert data.get("novel", {}).get("name") == "test_novel"
 
+    def test_not_found_returns_404(self, client, sample_novel, tmp_path):
+        # The fixture only creates ``test_novel``; any other name 404s.
+        # The route's get_novel_status() returns None for missing dirs and
+        # the handler emits 404 + success=False.
+        res = client.get("/api/novels/no_such_novel")
+        assert_not_found(res)
+
     def test_wrong_method_post_returns_405(self, client, sample_novel):
         # POST is not a method on the detail route; PUT is safer here in
         # case any future route registers POST for the same URL.
@@ -77,6 +90,14 @@ class TestReadFile:
         res = client.post(f"/api/novels/{sample_novel}/file")
         assert res.status_code == 405
 
+    def test_not_found_returns_404(self, client, sample_novel, tmp_path):
+        # The /file route reads via read_novel_file(); if the novel dir
+        # doesn't exist the file is missing → 404 + success=False.
+        # The ``path`` query param is a known-safe value to avoid the 400
+        # "invalid path" branch.
+        res = client.get("/api/novels/no_such_novel/file?path=project.md")
+        assert_not_found(res)
+
 
 # ─── GET /api/novels/<n>/status ─────────────────────────────────────────────
 
@@ -99,6 +120,12 @@ class TestNovelStatus:
         res = client.post(f"/api/novels/{sample_novel}/status")
         assert res.status_code == 405
 
+    def test_not_found_returns_404(self, client, sample_novel, tmp_path):
+        # The /status route reads state/current_status.md; when the novel
+        # dir is missing the read returns None and the route 404s.
+        res = client.get("/api/novels/no_such_novel/status")
+        assert_not_found(res)
+
 
 # ─── GET /api/novels/<n>/gate-status ────────────────────────────────────────
 
@@ -116,6 +143,18 @@ class TestGateStatus:
     def test_wrong_method_post_returns_405(self, client, sample_novel):
         res = client.post(f"/api/novels/{sample_novel}/gate-status")
         assert res.status_code == 405
+
+    def test_not_found_returns_404(self, client, sample_novel, tmp_path):
+        # Gate-status uses ``initialized: False`` instead of the standard
+        # ``success: False`` envelope, so the body is shaped slightly
+        # differently. The status code is still 404 per the route handler.
+        res = client.get("/api/novels/no_such_novel/gate-status")
+        assert res.status_code == 404, \
+            f"expected 404, got {res.status_code}: {res.data!r}"
+        data = res.get_json() or {}
+        # Either the standard ``success=False`` envelope or the route's
+        # native ``initialized=False`` shape is acceptable.
+        assert data.get("success") is False or data.get("initialized") is False
 
 
 # ─── GET /api/novels/<n>/export ─────────────────────────────────────────────
@@ -138,6 +177,12 @@ class TestExportNovel:
     def test_wrong_method_post_returns_405(self, client, sample_novel):
         res = client.post(f"/api/novels/{sample_novel}/export")
         assert res.status_code == 405
+
+    def test_not_found_returns_404(self, client, sample_novel, tmp_path):
+        # The /export route resolves the novel via get_novel_status(); a
+        # missing dir returns None and the route emits 404 + success=False.
+        res = client.get("/api/novels/no_such_novel/export?format=txt")
+        assert_not_found(res)
 
 
 # ─── POST /api/novels/create ────────────────────────────────────────────────
@@ -180,15 +225,20 @@ class TestCreateNovel:
 
     def test_duplicate_name_returns_400(self, client, sample_novel, tmp_path):
         # The endpoint refuses to create a novel whose dir already exists.
-        # The sample_novel fixture already created ``test_novel`` on disk.
+        # The sample_novel fixture already created ``test_novel`` on disk,
+        # so posting the same name should 400 before the AI call.
         res = client.post(
             "/api/novels/create",
             json={"name": "test_novel", "title": "dup"},
         )
-        assert res.status_code < 500
-        # Endpoint returns 400 with success=False for duplicates.
-        data = res.get_json()
-        assert data.get("success") is False
+        # Tightened: route emits 400 + success=False for duplicates.
+        # (This is not a "missing field" so assert_missing_field() is
+        # the wrong helper; we assert the status + envelope directly.)
+        assert res.status_code == 400, \
+            f"expected 400, got {res.status_code}: {res.data!r}"
+        data = res.get_json() or {}
+        assert data.get("success") is False, \
+            f"expected success=False, got {data!r}"
 
     def test_wrong_method_put_returns_405(self, client, sample_novel):
         # GET on /api/novels/create would be captured by /api/novels/<n>
