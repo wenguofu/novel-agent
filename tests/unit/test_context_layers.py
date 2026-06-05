@@ -397,3 +397,57 @@ class TestLayer5WorldBuilding:
         # The local-query OR-clause in repository.py:617 (`related_vol == 0`)
         # ensures global entries are returned alongside local ones.
         assert "八神体系" in text or "八位古神" in text
+
+
+class TestLayer6PacingEmotion:
+    """Layer 6: Pacing/Emotion (filtered by vol/ch).
+
+    The layer must include the PacingControl row whose [chapter_start,
+    chapter_end] range covers the current chapter. This is the per-chapter
+    rhythm/feel/mood instruction fed to the LLM so a fast-pace action
+    chapter reads differently from a slow-burn reveal chapter.
+    """
+
+    @pytest.fixture
+    def seeded_novel_with_pacing(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_pacing(novel_name, volume, chapter_start,
+        # chapter_end, **kwargs) per portal/repository.py:712 — there is NO
+        # upsert_pacing; the real method is add_pacing with positional
+        # (novel_name, volume, chapter_start, chapter_end) and the rest as
+        # kwargs. PacingControl model fields confirmed in models_orm.py:327-346
+        # (pace_type, intensity, emotion_target, word_budget_min,
+        # word_budget_max, notes).
+        repo.add_pacing(
+            "test_novel",
+            1,
+            1,
+            5,
+            pace_type="快节奏",
+            intensity=8,
+            emotion_target="紧张",
+            word_budget_min=2800,
+            word_budget_max=3200,
+        )
+        return "test_novel"
+
+    def test_pacing_appears(self, seeded_novel_with_pacing):
+        from context_builder import _build_pacing_context
+        text = _build_pacing_context("test_novel", 1, 1)
+        # Layer 6 emits "类型：{pace_type}", "情感目标：{emotion_target}", and
+        # "字数预算：{min}–{max}" per context_builder.py:433-436. The filter
+        # in repository.py:707-708 (`chapter_start <= chapter_num AND
+        # chapter_end >= chapter_num`) means a [1, 5] entry applies to
+        # chapter 1 of vol 1.
+        assert "快节奏" in text or "紧张" in text
+        assert "2800" in text or "3200" in text
