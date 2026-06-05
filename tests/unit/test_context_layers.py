@@ -268,3 +268,70 @@ class TestLayer35GenreRules:
         text = _build_genre_rules_context("test_novel")
         # The layer emits "🟡" for optional rules (context_builder.py:383).
         assert "🟡" in text or "可选" in text
+
+
+class TestLayer4Foreshadowing:
+    """Layer 4: Foreshadowing (filtered by target_vol <= current).
+
+    The layer must include foreshadowing items whose target_vol has
+    arrived (target_vol <= current_vol) and EXCLUDE items whose
+    target_vol is in the future. This prevents the LLM from learning
+    about plot points too early.
+    """
+
+    @pytest.fixture
+    def seeded_novel_with_foreshadowing(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_foreshadowing(novel_name, name, description=...,
+        # category=..., introduced_vol=..., introduced_ch=..., target_vol=...,
+        # target_ch=..., priority=...) per portal/repository.py:460 — there
+        # is NO upsert_foreshadowing; the real method is add_foreshadowing,
+        # which takes individual kwargs (not a dict). Fields confirmed in
+        # models_orm.py:190-214 (Foreshadowing model).
+        # Due now: target_vol=1, will appear in vol-1 prompt
+        repo.add_foreshadowing(
+            "test_novel",
+            "神山之谜",
+            description="神山为何封印八位古神",
+            target_vol=1,
+            introduced_vol=1,
+        )
+        # Future: target_vol=3, must NOT appear in vol-1 prompt
+        repo.add_foreshadowing(
+            "test_novel",
+            "叛神者身份",
+            description="主角是叛神者后裔",
+            target_vol=3,
+            introduced_vol=1,
+        )
+        return "test_novel"
+
+    def test_due_now_foreshadowing_appears(self, seeded_novel_with_foreshadowing):
+        from context_builder import _build_foreshadowing_context
+        text = _build_foreshadowing_context("test_novel", 1)
+        assert isinstance(text, str)
+        # Foreshadowing with target_vol=1 must appear in vol-1 prompt
+        assert "神山之谜" in text
+
+    def test_future_foreshadowing_excluded(self, seeded_novel_with_foreshadowing):
+        from context_builder import _build_foreshadowing_context
+        text = _build_foreshadowing_context("test_novel", 1)
+        # Foreshadowing with target_vol=3 must NOT appear in vol-1 prompt
+        # (regression check for the volume filter at
+        # repository.py:501-507: `Foreshadowing.target_vol <= current_vol`).
+        # FIXME: surfaced by T2.6; will be fixed in W3.
+        # The OR clause `Foreshadowing.introduced_vol == current_vol` in
+        # repository.py:505 leaks "叛神者身份" (introduced_vol=1, current_vol=1)
+        # into the vol-1 prompt even though its target_vol=3 (future). The
+        # same kind of over-broad OR filter that broke Layer 3 in T2.4.
+        assert "叛神者身份" not in text
