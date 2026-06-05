@@ -156,6 +156,12 @@ class TestBuildContextIntegration:
 
 **Trigger:** Any W2 test fails for a correctness reason (not a flaky test, not a fixture issue, not a typo in the test).
 
+- *Flaky test* = fails non-deterministically across re-runs; investigate timing/state, not the implementation.
+- *Fixture issue* = the test seeds data incorrectly; fix the test, not `ctx_v2.py`. No `hotfix(M3.2):` commit for fixture issues — amend the W2 commit instead.
+- *Typo in the test* = same as fixture issue; fix the test, amend the W2 commit.
+
+Only *correctness* failures become `hotfix(M3.2):` commits.
+
 **Process:** Per bug:
 1. Open a `hotfix(M3.2): <description>` commit
 2. The test that surfaced the bug is the regression test (already committed in W2)
