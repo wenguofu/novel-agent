@@ -892,7 +892,7 @@ class TestConfigCRUD:
         # (only updated_at touched). But banned_words doesn't have updated_at, so
         # this just exercises the early-return branch on empty allowed kwargs.
         result = repo.update_banned_word(bid, bogus="x")
-        assert isinstance(result, bool)
+        assert result is True
 
     def test_compliance_rule_lifecycle(self, repo):
         rid = repo.add_compliance_rule("custom_key", "custom_value",
