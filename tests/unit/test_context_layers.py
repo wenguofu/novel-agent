@@ -149,3 +149,70 @@ class TestLayer2ChapterContext:
         from context_builder import _build_chapter_context
         text = _build_chapter_context("test_novel", 1, 1)
         assert "血脉觉醒的代价" in text or "danger" in text.lower() or "危机" in text
+
+
+class TestLayer3Characters:
+    """Layer 3: Characters (volume-scoped via current_vol).
+
+    The layer must include characters active in the current volume and
+    EXCLUDE characters that are only active in future volumes (so the
+    LLM isn't given plot points it shouldn't know about yet).
+    """
+
+    @pytest.fixture
+    def seeded_novel_with_chars(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_character(novel_name, name, role=..., **kwargs)
+        # per portal/repository.py:356 — there is NO upsert_character;
+        # the real method is add_character. Fields like identity/personality/
+        # current_status/emotional_state/current_vol/current_ch are all on
+        # the Character model (models_orm.py:217-258).
+        # Active in vol 1
+        repo.add_character(
+            "test_novel",
+            "林渊",
+            role="主角",
+            identity="废柴少年，意外觉醒血脉",
+            personality="坚韧、内敛",
+            current_status="正在觉醒",
+            emotional_state="迷茫",
+            current_vol=1,
+            current_ch=1,
+        )
+        # Active in vol 2 (should be excluded from vol-1 prompt)
+        repo.add_character(
+            "test_novel",
+            "苏晴",
+            role="女主",
+            identity="帝国公主",
+            current_vol=2,
+            current_ch=1,
+        )
+        return "test_novel"
+
+    def test_active_char_appears(self, seeded_novel_with_chars):
+        from context_builder import _build_character_context
+        text = _build_character_context("test_novel", 1, 1)
+        assert "林渊" in text
+        assert "废柴少年" in text
+
+    def test_future_vol_char_excluded(self, seeded_novel_with_chars):
+        from context_builder import _build_character_context
+        text = _build_character_context("test_novel", 1, 1)
+        # 苏晴 is in vol 2; should NOT appear in vol-1 prompt
+        # FIXME: surfaced by T2.4; will be fixed in W3.
+        # The current filter in context_builder.py:330 OR-combines
+        # `role in ("主角","女主")` with the volume check, so any
+        # female lead / protagonist is always included regardless of
+        # current_vol. The future-vol character leaks into vol-1.
+        assert "苏晴" not in text
