@@ -658,3 +658,79 @@ class TestLayer85BannedCompliance:
         # Tighter: verify full format string [cat] key: val (desc) per
         # context_builder.py:483-487
         assert "- [general] max_chapter_words: 5000（单章不超过 5000 字）" in text
+
+
+class TestLayer9Style:
+    """Layer 9: Style (preset.prompt + style.md + JSON fingerprint).
+
+    ⚠️ P0-1 CRITICAL TEST. This layer is the post-audit fix for the bug
+    where the old code echoed the style preset *name* (e.g. "测试风格")
+    without loading the actual ``preset.prompt`` content from the DB.
+    A weak assertion like ``"风格" in text`` or ``"预设" in text`` would
+    pass even with the buggy implementation, because those words appear
+    in the section header. The assertions below target the *prompt
+    content* verbatim AND the formatted chunk header, so a regression
+    that drops the prompt (P0-1) or breaks the header format (P0-2)
+    will fail clearly.
+
+    Layer function: ``_build_style_context`` at
+    ``portal/context_builder.py:571``. Output format (line 646):
+      - Section header: "## 写作风格预设（来自 style_presets）"
+      - Per-preset chunk: "### {name}（权重 {weight}%）\n{prompt_block}"
+      - With fingerprint (P2-1): inserts a "#### 风格指纹" sub-section
+        before the prompt; without fingerprint (as in this test — no
+        ``agent-system/styles/测试风格.json`` exists) the chunk is the
+        flat 2-line form.
+
+    Style presets are config-level GLOBAL (not novel-scoped, no
+    ``novel_name`` filter on the read), so the T2.4/T2.6 OR-bypass
+    antipattern does not apply here.
+    """
+
+    @pytest.fixture
+    def seeded_style_preset(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_style_preset(name, description=, prompt=) per
+        # portal/repository.py:1315 — there is NO upsert_style_preset; the
+        # real method takes positional `name` plus `description`/`prompt`
+        # kwargs. The StylePreset model has fields name/description/prompt/
+        # is_active per models_orm.py:498-506; `prompt` is Text NOT NULL.
+        # Name "测试风格" does NOT collide with the 5 default presets
+        # populated by init_config_seed (金庸风/古龙风/番茄风/辰东风/默认)
+        # per repository.py:1398-1404.
+        repo.add_style_preset(
+            "测试风格",
+            description="测试用风格预设",
+            prompt="用简练语言, 多用短句, 节奏快",
+        )
+        return "test_novel"
+
+    def test_preset_prompt_appears(self, seeded_style_preset):
+        from context_builder import _build_style_context
+        text = _build_style_context("测试风格 100%", "", "test_novel")
+        # P0-1 critical: the layer must load preset.prompt, not just the
+        # name. The prompt text "用简练语言, 多用短句, 节奏快" must appear
+        # verbatim. A weaker check (e.g. "风格" or "预设" in text) would
+        # pass even if the layer only echoed the name — those words are
+        # also in the section header. Tight format-string check per
+        # context_builder.py:646.
+        assert "用简练语言, 多用短句, 节奏快" in text
+
+    def test_style_name_appears(self, seeded_style_preset):
+        from context_builder import _build_style_context
+        text = _build_style_context("测试风格 100%", "", "test_novel")
+        # The chunk header "### 测试风格（权重 100%）" per
+        # context_builder.py:646. Tighter than the plan's plain
+        # "测试风格" in text — verifies weight parsing (P0-2) and
+        # header format at the same time.
+        assert "### 测试风格（权重 100%）" in text
