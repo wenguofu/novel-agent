@@ -596,3 +596,65 @@ class TestLayer8PlotArcs:
         # is `volume_start <= volume AND volume_end >= volume` (AND-only),
         # so an arc starting in vol 5 cannot match for volume=1.
         assert "终战弧" not in text
+
+
+class TestLayer85BannedCompliance:
+    """Layer 8.5: Banned words + compliance rules (config DB).
+
+    Banned words and compliance rules are GLOBAL config (not novel-scoped).
+    The layer function `_build_banned_compliance_context()` takes no
+    novel_name argument (per `context_builder.py:463`), so the T2.4/T2.6
+    OR-bypass antipattern does not apply here.
+
+    Output format (per `context_builder.py:472-510`):
+      - Header: "## 禁用词与合规规则（必须遵守）"
+      - Compliance section: "- [{cat}] {key}: {val}（{desc}）" per rule
+      - Banned section: "- [{cat}] {'、'.join(words)}" per category
+
+    Note: `init_config_seed()` runs first (per `tests/unit/conftest.py:48`),
+    so banned/compliance tables are pre-populated with default rows. The
+    seed here adds project-specific rows on top; assertions target
+    substrings unique to the seed data.
+    """
+
+    @pytest.fixture
+    def seeded_banned_and_compliance(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.add_banned_word(word, category=..., **kwargs) per
+        # portal/repository.py:1269 — there is NO upsert_banned_word; the
+        # real method takes positional `word` plus kwargs (NOT a dict).
+        # The BannedWord model has fields word/category/replacement/severity
+        # per models_orm.py:468-471. `severity` default is "error" per
+        # models_orm.py:471, but we pass "high" to confirm arbitrary
+        # severity strings are accepted (no enum constraint).
+        # 3 words: 2 in 政治 (exercises the 、-join grouping at context_builder.py:510)
+        #          + 1 in 色情 (different category line)
+        for word, cat in [("违禁词1", "政治"), ("违禁词1b", "政治"), ("违禁词2", "色情")]:
+            repo.add_banned_word(word, category=cat, severity="high")
+        # Adapted: repo.add_compliance_rule(rule_key, rule_value, ...) per
+        # portal/repository.py:1298 — there is NO upsert_compliance_rule;
+        # the real method takes positional `rule_key`/`rule_value` plus
+        # kwargs (NOT a dict). The ComplianceRule model has fields
+        # rule_key/rule_value/description/category per models_orm.py:479-482.
+        repo.add_compliance_rule(
+            rule_key="max_chapter_words",
+            rule_value="5000",
+            description="单章不超过 5000 字",
+        )
+        return "test_novel"
+
+    def test_banned_words_appear(self, seeded_banned_and_compliance):
+        from context_builder import _build_banned_compliance_context
+        text = _build_banned_compliance_context()
+        # Tighter: verify category prefix AND word rendering (catches grouping
+        # regressions like dropping the [-cat] prefix or concatenating without separator)
+        assert "- [政治] 违禁词1、违禁词1b" in text
+        assert "- [色情] 违禁词2" in text
+
+    def test_compliance_rule_appears(self, seeded_banned_and_compliance):
+        from context_builder import _build_banned_compliance_context
+        text = _build_banned_compliance_context()
+        # Tighter: verify full format string [cat] key: val (desc) per
+        # context_builder.py:483-487
+        assert "- [general] max_chapter_words: 5000（单章不超过 5000 字）" in text
