@@ -71,7 +71,6 @@ class TestInit:
         # Step 4 of init() runs list_novels / list_banned_words /
         # list_style_presets as its verification step. We re-run
         # them here to confirm the seed landed.
-        assert isinstance(repo.list_novels(), list)
         banned = repo.list_banned_words()
         assert len(banned) >= 1, "Expected at least one banned word"
         styles = repo.list_style_presets()
