@@ -454,7 +454,7 @@ class TestLayer6PacingEmotion:
 
 
 class TestLayer7Revelation:
-    """Layer 7: Revelation (filtered by reveal_vol <= current).
+    """Layer 7: Revelation (filtered by reveal_volume == current).
 
     The layer must include revelation rows whose reveal_vol has arrived
     and EXCLUDE rows whose reveal_vol is in the future. This prevents
