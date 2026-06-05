@@ -1,0 +1,7 @@
+# novel-agent dev/test dependencies (M3.1)
+# Install with: pip install -r requirements-dev.txt
+
+# Test framework + coverage
+pytest>=7.4
+pytest-cov>=4.1
+pyyaml>=6.0       # For yaml outline parsing in ctx_v2/context_builder_v2 tests
