@@ -155,7 +155,7 @@ class ResponseTimeTracker:
     _total_calls: int = field(default=0, init=False)
     _total_time: float = field(default=0.0, init=False)
     _slow_calls: int = field(default=0, init=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False)
 
     def track(self, operation: str, duration: float):
         with self._lock:
