@@ -456,8 +456,8 @@ class TestLayer6PacingEmotion:
 class TestLayer7Revelation:
     """Layer 7: Revelation (filtered by reveal_volume == current).
 
-    The layer must include revelation rows whose reveal_vol has arrived
-    and EXCLUDE rows whose reveal_vol is in the future. This prevents
+    The layer must include revelation rows whose reveal_volume has arrived
+    and EXCLUDE rows whose reveal_volume is in the future. This prevents
     the LLM from learning about plot points (e.g., "魔皇是八神之一")
     before the narrative is supposed to reveal them.
     """
