@@ -9,6 +9,7 @@ The fixture spins up an isolated SQLite file in ``tmp_path``, points
 that cache the engine/session factory at import time. Snapshots and
 restores ``sys.modules`` so the dance does not leak across test files.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +30,16 @@ def tmp_db(tmp_path, monkeypatch):
     snapshot = {m: mod for m, mod in sys.modules.items() if m.startswith(prefix)}
     for m in list(snapshot):
         del sys.modules[m]
+    # Temporarily move portal/config.db and portal/usage.db out of the
+    # way so ensure_unified_schema() doesn't migrate real data into the
+    # tmp DB (and rename the real files to .bak).
+    hidden = []
+    for name in ("config.db", "usage.db"):
+        path = PORTAL_DIR / name
+        if path.exists():
+            hidden_path = path.with_suffix(path.suffix + ".testhidden")
+            os.rename(str(path), str(hidden_path))
+            hidden.append((path, hidden_path))
     monkeypatch.setenv("DATABASE_URL", db_url)
     from db import ensure_unified_schema
     from repository import get_repo
@@ -42,3 +53,14 @@ def tmp_db(tmp_path, monkeypatch):
             del sys.modules[m]
     for m, mod in snapshot.items():
         sys.modules[m] = mod
+    # Restore the hidden real DB files.
+    for orig, hidden_path in hidden:
+        if hidden_path.exists():
+            os.rename(str(hidden_path), str(orig))
+    # ensure_unified_schema() may have renamed portal/config.db or
+    # portal/usage.db to .bak if they existed. Restore them.
+    for name in ("config.db", "usage.db"):
+        bak = PORTAL_DIR / (name + ".bak")
+        orig = PORTAL_DIR / name
+        if bak.exists() and not orig.exists():
+            os.rename(str(bak), str(orig))

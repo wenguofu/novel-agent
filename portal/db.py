@@ -230,7 +230,7 @@ def _migrate_sqlite_side_db(engine, side_db_name):
                 if not rows:
                     continue
 
-                cols = [c[0] for c in src.execute(f"PRAGMA table_info({table})").fetchall()]
+                cols = [c[1] for c in src.execute(f"PRAGMA table_info({table})").fetchall()]
                 col_list = ", ".join(cols)
                 placeholders = ", ".join([f":{c}" for c in cols])
 
