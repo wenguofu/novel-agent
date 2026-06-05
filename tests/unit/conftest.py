@@ -25,7 +25,7 @@ def tmp_db(tmp_path, monkeypatch):
     """Create a fresh SQLite DB in tmp_path; yield the DB URL."""
     db_file = tmp_path / "test_content.db"
     db_url = f"sqlite:///{db_file}"
-    prefix = ("db", "repository", "app", "content_db", "config", "context_builder")
+    prefix = ("db", "repository", "app", "content_db", "config", "context_builder", "init_unified_db")
     snapshot = {m: mod for m, mod in sys.modules.items() if m.startswith(prefix)}
     for m in list(snapshot):
         del sys.modules[m]
