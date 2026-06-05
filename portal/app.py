@@ -3540,8 +3540,8 @@ def api_content_search():
 @app.route("/api/content/stats/<novel_name>")
 def api_content_stats(novel_name):
     stats = get_novel_stats(novel_name)
-    if "error" in stats:
-        return jsonify({"success": False, "error": stats["error"]}), 404
+    if stats is None or "error" in stats:
+        return jsonify({"success": False, "error": (stats or {}).get("error", "novel not found")}), 404
     return jsonify({"success": True, "stats": stats})
 
 @app.route("/api/content/sync", methods=["POST"])

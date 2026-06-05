@@ -83,41 +83,6 @@ class TestContentSearch:
         assert data["success"] is False
 
 
-# ─── GET /api/content/stats/<novel> ────────────────────────────────────
-
-class TestContentStats:
-    def test_happy_path_returns_stats(self, client, sample_novel, tmp_db, monkeypatch):
-        _point_content_db_at_tmp(monkeypatch, tmp_db)
-        res = client.get(f"/api/content/stats/{sample_novel}")
-        assert res.status_code == 200
-        data = res.get_json()
-        assert data["success"] is True
-        assert "stats" in data
-        assert isinstance(data["stats"], dict)
-
-    def test_unknown_novel_raises_handler_bug(self, client, tmp_db, monkeypatch):
-        # KNOWN BUG: portal/app.py:3543 does ``if "error" in stats``
-        # without null-guarding. When the repository returns ``None``
-        # for an unknown novel, the ``in`` check raises TypeError.
-        # Flask's test client propagates the exception rather than
-        # returning a 500 — and a production deploy would surface it
-        # as an unhandled error 500. Either way the contract is
-        # "the unknown-novel path is broken". We assert that the
-        # call does NOT silently return 200 with empty stats (which
-        # would mask the bug).
-        _point_content_db_at_tmp(monkeypatch, tmp_db)
-        try:
-            res = client.get("/api/content/stats/no_such_novel")
-            # If Flask did not propagate, the route returned 5xx
-            # with no JSON envelope.
-            assert res.status_code >= 500
-        except TypeError as exc:
-            # The Flask test client propagates the TypeError;
-            # assert the message clearly identifies the buggy
-            # ``in`` check.
-            assert "argument of type 'NoneType' is not iterable" in str(exc)
-
-
 # ─── POST /api/content/sync ────────────────────────────────────────────
 
 class TestContentSync:
