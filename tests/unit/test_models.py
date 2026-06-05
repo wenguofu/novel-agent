@@ -192,6 +192,22 @@ class TestGenerateStreamRequest:
         with pytest.raises(ValidationError):
             GenerateStreamRequest(max_tokens=0)
 
+    def test_top_p_boundary_zero(self):
+        r = GenerateStreamRequest(top_p=0.0)
+        assert r.top_p == 0.0
+
+    def test_top_p_boundary_one(self):
+        r = GenerateStreamRequest(top_p=1.0)
+        assert r.top_p == 1.0
+
+    def test_top_p_above_one_rejected(self):
+        with pytest.raises(ValidationError):
+            GenerateStreamRequest(top_p=1.5)
+
+    def test_top_p_negative_rejected(self):
+        with pytest.raises(ValidationError):
+            GenerateStreamRequest(top_p=-0.1)
+
 
 # ── CreateNovelRequest ──────────────────────────────────────────────────
 
@@ -579,3 +595,13 @@ class TestValidateRequest:
         )
         assert model is not None
         assert model.temperature == "0.5"
+
+    def test_non_validation_error_returns_generic_failure(self):
+        # When the underlying constructor raises something other than
+        # ValidationError (e.g. TypeError from wrong arg shape), the helper
+        # returns a generic failure envelope with empty validation_errors
+        # (the except branch at models.py line ~185).
+        model, err = validate_request(ChatMessage, "not-a-dict")
+        assert model is None
+        assert err["success"] is False
+        assert err["validation_errors"] == []
