@@ -23,7 +23,6 @@ That's it! `run_v2.py` monkey-patches the old code at runtime — all v3.2 featu
 | File | Purpose |
 |------|---------|
 | `portal/run_v2.py` | **DROP-IN LAUNCHER** — run this instead of `app.py` |
-| `portal/ctx_v2.py` | Volume-scoped context builder (replaces context_builder at runtime) |
 | `portal/models_orm.py` | 24 SQLAlchemy ORM models |
 | `portal/repository.py` | Unified data access layer with dict-based API |
 | `portal/db.py` | Updated with `ensure_unified_schema()` |
