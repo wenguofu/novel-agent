@@ -14,6 +14,11 @@ import pytest
 PORTAL_DIR = Path(__file__).resolve().parent.parent.parent / "portal"
 if str(PORTAL_DIR) not in sys.path:
     sys.path.insert(0, str(PORTAL_DIR))
+# Ensure this test dir is on sys.path so tests can ``from _helpers
+# import ...`` the shared M3.1 helpers colocated in this directory.
+FUNCTIONAL_DIR = Path(__file__).resolve().parent
+if str(FUNCTIONAL_DIR) not in sys.path:
+    sys.path.insert(0, str(FUNCTIONAL_DIR))
 
 
 @pytest.fixture
