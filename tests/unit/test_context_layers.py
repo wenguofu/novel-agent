@@ -96,3 +96,56 @@ class TestLayer1ProjectMeta:
         text = _build_project_meta("test_novel")
         assert "测试小说" in text
         assert "玄幻" in text
+
+
+class TestLayer2ChapterContext:
+    """Layer 2: Chapter context (outline + danger_issue + prev chapter)."""
+
+    @pytest.fixture
+    def seeded_novel(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试小说",
+            genre="玄幻",
+            word_goal="1000000",
+        )
+        # Adapted: repo.upsert_outline(novel_name, volume, content, word_count=0)
+        # per portal/repository.py:170 — content is a positional string, NOT
+        # a dict.
+        repo.upsert_outline(
+            "test_novel",
+            "vol-01",
+            "第001章 觉醒\n本章主角觉醒血脉。\n第002章 试炼\n本章进入试炼之地。",
+        )
+        # Adapted: repo.upsert_danger_issue(novel_name, volume, chapter_num,
+        # content) per portal/repository.py:1353 — content is a positional
+        # string, NOT a dict.
+        repo.upsert_danger_issue("test_novel", "vol-01", 1, "血脉觉醒的代价")
+        # Adapted: repo.upsert_chapter(novel_name, chapter_ref, **kwargs) per
+        # portal/repository.py:216 — uses chapter_ref as the unique lookup
+        # key; volume + chapter_num are kwargs.
+        repo.upsert_chapter(
+            "test_novel",
+            "vol-01-ch-0",
+            volume="vol-01",
+            chapter_num=0,
+            content="上一章末尾：林渊在山巅独坐，望着远方的神山，心中百感交集。",
+        )
+        return "test_novel"
+
+    def test_outline_section_appears(self, seeded_novel):
+        from context_builder import _build_chapter_context
+        text = _build_chapter_context("test_novel", 1, 1)
+        assert isinstance(text, str)
+        # The outline for chapter 1 should be in the text
+        assert "觉醒" in text
+
+    def test_danger_issue_appears(self, seeded_novel):
+        from context_builder import _build_chapter_context
+        text = _build_chapter_context("test_novel", 1, 1)
+        assert "血脉觉醒的代价" in text or "danger" in text.lower() or "危机" in text
