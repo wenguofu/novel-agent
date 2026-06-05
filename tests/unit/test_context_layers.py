@@ -515,3 +515,84 @@ class TestLayer7Revelation:
         # `RevelationSchedule.reveal_volume == volume` (exact match, no
         # OR-bypass clause), so vol-3 revelations cannot appear in vol-1.
         assert "魔皇残魂" not in text
+
+
+class TestLayer8PlotArcs:
+    """Layer 8: Plot arcs (filtered by vol range, AND-only).
+
+    The layer must include active plot arcs whose [volume_start,
+    volume_end] range covers the current volume and EXCLUDE arcs
+    whose range is entirely in the future. This prevents the LLM
+    from learning about future plot points (e.g., vol-5 climax)
+    before the narrative is supposed to reach them.
+
+    W3 regression watch: T2.4 (Characters) and T2.6 (Foreshadowing)
+    both leaked future-vol items due to over-broad OR-clauses in
+    the repository filter. The plot arc filter at repository.py:673-678
+    is a clean AND-only filter (`volume_start <= volume AND
+    volume_end >= volume`) — no OR-bypass clause. The
+    `test_out_of_range_arc_excluded` test below is the regression
+    guard: if a future OR-bypass is ever introduced, this test
+    fails.
+    """
+
+    @pytest.fixture
+    def seeded_novel_with_arcs(self, tmp_db):
+        from repository import get_repo
+        repo = get_repo()
+        # Adapted: repo.upsert_novel(novel_name, **kwargs) per
+        # portal/repository.py:124 — NOT a dict. word_goal is a String
+        # column in models_orm.py:31, so pass as str.
+        repo.upsert_novel(
+            "test_novel",
+            title="测试",
+            genre="玄幻",
+            word_goal="1000",
+        )
+        # Adapted: repo.add_plot_arc(novel_name, name, arc_type=..., **kwargs)
+        # per portal/repository.py:681 — there is NO upsert_plot_arc; the
+        # real method is add_plot_arc. The PlotArc model fields are
+        # volume_start / volume_end (NOT start_vol / end_vol) per
+        # models_orm.py:313,315. The "type" column is the arc's category
+        # (default "主线") per models_orm.py:312.
+        # Current range: vol 1-2, must appear in vol-1 prompt
+        repo.add_plot_arc(
+            "test_novel",
+            "觉醒弧",
+            arc_type="成长",
+            summary="主角从废柴到觉醒",
+            volume_start=1,
+            volume_end=2,
+        )
+        # Out-of-range: vol 5-6, must NOT appear in vol-1 prompt
+        # (regression check against any future OR-bypass in
+        # repository.py:673-678)
+        repo.add_plot_arc(
+            "test_novel",
+            "终战弧",
+            arc_type="高潮",
+            summary="最终决战的高潮段落",
+            volume_start=5,
+            volume_end=6,
+        )
+        return "test_novel"
+
+    def test_arc_appears(self, seeded_novel_with_arcs):
+        from context_builder import _build_plot_arc_context
+        text = _build_plot_arc_context("test_novel", 1)
+        # Layer 8 emits "## 剧情线" header at context_builder.py:458
+        # then "- [{type}] {name}: {summary}" per row at
+        # context_builder.py:460. The vol-1-2 "觉醒弧" arc must be
+        # included by the filter at repository.py:673-678.
+        assert "觉醒弧" in text
+        assert "成长" in text
+
+    def test_out_of_range_arc_excluded(self, seeded_novel_with_arcs):
+        from context_builder import _build_plot_arc_context
+        text = _build_plot_arc_context("test_novel", 1)
+        # The vol-5-6 "终战弧" arc must NOT leak into the vol-1 prompt.
+        # This is the explicit regression check for the T2.4/T2.6
+        # OR-bypass antipattern: the filter at repository.py:673-678
+        # is `volume_start <= volume AND volume_end >= volume` (AND-only),
+        # so an arc starting in vol 5 cannot match for volume=1.
+        assert "终战弧" not in text
