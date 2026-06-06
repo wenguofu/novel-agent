@@ -58,6 +58,9 @@ const API = {
     saveConfig(data) { return this.request('POST', '/api/config/save', data); },
     testConfig() { return this.request('POST', '/api/config/test'); },
 
+    // ── Usage Stats ──
+    usageStats(params = {}) { return this.request('GET', `/api/usage/stats?${new URLSearchParams(params)}`); },
+
     // ── V3 Management: World Building ──
     worldBuilding: {
         list(novel, params = {}) { return API.request('GET', `/api/world_building/${encodeURIComponent(novel)}?${new URLSearchParams(params)}`); },

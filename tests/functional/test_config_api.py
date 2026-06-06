@@ -414,6 +414,36 @@ class TestUsageStats:
         data = res.get_json()
         assert data["success"] is True
 
+    def test_response_shape_matches_portal_card(self, client):
+        """Contract pin: the Portal 设置 page (App._renderUsageStats)
+        reads total_tokens, total_cost, days, by_operation, by_novel,
+        and daily. Every field the JS consumes must be present and
+        correctly typed.
+        """
+        res = client.get("/api/usage/stats?days=7")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        # Top-level scalar fields
+        assert isinstance(data["total_tokens"], int)
+        assert isinstance(data["total_cost"], (int, float))
+        assert isinstance(data["days"], int)
+        # by_operation: {op_name: {calls, tokens, cost}}
+        for op, v in data["by_operation"].items():
+            assert set(v.keys()) >= {"calls", "tokens", "cost"}, op
+            assert isinstance(v["calls"], int)
+            assert isinstance(v["tokens"], int)
+            assert isinstance(v["cost"], (int, float))
+        # by_novel: same shape
+        for name, v in data["by_novel"].items():
+            assert set(v.keys()) >= {"calls", "tokens", "cost"}, name
+        # daily: list of {day, calls, tokens, cost}
+        assert isinstance(data["daily"], list)
+        for row in data["daily"]:
+            assert set(row.keys()) >= {"day", "calls", "tokens", "cost"}, row
+            assert isinstance(row["tokens"], int)
+            assert isinstance(row["calls"], int)
+
     def test_wrong_method_post_returns_405(self, client):
         res = client.post("/api/usage/stats")
         assert res.status_code == 405

@@ -2941,15 +2941,73 @@ const App = {
 
     async _refreshStats(btn) {
         btn.disabled = true; btn.textContent = '⏳ 刷新中...';
-        const resp = await API.listNovels();
+        const resp = await API.usageStats({ days: 7 });
         if (resp.success) {
-            const total = resp.novels.length;
-            const ch = resp.novels.reduce((s,n)=>s+(n.total_chapters||0),0);
-            const w = resp.novels.reduce((s,n)=>s+(n.total_words||0),0);
-            const r = resp.novels.reduce((s,n)=>s+(n.review_count||0),0);
-            document.getElementById('statsDisplay').innerHTML = `<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)"><div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">小说</div></div><div class="stat-card"><div class="stat-value">${ch}</div><div class="stat-label">章节</div></div><div class="stat-card"><div class="stat-value">${(w/10000).toFixed(1)}万</div><div class="stat-label">字数</div></div><div class="stat-card"><div class="stat-value">${r}</div><div class="stat-label">审稿</div></div></div>`;
+            document.getElementById('statsDisplay').innerHTML = this._renderUsageStats(resp);
+        } else {
+            document.getElementById('statsDisplay').innerHTML = `<div class="code-block error">${resp.error || '加载失败'}</div>`;
         }
-        btn.disabled = false; btn.textContent = '🔄 刷新';
+        btn.disabled = false; btn.textContent = '🔄 刷新统计';
+    },
+
+    _renderUsageStats(stats) {
+        const totalTokens = stats.total_tokens || 0;
+        const totalCost = stats.total_cost || 0;
+        const totalCalls = Object.values(stats.by_operation || {}).reduce((s, op) => s + (op.calls || 0), 0);
+        const days = stats.days || 7;
+
+        // Top KPI cards: tokens / cost / calls / days
+        let html = '<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">'
+            + `<div class="stat-card"><div class="stat-value">${totalTokens.toLocaleString()}</div><div class="stat-label">总 Tokens</div></div>`
+            + `<div class="stat-card"><div class="stat-value">$${totalCost.toFixed(4)}</div><div class="stat-label">总成本</div></div>`
+            + `<div class="stat-card"><div class="stat-value">${totalCalls}</div><div class="stat-label">API 调用</div></div>`
+            + `<div class="stat-card"><div class="stat-value">${days}</div><div class="stat-label">统计天数</div></div>`
+            + '</div>';
+
+        // By-operation table
+        const opEntries = Object.entries(stats.by_operation || {}).sort((a, b) => b[1].tokens - a[1].tokens);
+        if (opEntries.length) {
+            html += '<div class="card mt-16"><h3 class="card-title">🔧 按操作类型</h3>'
+                + '<table class="mt-8" style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="color:var(--text-muted);text-align:left">'
+                + '<th style="padding:6px 8px">操作</th><th style="padding:6px 8px">调用</th><th style="padding:6px 8px">Tokens</th><th style="padding:6px 8px">成本</th></tr></thead><tbody>';
+            for (const [op, v] of opEntries) {
+                html += `<tr style="border-top:1px solid var(--border-default)"><td style="padding:6px 8px">${op}</td><td style="padding:6px 8px">${v.calls}</td><td style="padding:6px 8px">${v.tokens.toLocaleString()}</td><td style="padding:6px 8px">$${(v.cost || 0).toFixed(4)}</td></tr>`;
+            }
+            html += '</tbody></table></div>';
+        }
+
+        // By-novel table
+        const novelEntries = Object.entries(stats.by_novel || {}).sort((a, b) => b[1].tokens - a[1].tokens);
+        if (novelEntries.length) {
+            html += '<div class="card mt-16"><h3 class="card-title">📚 按小说</h3>'
+                + '<table class="mt-8" style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="color:var(--text-muted);text-align:left">'
+                + '<th style="padding:6px 8px">小说</th><th style="padding:6px 8px">调用</th><th style="padding:6px 8px">Tokens</th><th style="padding:6px 8px">成本</th></tr></thead><tbody>';
+            for (const [name, v] of novelEntries) {
+                html += `<tr style="border-top:1px solid var(--border-default)"><td style="padding:6px 8px">${name}</td><td style="padding:6px 8px">${v.calls}</td><td style="padding:6px 8px">${v.tokens.toLocaleString()}</td><td style="padding:6px 8px">$${(v.cost || 0).toFixed(4)}</td></tr>`;
+            }
+            html += '</tbody></table></div>';
+        }
+
+        // Daily trend (last N days)
+        const daily = stats.daily || [];
+        if (daily.length) {
+            const maxTokens = Math.max(...daily.map(d => d.tokens || 0), 1);
+            html += `<div class="card mt-16"><h3 class="card-title">📈 最近 ${days} 天趋势</h3>`
+                + '<div class="mt-8">';
+            for (const d of daily) {
+                const pct = Math.round(((d.tokens || 0) / maxTokens) * 100);
+                html += `<div class="mt-8"><div class="progress-label"><span>${d.day}</span><span>${(d.tokens || 0).toLocaleString()} tokens · $${(d.cost || 0).toFixed(4)}</span></div>`
+                    + `<div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div></div>`;
+            }
+            html += '</div></div>';
+        }
+
+        // Empty state
+        if (!opEntries.length && !novelEntries.length && !daily.length) {
+            html += '<div class="code-block mt-8">暂无 token 用量记录。请先进行一次生成/审稿/优化等操作。</div>';
+        }
+
+        return html;
     },
 
     // ═══════════════════════════════════════════════════════════════════
