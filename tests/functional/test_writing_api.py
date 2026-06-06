@@ -850,3 +850,238 @@ class TestOptimizeReReview:
             f"post_review.wc_ok should be True (scripts ran on the "
             f"new long content), got {data['post_review']['wc_ok']!r}"
         )
+
+    # ─── T4: new response shape (M5.2) ────────────────────────────────
+    # T3 already added the structured ``pre_review`` / ``post_review``
+    # blocks to the response. T4 adds the ``diff`` block (computed
+    # from pre vs post) and asserts the full response shape is
+    # consistent across both the default and the ?preview=true paths.
+
+    def test_response_shape_includes_pre_post_and_diff(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """T4 contract: the default optimize response carries
+        ``success``, ``content``, ``chapter_ref``, ``post_review_ref``,
+        ``backup``, ``word_count``, ``usage``, ``pre_review``,
+        ``post_review``, and ``diff`` keys. The ``diff`` block
+        summarises pre vs post.
+        """
+        # Pre-create the manuscript file the handler reads.
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        (ms_dir / "ch-001.md").write_text("# 原文\n\n", encoding="utf-8")
+
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+        # Default stubs: all OK fields True, deterministic counts.
+        fake_deepseek_chat(monkeypatch, content="优化后。")
+        _stub_review_scripts(monkeypatch, wc_ok=True, bc=2, jg=4, tp=1)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+
+        # All 10 documented top-level keys must be present.
+        expected_top = {
+            "success", "content", "chapter_ref", "post_review_ref",
+            "backup", "word_count", "usage",
+            "pre_review", "post_review", "diff",
+        }
+        actual_top = set(data.keys())
+        assert expected_top.issubset(actual_top), (
+            f"missing top-level keys: {expected_top - actual_top}; "
+            f"got {sorted(actual_top)!r}"
+        )
+
+        pre = data["pre_review"]
+        post = data["post_review"]
+
+        # The pre/post blocks must each carry the structured fields
+        # that ``_run_review`` produces.
+        for label, block in (("pre_review", pre),
+                             ("post_review", post)):
+            for key in ("wc_ok", "compliance_ok", "forbidden_ok",
+                        "bcontrast_count", "tell_count",
+                        "script_results"):
+                assert key in block, (
+                    f"{label} missing required key {key!r}: "
+                    f"keys={sorted(block.keys())!r}"
+                )
+            assert "analyze" in block["script_results"]
+            assert "compliance" in block["script_results"]
+            assert "forbidden" in block["script_results"]
+
+        # The diff block must carry the 3 OK bool pairs, 2 count
+        # pairs, and the ``all_pass`` flag — and they must agree
+        # with pre/post (all_pass is "post is clean", per the
+        # design decision in the plan: ``post.wc_ok and
+        # post.compliance_ok and post.forbidden_ok``).
+        diff = data["diff"]
+        for key in ("wc_ok", "compliance_ok", "forbidden_ok"):
+            assert isinstance(diff[key], list) and len(diff[key]) == 2 \
+                and all(isinstance(x, bool) for x in diff[key]), (
+                f"diff[{key!r}] must be [bool, bool], got {diff[key]!r}"
+            )
+            assert diff[key] == [pre[key], post[key]], (
+                f"diff[{key!r}] must equal [pre, post], "
+                f"got {diff[key]!r} vs pre={pre[key]!r} "
+                f"post={post[key]!r}"
+            )
+        for key in ("bcontrast_count", "tell_count"):
+            assert isinstance(diff[key], list) and len(diff[key]) == 2 \
+                and all(isinstance(x, int) for x in diff[key]), (
+                f"diff[{key!r}] must be [int, int], got {diff[key]!r}"
+            )
+            assert diff[key] == [pre[key], post[key]], (
+                f"diff[{key!r}] must equal [pre, post], "
+                f"got {diff[key]!r} vs pre={pre[key]!r} "
+                f"post={post[key]!r}"
+            )
+        assert "all_pass" in diff, f"diff missing all_pass: {diff!r}"
+        assert isinstance(diff["all_pass"], bool), (
+            f"diff.all_pass must be bool, got {type(diff['all_pass'])}"
+        )
+
+    def test_preview_response_omits_review_blocks(
+            self, client, sample_novel, monkeypatch, tmp_path):
+        """T4 contract: ?preview=true response does NOT include
+        ``pre_review``, ``post_review``, or ``diff`` keys. The
+        preview short-circuits before any review work runs.
+        """
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        (ms_dir / "ch-001.md").write_text("# 第一章\n\n原文。\n",
+                                          encoding="utf-8")
+        fake_deepseek_chat(monkeypatch, content="优化后。")
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter?preview=true",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        assert data.get("preview") is True
+        # The review blocks must be absent in preview mode.
+        for key in ("pre_review", "post_review", "diff"):
+            assert key not in data, (
+                f"preview mode must not include {key!r}, "
+                f"got keys={sorted(data.keys())!r}"
+            )
+        # The T3 contract keys (post_review_ref, backup) must also
+        # be absent — preview is a true short-circuit.
+        for key in ("post_review_ref", "backup"):
+            assert key not in data, (
+                f"preview mode must not include {key!r}, "
+                f"got keys={sorted(data.keys())!r}"
+            )
+
+    def test_diff_all_pass_logic(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """T4 contract: ``diff.all_pass`` reflects whether the
+        POST-review is clean (``post.wc_ok and post.compliance_ok
+        and post.forbidden_ok``). It is True when post is all True,
+        False otherwise.
+
+        We stub ``app.run_script`` to inspect the chapter_ref being
+        reviewed and return different wc_ok values for the pre-review
+        vs the post-review:
+
+          * Pre-review (chapter_ref = "vol-01/ch-001") → wc_ok=False
+          * Post-review (chapter_ref = "vol-01/ch-001-post-rev1") →
+            wc_ok=True (and all other OK fields True)
+
+        This produces a diff of wc_ok=[False, True] and an all_pass
+        that depends purely on the post-review state.
+        """
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        (ms_dir / "ch-001.md").write_text("# 原文\n\n", encoding="utf-8")
+
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+        fake_deepseek_chat(monkeypatch, content="优化后。")
+
+        def fake_run_script(script_name, filepath, *args, **kwargs):
+            if "analyze" in script_name:
+                # Differentiate pre vs post by inspecting the
+                # filepath — the route passes the on-disk path
+                # derived from chapter_ref, so the post-review's
+                # filepath contains "ch-001-post-rev1".
+                wc_ok = "post-rev" in filepath
+                return {
+                    "success": True,
+                    "stdout": (
+                        f"min_2500_ok: {'true' if wc_ok else 'false'}\n"
+                        f"binary_contrast_count: 0\n"
+                        f"simple_judgment_groups: 0\n"
+                        f"tell_patterns: 0\n"
+                    ),
+                    "stderr": "",
+                    "returncode": 0,
+                }
+            if "compliance" in script_name:
+                return {
+                    "success": True, "stdout": "compliance ok",
+                    "stderr": "", "returncode": 0,
+                }
+            if "forbidden" in script_name:
+                return {
+                    "success": True, "stdout": "no forbidden patterns",
+                    "stderr": "", "returncode": 0,
+                }
+            return {"success": False, "stdout": "", "stderr": "",
+                    "returncode": 1}
+
+        import app as _app
+        monkeypatch.setattr(_app, "run_script", fake_run_script)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        assert "diff" in data
+        diff = data["diff"]
+        pre = data["pre_review"]
+        post = data["post_review"]
+
+        # Pre-review's wc_ok must be False (the stub returned
+        # min_2500_ok: false for the pre filepath). This validates
+        # the stub wiring.
+        assert pre["wc_ok"] is False, (
+            f"pre.wc_ok expected False, got {pre['wc_ok']!r}"
+        )
+        # Post-review's wc_ok must be True.
+        assert post["wc_ok"] is True, (
+            f"post.wc_ok expected True, got {post['wc_ok']!r}"
+        )
+        # diff.wc_ok must be [False, True].
+        assert diff["wc_ok"] == [False, True], (
+            f"diff.wc_ok expected [False, True], got {diff['wc_ok']!r}"
+        )
+        # The other two OK fields stay True in both reviews.
+        assert diff["compliance_ok"] == [True, True]
+        assert diff["forbidden_ok"] == [True, True]
+        # Post is all True → all_pass is True (per the design
+        # decision: ``post.wc_ok and post.compliance_ok and
+        # post.forbidden_ok``).
+        assert diff["all_pass"] is True, (
+            f"diff.all_pass expected True (post is clean), "
+            f"got {diff['all_pass']!r}"
+        )

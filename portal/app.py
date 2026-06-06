@@ -1963,6 +1963,39 @@ def _persist_review(novel_name, chapter_ref, review_result):
     write_novel_file(novel_name, review_content, "reviews", f"{ch_id}-review.md")
 
 
+def _diff_reviews(pre, post):
+    """Build the ``diff`` block that compares pre-review vs post-review.
+
+    Each value is exposed as a [pre, post] pair so the client can
+    render pre→post arrows (or pre/post counts) without re-computing
+    the comparison. The ``all_pass`` flag is "is the post-review
+    clean?" — i.e. ``post.wc_ok and post.compliance_ok and
+    post.forbidden_ok``. It is NOT a comparison: a [True, True]
+    pair contributes to ``all_pass=True`` (post still clean), and a
+    [False, True] pair also contributes ``True`` (the issue was
+    fixed by the optimization). Only a post field that is ``False``
+    makes ``all_pass`` ``False``.
+
+    See the response shape spec in
+    ``docs/superpowers/plans/2026-06-06-m52-server-side-rereview.md``
+    for the full contract.
+    """
+    def _pair(key):
+        return [pre.get(key), post.get(key)]
+    return {
+        "wc_ok": _pair("wc_ok"),
+        "compliance_ok": _pair("compliance_ok"),
+        "forbidden_ok": _pair("forbidden_ok"),
+        "bcontrast_count": _pair("bcontrast_count"),
+        "tell_count": _pair("tell_count"),
+        "all_pass": bool(
+            post.get("wc_ok")
+            and post.get("compliance_ok")
+            and post.get("forbidden_ok")
+        ),
+    }
+
+
 @app.route("/api/novels/<novel_name>/review-chapter", methods=["POST"])
 def api_review_chapter(novel_name):
     data = request.json
@@ -2111,22 +2144,49 @@ def api_optimize_chapter(novel_name):
         # (consistent with the "no rollback" decision for the
         # post-review failure path) rather than crashing the request.
         post_review_ref = f"{chapter_ref}-post-rev{rev}"
+        # NIT-2 fix: ``_run_review`` builds a file path from
+        # ``chapter_ref`` (``manuscript/vol-01/ch-001-post-rev1.md``)
+        # and passes it to the 3 review scripts, which read the
+        # file from disk. The post-rev{N} ref is "virtual" — we
+        # never saved the file under that name — so the scripts
+        # previously got a missing file and reported ``success=False``
+        # for all 3 checks. Fix: write the optimized content to the
+        # post-rev file (temporarily) before running the post-review,
+        # then clean up in a ``finally`` so the manuscript dir
+        # doesn't accumulate post-rev stale files. The cleanup runs
+        # on both the success and the failure paths.
+        post_rev_path = os.path.join(
+            get_novels_dir(), novel_name, "manuscript", f"{post_review_ref}.md"
+        )
         try:
-            post_result = _run_review(novel_name, post_review_ref, result["content"])
-            _persist_review(novel_name, post_review_ref, post_result)
-        except Exception as e:
-            logging.error(f"[optimize-chapter] post-review failed: {e}")
-            return jsonify({
-                "success": False,
-                "error": "post-review failed",
-                "content": result["content"],
-                "chapter_ref": chapter_ref,
-                "post_review_ref": post_review_ref,
-                "backup": f"{chapter_ref.replace('/','-')}.rev{rev}.md",
-                "word_count": count_words(result["content"]),
-                "usage": result.get("usage", {}),
-                "pre_review": pre_result,
-            }), 200
+            write_novel_file(
+                novel_name, result["content"],
+                "manuscript", f"{post_review_ref}.md",
+            )
+            try:
+                post_result = _run_review(novel_name, post_review_ref, result["content"])
+                _persist_review(novel_name, post_review_ref, post_result)
+            except Exception as e:
+                logging.error(f"[optimize-chapter] post-review failed: {e}")
+                return jsonify({
+                    "success": False,
+                    "error": "post-review failed",
+                    "content": result["content"],
+                    "chapter_ref": chapter_ref,
+                    "post_review_ref": post_review_ref,
+                    "backup": f"{chapter_ref.replace('/','-')}.rev{rev}.md",
+                    "word_count": count_words(result["content"]),
+                    "usage": result.get("usage", {}),
+                    "pre_review": pre_result,
+                }), 200
+        finally:
+            if os.path.exists(post_rev_path):
+                try:
+                    os.remove(post_rev_path)
+                except OSError as e:
+                    logging.warning(
+                        f"[optimize-chapter] failed to clean up post-rev file: {e}"
+                    )
 
     response = {
         "success": True,
@@ -2141,6 +2201,7 @@ def api_optimize_chapter(novel_name):
             "usage": result.get("usage", {}),
             "pre_review": pre_result,
             "post_review": post_result,
+            "diff": _diff_reviews(pre_result, post_result),
         })
     else:
         response["word_count"] = count_words(result["content"])
