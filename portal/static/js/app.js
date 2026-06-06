@@ -1210,10 +1210,14 @@ const App = {
     },
 
     _optimizeFromReview(novel, chRef, volume, chNum) {
+        // M5.2 T5: the server now saves the optimized content and runs
+        // the post-review inline. The response carries pre_review /
+        // post_review / diff (default mode), so we no longer call
+        // API.editChapter or a second API.reviewChapter here.
         var rd = document.getElementById('rResult');
         var notice = document.createElement('div');
         notice.className = 'stream-indicator mt-12';
-        notice.innerHTML = '<div class="stream-dot"></div><span>🛠️ 正在优化章节...</span>';
+        notice.innerHTML = '<div class="stream-dot"></div><span>🛠️ 正在优化章节并复审...</span>';
         rd.appendChild(notice);
         var aiReview = rd.querySelector('.reader-content')?.textContent || '';
         var scriptOut = '';
@@ -1222,36 +1226,51 @@ const App = {
             if (el) scriptOut += el.textContent + '\n';
         });
         API.optimizeChapter(novel, {chapter_ref: chRef, volume: volume, chapter_num: chNum, review_text: aiReview, script_issues: scriptOut}).then(function(optResp) {
-            if (optResp.success) {
-                API.editChapter(novel, chRef, optResp.content).then(function() {
-                    notice.innerHTML = '<span style="color:var(--success)">✅ 已保存 (' + (optResp.word_count||0) + '字)</span> · <span class="stream-dot"></span> 正在复审...';
-                    // Auto re-review
-                    API.reviewChapter(novel, {chapter_ref: chRef, volume: volume, chapter_num: chNum}).then(function(reRev) {
-                        if (reRev.success) {
-                            var issues = [];
-                            if (!reRev.script_results.analyze.success) issues.push('字数/结构');
-                            if (!reRev.script_results.compliance.success) issues.push('合规');
-                            if (!reRev.script_results.forbidden.success) issues.push('禁用模式');
-                            if (issues.length === 0) {
-                                notice.innerHTML = '<span style="color:var(--success)">✅ 优化完成 · 复审全部通过</span>';
-                            } else {
-                                notice.innerHTML = '<span style="color:var(--warning)">⚠️ 优化完成 · 复审仍有问题: ' + issues.join(', ') + '</span>' +
-                                    '<div class="mt-8"><button class="btn btn-sm btn-primary" onclick="App._reOptimize()">🔧 继续优化</button><button class="btn btn-sm btn-success" onclick="App.toast(\'已接受当前版本\', \'success\')">✔️ 接受</button></div>';
-                                App._reOptimizeCtx = {novel:novel, chRef:chRef, volume:volume, chNum:chNum};
-                            }
-                        } else {
-                            notice.innerHTML = '<span style="color:var(--warning)">⚠️ 优化完成 · 复审失败</span>';
-                        }
-                        App.toast('✅ 优化+复审完成', 'success');
-                    });
-                });
-            } else {
-                notice.innerHTML = '<span style="color:var(--danger)">❌ 优化失败: ' + (optResp.error||'') + '</span>';
+            if (!optResp.success) {
+                // post-review failed but optimize succeeded → 200 with success:false + pre_review only
+                if (optResp.pre_review || optResp.post_review_ref) {
+                    notice.innerHTML = '<span style="color:var(--warning)">⚠️ 优化完成 · 复审失败: ' + (optResp.error||'') + '</span>';
+                } else {
+                    notice.innerHTML = '<span style="color:var(--danger)">❌ 优化失败: ' + (optResp.error||'') + '</span>';
+                }
+                return;
             }
+            var wc = optResp.word_count || 0;
+            // Preview mode: the server did not save and did not re-review.
+            if (optResp.preview) {
+                notice.innerHTML = '<span style="color:var(--info)">👁️ 预览模式 (' + wc + '字) · 文件未保存，未执行复审</span>';
+                App.toast('✅ 预览生成完成', 'success');
+                return;
+            }
+            // Default mode: consume optResp.diff / optResp.post_review.
+            // The server has already saved the file and persisted both
+            // the pre-review and post-rev{N} rows.
+            if (!optResp.post_review || optResp.post_review.success === false) {
+                notice.innerHTML = '<span style="color:var(--warning)">⚠️ 优化完成 (' + wc + '字) · 复审未执行</span>';
+                App.toast('优化已保存，但复审未完成', 'warning');
+                return;
+            }
+            var diff = optResp.diff || {};
+            var allPass = !!diff.all_pass;
+            var verdictHtml = '<span style="color:' + (allPass ? 'var(--success)' : 'var(--warning)') + '">' +
+                (allPass ? '✅' : '⚠️') + ' 优化完成 (' + wc + '字) · ' +
+                (allPass ? '复审全部通过' : '复审仍有问题: ' + App._summarizeDiffIssues(diff)) + '</span>' +
+                App._renderDiffPanel(diff);
+            if (!allPass) {
+                verdictHtml += '<div class="mt-8"><button class="btn btn-sm btn-primary" onclick="App._reOptimize()">🔧 继续优化</button><button class="btn btn-sm btn-success" onclick="App.toast(\'已接受当前版本\', \'success\')">✔️ 接受</button></div>';
+                App._reOptimizeCtx = {novel:novel, chRef:chRef, volume:volume, chNum:chNum};
+            }
+            notice.innerHTML = verdictHtml;
+            App.toast('✅ 优化+复审完成', 'success');
         });
     },
 
     _autoReviewOptimize(novel, volume, chNum, chRef) {
+        // M5.2 T5: the first reviewChapter call stays — its output is
+        // fed into the optimize prompt as review_text / script_issues.
+        // After optimizeChapter the server has already saved the file
+        // and persisted the post-review row, so we drop the redundant
+        // API.editChapter and the second API.reviewChapter calls.
         var rd = document.getElementById('wResult');
         var notice = document.createElement('div');
         notice.className = 'card';
@@ -1261,28 +1280,39 @@ const App = {
 
         var parts = chRef.split('/');
         var chapterNum = parts[1].replace('ch-', '');
-        API.reviewChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum}).then(function(revResp) {
+        var refClean = chRef.replace('.md','');
+        API.reviewChapter(novel, {chapter_ref: refClean, volume: volume, chapter_num: chapterNum}).then(function(revResp) {
             if (!revResp.success) { notice.innerHTML = '<div class="code-block error">审稿失败: ' + (revResp.error||'') + '</div>'; return; }
-            notice.innerHTML = '<div class="stream-indicator"><div class="stream-dot"></div><span>🛠️ 根据审稿意见优化章节...</span></div>';
+            notice.innerHTML = '<div class="stream-indicator"><div class="stream-dot"></div><span>🛠️ 根据审稿意见优化并复审中...</span></div>';
             var scriptIssues = (revResp.script_results?.analyze?.stdout||'') + '\\n' + (revResp.script_results?.compliance?.stdout||'') + '\\n' + (revResp.script_results?.forbidden?.stdout||'');
-            API.optimizeChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum, review_text: revResp.ai_review||'', script_issues: scriptIssues}).then(function(optResp) {
-                if (optResp.success) {
-                    API.editChapter(novel, chRef.replace('.md',''), optResp.content).then(function() {
-                        var wc = optResp.word_count || 0;
-                        // Auto re-review
-                        API.reviewChapter(novel, {chapter_ref: chRef.replace('.md',''), volume: volume, chapter_num: chapterNum}).then(function(reRev) {
-                            var issues = [];
-                            if (reRev.success) { if (!reRev.script_results.analyze.success) issues.push('字数/结构'); if (!reRev.script_results.compliance.success) issues.push('合规'); if (!reRev.script_results.forbidden.success) issues.push('禁用模式'); }
-                            var allPass = reRev.success && reRev.script_results.analyze.success && reRev.script_results.compliance.success && reRev.script_results.forbidden.success;
-                            App._autoReviewCtx = {novel:novel, volume:volume, chNum:chNum, chRef:chRef};
-                            notice.innerHTML = '<div style="color:' + (allPass ? 'var(--success)' : 'var(--warning)') + '"><strong>' + (allPass ? '✅' : '⚠️') + ' 已优化并复审</strong> (' + wc + '字)' + (allPass ? ' · 全部通过' : ' · 仍有问题: ' + issues.join(', ')) + '</div>' +
-                                (allPass ? '' : '<div class="mt-8 flex gap-8"><button class="btn btn-sm btn-primary" onclick="App._continueAutoOptimize()">🔧 继续优化</button><button class="btn btn-sm btn-success" onclick="App._acceptChapter()">✔️ 接受</button></div>') +
-                                '<details class="mt-8"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📋 查看详情</summary><div class="code-block info mt-4" style="max-height:200px;overflow-y:auto">' + (revResp.ai_review||'') + '</div></details>';
-                        });
-                    });
-                } else {
-                    notice.innerHTML = '<div class="code-block error">优化失败: ' + (optResp.error||'') + '</div>';
+            API.optimizeChapter(novel, {chapter_ref: refClean, volume: volume, chapter_num: chapterNum, review_text: revResp.ai_review||'', script_issues: scriptIssues}).then(function(optResp) {
+                if (!optResp.success) {
+                    // Server returned success:false. Could be optimize-fail or post-review-fail.
+                    if (optResp.pre_review || optResp.post_review_ref) {
+                        notice.innerHTML = '<div class="code-block warning">⚠️ 优化已保存，复审失败: ' + (optResp.error||'') + '</div>';
+                    } else {
+                        notice.innerHTML = '<div class="code-block error">优化失败: ' + (optResp.error||'') + '</div>';
+                    }
+                    return;
                 }
+                var wc = optResp.word_count || 0;
+                App._autoReviewCtx = {novel:novel, volume:volume, chNum:chNum, chRef:chRef};
+                if (optResp.preview) {
+                    notice.innerHTML = '<div style="color:var(--info)"><strong>👁️ 预览生成完成</strong> (' + wc + '字) · 文件未保存，未执行复审</div>';
+                    return;
+                }
+                if (!optResp.post_review || optResp.post_review.success === false) {
+                    notice.innerHTML = '<div style="color:var(--warning)"><strong>⚠️ 已优化 (' + wc + '字) · 复审未执行</strong></div>' +
+                        '<details class="mt-8"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📋 查看初始审稿</summary><div class="code-block info mt-4" style="max-height:200px;overflow-y:auto">' + (revResp.ai_review||'') + '</div></details>';
+                    return;
+                }
+                var diff = optResp.diff || {};
+                var allPass = !!diff.all_pass;
+                var issuesStr = allPass ? '' : ' · 仍有问题: ' + App._summarizeDiffIssues(diff);
+                notice.innerHTML = '<div style="color:' + (allPass ? 'var(--success)' : 'var(--warning)') + '"><strong>' + (allPass ? '✅' : '⚠️') + ' 已优化并复审</strong> (' + wc + '字)' + (allPass ? ' · 全部通过' : issuesStr) + '</div>' +
+                    App._renderDiffPanel(diff) +
+                    (allPass ? '' : '<div class="mt-8 flex gap-8"><button class="btn btn-sm btn-primary" onclick="App._continueAutoOptimize()">🔧 继续优化</button><button class="btn btn-sm btn-success" onclick="App._acceptChapter()">✔️ 接受</button></div>') +
+                    '<details class="mt-8"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📋 查看详情</summary><div class="code-block info mt-4" style="max-height:200px;overflow-y:auto">' + (revResp.ai_review||'') + '</div></details>';
             });
         });
     },
@@ -1303,6 +1333,57 @@ const App = {
         var rc = App._reOptimizeCtx;
         if (!rc) { App.toast('优化上下文丢失，请重新审稿', 'warning'); return; }
         App._optimizeFromReview(rc.novel, rc.chRef, rc.volume, rc.chNum);
+    },
+
+    // M5.2 T5: build a short comma-separated label of which post-review
+    // checks are still failing. Used in the verdict line when
+    // diff.all_pass is false.
+    _summarizeDiffIssues(diff) {
+        if (!diff) return '';
+        var labels = [];
+        var pair = function(k) { return Array.isArray(diff[k]) ? diff[k] : [null, null]; };
+        if (pair('wc_ok')[1] === false) labels.push('字数/结构');
+        if (pair('compliance_ok')[1] === false) labels.push('合规');
+        if (pair('forbidden_ok')[1] === false) labels.push('禁用模式');
+        return labels.join(', ') || '未知';
+    },
+
+    // M5.2 T5: render the pre→post diff as a compact table so the user
+    // can see which checks flipped from ❌ to ✅ (or stayed put). The
+    // diff block from the server has the shape:
+    //   {wc_ok:[bool,bool], compliance_ok:[bool,bool],
+    //    forbidden_ok:[bool,bool], bcontrast_count:[int,int],
+    //    tell_count:[int,int], all_pass:bool}
+    _renderDiffPanel(diff) {
+        if (!diff) return '';
+        var icon = function(v) {
+            if (v === true) return '<span style="color:var(--success)">✅</span>';
+            if (v === false) return '<span style="color:var(--danger)">❌</span>';
+            return '<span style="color:var(--text-muted)">—</span>';
+        };
+        var arrow = function(pre, post) {
+            if (pre === post) return '<span style="color:var(--text-muted)">→</span>';
+            return '<span style="color:var(--accent)">→</span>';
+        };
+        var row = function(label, pair, render) {
+            render = render || icon;
+            var pre = pair ? pair[0] : null;
+            var post = pair ? pair[1] : null;
+            return '<tr><td style="padding:2px 8px">' + label + '</td>' +
+                '<td style="padding:2px 8px;text-align:center">' + render(pre) + '</td>' +
+                '<td style="padding:2px 8px;text-align:center">' + arrow(pre, post) + '</td>' +
+                '<td style="padding:2px 8px;text-align:center">' + render(post) + '</td></tr>';
+        };
+        var num = function(v) { return (v === null || v === undefined) ? '—' : String(v); };
+        return '<details class="mt-8" open><summary style="cursor:pointer;color:var(--accent);font-size:12px">📊 复审对比 (pre → post)</summary>' +
+            '<table class="mt-4" style="font-size:12px;border-collapse:collapse"><thead><tr style="color:var(--text-muted)">' +
+            '<th style="padding:2px 8px;text-align:left">项</th><th style="padding:2px 8px">pre</th><th></th><th style="padding:2px 8px">post</th></tr></thead><tbody>' +
+            row('字数/结构', diff.wc_ok) +
+            row('合规', diff.compliance_ok) +
+            row('禁用模式', diff.forbidden_ok) +
+            row('binary_contrast', diff.bcontrast_count, num) +
+            row('tell_count', diff.tell_count, num) +
+            '</tbody></table></details>';
     },
 
     async _rewriteChapter() {
