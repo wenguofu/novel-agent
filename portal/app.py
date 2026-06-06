@@ -1731,25 +1731,37 @@ def api_generate_chapter(novel_name):
     })
 
 
-@app.route("/api/novels/<novel_name>/review-chapter", methods=["POST"])
-def api_review_chapter(novel_name):
-    data = request.json
-    chapter_ref = data.get("chapter_ref", "")
-    volume = data.get("volume", "vol-01")
-    chapter_num = data.get("chapter_num", "")
-    chapter_num = str(chapter_num) if not isinstance(chapter_num, str) else chapter_num
-    ch_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
-    if not chapter_ref:
-        chapter_ref = f"{volume}/ch-{ch_padded}"
-    else:
-        # Normalize chapter_ref: vol-01-ch-001 -> vol-01/ch-001
-        chapter_ref = chapter_ref.replace("-ch-", "/ch-")
+def _run_review(novel_name, chapter_ref, ch_content):
+    """Run the 3 review scripts + DeepSeek AI review; return a flat
+    review-result dict. NO database writes, NO file writes.
 
-    ch_content = read_novel_file(novel_name, "manuscript", f"{chapter_ref}.md")
-    if not ch_content:
-        return jsonify({"success": False, "error": f"章节不存在: {chapter_ref}"}), 404
+    The returned dict is consumed by:
+      * ``_persist_review`` (writes the ``reviews`` row + legacy .md file)
+      * the public ``api_review_chapter`` response builder
+      * the M5.2 T3 ``api_optimize_chapter`` flow (pre/post reviews)
 
-    logging.info(f"[review] novel={novel_name} chapter_ref={chapter_ref} volume={volume} chapter_num={chapter_num} word_count_from_file={count_words(ch_content)}")
+    Returned keys (public):
+      success           bool   — True if the LLM call succeeded
+      ai_review         str    — LLM content (or "" on failure)
+      word_count        int
+      wc_ok             bool
+      compliance_ok     bool
+      forbidden_ok      bool
+      bcontrast_count   int    — parsed from ``binary_contrast_count:``
+      tell_count        int    — parsed from ``simple_judgment_groups:``
+                                 (kept for backward-compat with the
+                                 existing public response and T3 spec;
+                                 note: this is NOT the same value as the
+                                 DB column ``reviews.tell_count``)
+      script_results    dict   — ``{analyze, compliance, forbidden}`` each
+                                 ``{"stdout": str, "success": bool}``
+
+    Internal keys (used only by ``_persist_review``):
+      _analyze, _compliance, _forbidden   raw run_script outputs
+      _bc_count, _jg_count, _tp_count     parsed counts for the DB row
+                                          (bc=bc, jg=judgment_groups,
+                                          tp=reviews.tell_count column)
+    """
     full_ch_path = os.path.join(get_novels_dir(), novel_name, "manuscript", f"{chapter_ref}.md")
     script_results = {}
 
@@ -1806,43 +1818,96 @@ suggestions:
         novel=novel_name,
     )
 
-    if result["success"]:
-        ch_id = chapter_ref.replace("/", "-").replace("ch-", "")
-        # Sync structured review data to content.db
-        try:
-            from content_db import get_db as _cdb
-            conn = _cdb()
-            novel_row = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
-            if novel_row:
-                nid = novel_row["id"]
-                # Extract binary contrast count from analyze stdout
-                bc_match = __import__("re").search(r'binary_contrast_count:\s*(\d+)', analyze.get("stdout", ""))
-                bc_count = int(bc_match.group(1)) if bc_match else 0
-                jg_match = __import__("re").search(r'simple_judgment_groups:\s*(\d+)', analyze.get("stdout", ""))
-                jg_count = int(jg_match.group(1)) if jg_match else 0
-                tp_match = __import__("re").search(r'tell_patterns:\s*(\d+)', analyze.get("stdout", ""))
-                tp_count = int(tp_match.group(1)) if tp_match else 0
-                conn.execute("""INSERT INTO reviews (novel_id, chapter_ref, ai_review, script_detail,
-                    wc_ok, compliance_ok, forbidden_ok, bcontrast_count, judgment_groups, tell_count, word_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(novel_id, chapter_ref) DO UPDATE SET
-                    ai_review=excluded.ai_review, script_detail=excluded.script_detail,
-                    wc_ok=excluded.wc_ok, compliance_ok=excluded.compliance_ok, forbidden_ok=excluded.forbidden_ok,
-                    bcontrast_count=excluded.bcontrast_count, judgment_groups=excluded.judgment_groups, tell_count=excluded.tell_count""",
-                    (nid, chapter_ref, result.get("content",""), analyze.get("stdout","") + "\n" + compliance.get("stdout","") + "\n" + forbidden.get("stdout",""),
-                     1 if analyze.get("success") else 0, 1 if compliance.get("success") else 0, 1 if forbidden.get("success") else 0,
-                     bc_count, jg_count, tp_count, count_words(ch_content)))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logging.warning(f'[review_sync_to_content_db] {e}')
-        review_content = f"""# 审稿报告
+    # Parse analyze stdout for the structured counts. Parsed ONCE here and
+    # shared by both the DB row (_persist_review) and the public response,
+    # so the duplicated regex work in the pre-refactor code is gone.
+    analyze_stdout = analyze.get("stdout", "")
+    bc_match = re.search(r'binary_contrast_count:\s*(\d+)', analyze_stdout)
+    bc_count = int(bc_match.group(1)) if bc_match else 0
+    jg_match = re.search(r'simple_judgment_groups:\s*(\d+)', analyze_stdout)
+    jg_count = int(jg_match.group(1)) if jg_match else 0
+    tp_match = re.search(r'tell_patterns:\s*(\d+)', analyze_stdout)
+    tp_count = int(tp_match.group(1)) if tp_match else 0
+
+    return {
+        "success": result["success"],
+        "ai_review": result.get("content", ""),
+        "word_count": count_words(ch_content),
+        "wc_ok": analyze.get("success") and bool(re.search(r"min_2500_ok:\s*true", analyze_stdout)),
+        "compliance_ok": compliance.get("success"),
+        "forbidden_ok": forbidden.get("success"),
+        "bcontrast_count": bc_count,
+        "tell_count": jg_count,
+        "script_results": {
+            "analyze": {"stdout": analyze.get("stdout", ""), "success": analyze.get("success", False)},
+            "compliance": {"stdout": compliance.get("stdout", ""), "success": compliance.get("success", False)},
+            "forbidden": {"stdout": forbidden.get("stdout", ""), "success": forbidden.get("success", False)},
+        },
+        # Internal fields for _persist_review. Prefixed with _ to keep
+        # them out of any "public" iteration of the dict.
+        "_analyze": analyze,
+        "_compliance": compliance,
+        "_forbidden": forbidden,
+        "_bc_count": bc_count,
+        "_jg_count": jg_count,
+        "_tp_count": tp_count,
+    }
+
+
+def _persist_review(novel_name, chapter_ref, review_result):
+    """Persist a ``_run_review`` result to the ``reviews`` table and write
+    the legacy ``reviews/{ch_id}-review.md`` file.
+
+    Mirrors the pre-refactor behavior:
+      * On LLM failure (review_result["success"] is False), this is a
+        no-op — the previous code only persisted when the LLM call
+        succeeded.
+      * DB row written first, committed, closed; THEN the .md file is
+        written. Persistence order is preserved.
+      * Bare try/except wrapping the DB block, so any DB error is
+        logged and swallowed (the legacy behavior).
+    """
+    if not review_result.get("success"):
+        return
+
+    analyze = review_result["_analyze"]
+    compliance = review_result["_compliance"]
+    forbidden = review_result["_forbidden"]
+    bc_count = review_result["_bc_count"]
+    jg_count = review_result["_jg_count"]
+    tp_count = review_result["_tp_count"]
+    ch_content_word_count = review_result["word_count"]
+    ai_review = review_result.get("ai_review", "")
+
+    ch_id = chapter_ref.replace("/", "-").replace("ch-", "")
+    # Sync structured review data to content.db
+    try:
+        from content_db import get_db as _cdb
+        conn = _cdb()
+        novel_row = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
+        if novel_row:
+            nid = novel_row["id"]
+            conn.execute("""INSERT INTO reviews (novel_id, chapter_ref, ai_review, script_detail,
+                wc_ok, compliance_ok, forbidden_ok, bcontrast_count, judgment_groups, tell_count, word_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(novel_id, chapter_ref) DO UPDATE SET
+                ai_review=excluded.ai_review, script_detail=excluded.script_detail,
+                wc_ok=excluded.wc_ok, compliance_ok=excluded.compliance_ok, forbidden_ok=excluded.forbidden_ok,
+                bcontrast_count=excluded.bcontrast_count, judgment_groups=excluded.judgment_groups, tell_count=excluded.tell_count""",
+                (nid, chapter_ref, ai_review, analyze.get("stdout","") + "\n" + compliance.get("stdout","") + "\n" + forbidden.get("stdout",""),
+                 1 if analyze.get("success") else 0, 1 if compliance.get("success") else 0, 1 if forbidden.get("success") else 0,
+                 bc_count, jg_count, tp_count, ch_content_word_count))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logging.warning(f'[review_sync_to_content_db] {e}')
+    review_content = f"""# 审稿报告
 
 日期: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 章节: {chapter_ref}
 
 ## AI审稿结果
-{result['content']}
+{ai_review}
 
 ## 脚本检查结果
 
@@ -1861,22 +1926,42 @@ suggestions:
 {forbidden.get('stdout', 'N/A')[:2000]}
 ```
 """
-        write_novel_file(novel_name, review_content, "reviews", f"{ch_id}-review.md")
+    write_novel_file(novel_name, review_content, "reviews", f"{ch_id}-review.md")
+
+
+@app.route("/api/novels/<novel_name>/review-chapter", methods=["POST"])
+def api_review_chapter(novel_name):
+    data = request.json
+    chapter_ref = data.get("chapter_ref", "")
+    volume = data.get("volume", "vol-01")
+    chapter_num = data.get("chapter_num", "")
+    chapter_num = str(chapter_num) if not isinstance(chapter_num, str) else chapter_num
+    ch_padded = chapter_num.zfill(3) if chapter_num.isdigit() else chapter_num
+    if not chapter_ref:
+        chapter_ref = f"{volume}/ch-{ch_padded}"
+    else:
+        # Normalize chapter_ref: vol-01-ch-001 -> vol-01/ch-001
+        chapter_ref = chapter_ref.replace("-ch-", "/ch-")
+
+    ch_content = read_novel_file(novel_name, "manuscript", f"{chapter_ref}.md")
+    if not ch_content:
+        return jsonify({"success": False, "error": f"章节不存在: {chapter_ref}"}), 404
+
+    logging.info(f"[review] novel={novel_name} chapter_ref={chapter_ref} volume={volume} chapter_num={chapter_num} word_count_from_file={count_words(ch_content)}")
+
+    result = _run_review(novel_name, chapter_ref, ch_content)
+    _persist_review(novel_name, chapter_ref, result)
 
     return jsonify({
         "success": True,
-        "ai_review": result.get("content", ""),
-        "word_count": count_words(ch_content),
-        "wc_ok": analyze.get("success") and bool(__import__("re").search(r"min_2500_ok:\s*true", analyze.get("stdout", ""))),
-        "compliance_ok": compliance.get("success"),
-        "forbidden_ok": forbidden.get("success"),
-        "bcontrast_count": int(__import__("re").search(r"binary_contrast_count:\s*(\d+)", analyze.get("stdout", "")).group(1)) if __import__("re").search(r"binary_contrast_count:\s*(\d+)", analyze.get("stdout", "")) else 0,
-        "tell_count": int(__import__("re").search(r"simple_judgment_groups:\s*(\d+)", analyze.get("stdout", "")).group(1)) if __import__("re").search(r"simple_judgment_groups:\s*(\d+)", analyze.get("stdout", "")) else 0,
-        "script_results": {
-            "analyze": {"stdout": analyze.get("stdout", ""), "success": analyze.get("success", False)},
-            "compliance": {"stdout": compliance.get("stdout", ""), "success": compliance.get("success", False)},
-            "forbidden": {"stdout": forbidden.get("stdout", ""), "success": forbidden.get("success", False)},
-        },
+        "ai_review": result["ai_review"],
+        "word_count": result["word_count"],
+        "wc_ok": result["wc_ok"],
+        "compliance_ok": result["compliance_ok"],
+        "forbidden_ok": result["forbidden_ok"],
+        "bcontrast_count": result["bcontrast_count"],
+        "tell_count": result["tell_count"],
+        "script_results": result["script_results"],
     })
 
 

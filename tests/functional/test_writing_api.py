@@ -366,3 +366,101 @@ class TestWizardStep:
     def test_wrong_method_get_returns_405(self, client):
         res = client.get("/api/wizard/step")
         assert_wrong_method_405(res)
+
+
+# ─── POST /api/novels/<n>/review-chapter ────────────────────────────
+
+class TestReviewChapter:
+    """M5.2 T2: explicit TestReviewChapter for the review-chapter endpoint.
+
+    Verifies the public response shape (the same shape the optimized
+    T3 path will reuse for pre_review/post_review). The LLM and the
+    three review scripts are stubbed; only the Flask + DB plumbing
+    runs for real.
+    """
+
+    def test_happy_path(self, client, sample_novel, monkeypatch, tmp_path):
+        """Happy path: chapter file present, scripts + LLM stubbed.
+        Asserts 200, success=True, and all structured fields.
+        """
+        # Pre-create the chapter file the handler reads.
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        (ms_dir / "ch-001.md").write_text(
+            "# 第一章\n\n测试内容。\n", encoding="utf-8"
+        )
+
+        # Stub the LLM.
+        fake_deepseek_chat(monkeypatch, content="conclusion: 通过\n")
+
+        # Stub the 3 review scripts to return deterministic, parseable output.
+        def fake_run_script(script_name, *args, **kwargs):
+            if "analyze" in script_name:
+                return {
+                    "success": True,
+                    "stdout": (
+                        "min_2500_ok: true\n"
+                        "binary_contrast_count: 2\n"
+                        "simple_judgment_groups: 4\n"
+                        "tell_patterns: 1\n"
+                    ),
+                    "stderr": "",
+                    "returncode": 0,
+                }
+            if "compliance" in script_name:
+                return {
+                    "success": True,
+                    "stdout": "compliance ok",
+                    "stderr": "",
+                    "returncode": 0,
+                }
+            if "forbidden" in script_name:
+                return {
+                    "success": True,
+                    "stdout": "no forbidden patterns",
+                    "stderr": "",
+                    "returncode": 0,
+                }
+            return {"success": False, "stdout": "", "stderr": "", "returncode": 1}
+
+        import app as _app
+        monkeypatch.setattr(_app, "run_script", fake_run_script)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/review-chapter",
+            json={"chapter_ref": "vol-01/ch-001"},
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        # All the structured fields the T3 optimize path will reuse must
+        # be present in the public response.
+        assert "ai_review" in data
+        assert "word_count" in data
+        assert data["wc_ok"] is True
+        assert data["compliance_ok"] is True
+        assert data["forbidden_ok"] is True
+        assert data["bcontrast_count"] == 2
+        assert data["tell_count"] == 4
+        assert "script_results" in data
+        assert "analyze" in data["script_results"]
+        assert "compliance" in data["script_results"]
+        assert "forbidden" in data["script_results"]
+
+    def test_not_found_unknown_chapter_404(self, client, sample_novel,
+                                            monkeypatch):
+        """POST without a chapter file → 404 + success=False."""
+        fake_deepseek_chat(monkeypatch, content="不会被返回。")
+        # No chapter file on disk for vol-99/ch-999.
+        res = client.post(
+            f"/api/novels/{sample_novel}/review-chapter",
+            json={"chapter_ref": "vol-99/ch-999"},
+        )
+        assert res.status_code == 404
+        data = res.get_json()
+        assert data["success"] is False
+
+    def test_wrong_method_405(self, client, sample_novel):
+        """GET → 405 (route is POST-only)."""
+        res = client.get(f"/api/novels/{sample_novel}/review-chapter")
+        assert_wrong_method_405(res)
