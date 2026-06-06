@@ -106,7 +106,12 @@ def test_full_mode_writes_six_dim_sections(tmp_path):
                 next_header_idx = len(lines)
             section_lines = lines[header_line_idx:next_header_idx]
             section_body = "\n".join(section_lines)
-            assert ("- `" in section_body) or ("No issues" in section_body), (
+            # A dim section is "non-empty" if it has either a list-item finding
+            # (any line starting with "- " in the body) or an explicit
+            # "No issues" / "No issues found" marker. Match the standard
+            # markdown list-item prefix, not a specific finding format.
+            has_finding = any(ln.startswith("- ") for ln in section_lines[1:])
+            assert has_finding or "No issues" in section_body, (
                 f"dim {dim} has no findings and no 'No issues' marker; "
                 f"section_body={section_body!r}"
             )
