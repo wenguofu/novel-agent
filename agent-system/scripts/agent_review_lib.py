@@ -245,6 +245,54 @@ def check_style(diff, files):
 
 # ─── Dimension 6: Docs ───────────────────────────────────────────────
 
+def _find_signature_end(content, paren_open_pos):
+    """Return the offset of the `)` that closes the `(` at ``paren_open_pos``.
+
+    Walks forward tracking paren depth, skipping over string literals and
+    comments so that `(` characters inside defaults (e.g. ``f(x=[1,2])``)
+    or docstrings (e.g. ``def foo(x: ")" = 1)``) don't fool the depth
+    counter. Returns ``-1`` if no matching ``)`` is found within a
+    reasonable distance.
+    """
+    depth = 0
+    i = paren_open_pos
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if c == "(":
+            depth += 1
+            i += 1
+        elif c == ")":
+            depth -= 1
+            i += 1
+            if depth == 0:
+                return i - 1
+        elif c == "#":
+            # Skip to end of line (comment can't contain parens)
+            while i < n and content[i] != "\n":
+                i += 1
+        elif c in ('"', "'"):
+            # Skip the string literal (handle triple-quoted)
+            if content[i:i + 3] in ('"""', "'''"):
+                quote = content[i:i + 3]
+                j = i + 3
+                while j < n and content[j:j + 3] != quote:
+                    j += 1
+                i = j + 3 if j < n else n
+            else:
+                quote = c
+                j = i + 1
+                while j < n and content[j] != quote and content[j] != "\n":
+                    if content[j] == "\\" and j + 1 < n:
+                        j += 2
+                    else:
+                        j += 1
+                i = j + 1
+        else:
+            i += 1
+    return -1
+
+
 def check_docs(diff, files):
     """Find public functions missing docstrings in changed files."""
     findings = []
@@ -262,7 +310,25 @@ def check_docs(diff, files):
             if key in seen_keys:
                 continue
             seen_keys.add(key)
-            after = content[m.end():m.end() + 500]
+            # Find the matching ')' for the '(' at m.end() - 1.
+            # (The regex ends with `\(` so m.end() points at the char
+            # right after `(`; the `(` itself is at m.end() - 1.)
+            paren_open = m.end() - 1
+            close_paren = _find_signature_end(content, paren_open)
+            if close_paren < 0:
+                # Couldn't find the matching ')' — skip to avoid false
+                # positives on malformed snippets. This is a defensive
+                # fallback; well-formed Python always has a matching ')'.
+                continue
+            # Advance past the rest of the def line (the `):` and any
+            # trailing content) to get to the function body.
+            newline_after = content.find("\n", close_paren)
+            if newline_after < 0:
+                # Single-line function: `def foo(): pass`
+                body_start = len(content)
+            else:
+                body_start = newline_after + 1
+            after = content[body_start:body_start + 500]
             next_lines = [l for l in after.split("\n") if l.strip()][:1]
             if next_lines and not next_lines[0].lstrip().startswith(('"""', "'''")):
                 line = _line_for(content, m.start())
