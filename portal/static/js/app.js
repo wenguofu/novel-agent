@@ -419,10 +419,15 @@ const App = {
         if (!resp.success) { this.toast(resp.error, 'error'); return; }
         const n = resp.novel;
         var volsHtml = '<div class="empty-state"><div class="empty-state-icon">📄</div><div class="empty-state-title">暂无章节</div></div>';
+        // Flatten chapters for the history tab's chapter selector. Each
+        // entry is ``{ ref, label }`` where ref is "vol-XX/ch-XXX" (the
+        // canonical manuscript path) and label is the display name.
+        var chapterOptions = [];
         if (n.volumes) {
             volsHtml = n.volumes.map(function(v) {
                 var chItems = v.chapters.map(function(ch) {
                     var wb = ch.words >= 2500 ? 'good' : ch.words >= 1500 ? 'warn' : 'low';
+                    chapterOptions.push({ ref: v.name + '/' + ch.name, label: v.name + ' / ' + ch.name });
                     return '<div class="chapter-item"><span class="ch-num">' + ch.name + '</span><span class="ch-meta"><span class="word-badge ' + wb + '">' + ch.words + '字</span></span><div class="ch-actions"><button class="btn btn-sm btn-primary" onclick="App._readChapter(\'' + name + '\',\'' + v.name + '/' + ch.name + '\')">📖</button><button class="btn btn-sm btn-secondary" onclick="App.navigate(\'writing\',{novel:\'' + name + '\',chapter:\'' + v.name + '/' + ch.name + '\'})">✍️</button></div></div>';
                 }).join('');
                 return '<div class="volume-header">📁 ' + v.name + ' · ' + v.chapter_count + '章 · ' + (v.total_words / 10000).toFixed(1) + '万字</div>' + chItems;
@@ -432,7 +437,7 @@ const App = {
         const wPct = n.word_goal ? Math.min(100, Math.round((n.total_words || 0) / (parseInt(n.word_goal) * 10000) * 100)) : 0;
 
         const body = `
-            <div class="tab-bar"><span class="tab-item active" data-t="overview" onclick="App._switchQTab(this,'overview')">概览</span><span class="tab-item" data-t="chapters" onclick="App._switchQTab(this,'chapters')">章节 (${n.total_chapters})</span><span class="tab-item" data-t="files" onclick="App._switchQTab(this,'files')">文件</span></div>
+            <div class="tab-bar"><span class="tab-item active" data-t="overview" onclick="App._switchQTab(this,'overview')">概览</span><span class="tab-item" data-t="chapters" onclick="App._switchQTab(this,'chapters')">章节 (${n.total_chapters})</span><span class="tab-item" data-t="files" onclick="App._switchQTab(this,'files')">文件</span><span class="tab-item" data-t="history" onclick="App._switchQTab(this,'history')">📜 历史</span></div>
             <div id="qkTabContent">
                 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
                     <div class="stat-card"><div class="stat-value">${n.total_chapters}</div><div class="stat-label">章节</div></div>
@@ -454,6 +459,7 @@ const App = {
         modalEl._novel = n;
         modalEl._origOverview = document.getElementById('qkTabContent').innerHTML;
         modalEl._chaptersHtml = '<div class="chapter-list">' + vols + '</div>';
+        modalEl._chapterOptions = chapterOptions;
     },
 
     _switchQTab(tab, t) {
@@ -478,6 +484,117 @@ const App = {
                 return '<div class="chapter-item" onclick="App._openFileModal(\'' + n.name + '\',\'' + f + '\')"><span class="ch-num">📄</span><span class="ch-title">' + f + '</span><span class="ch-meta">' + meta + '</span></div>';
             }).join('');
         }
+        else if (t === 'history') {
+            // 架构计划 1.1: list .bak files for a chosen chapter.
+            // The user picks a chapter from the dropdown; the list
+            // re-renders on every change. The current selection is
+            // stored on the modal element so the tab is restorable.
+            const opts = modal._chapterOptions || [];
+            var sel = '<option value="">-- 选择章节 --</option>';
+            opts.forEach(function(o) {
+                sel += '<option value="' + o.ref + '">' + o.label + '</option>';
+            });
+            var initial = modal._historyChRef || (opts[0] ? opts[0].ref : '');
+            content.innerHTML = '' +
+                '<div class="form-row" style="align-items:flex-end">' +
+                '<div class="form-group" style="flex:1">' +
+                '<label class="form-label">章节</label>' +
+                '<select class="form-select" id="historyChSel" onchange="App._loadHistoryTab()">' + sel + '</select>' +
+                '</div>' +
+                '<div class="form-group">' +
+                '<button class="btn btn-secondary" onclick="App._loadHistoryTab()">🔄 刷新</button>' +
+                '</div>' +
+                '</div>' +
+                '<div id="historyList" class="mt-12"><div class="empty-state"><div class="empty-state-icon">📜</div><div class="empty-state-title">选择章节后查看历史版本</div></div></div>';
+            var selEl = document.getElementById('historyChSel');
+            if (selEl && initial) selEl.value = initial;
+            this._loadHistoryTab();
+        }
+    },
+
+    // ── History tab helpers (架构计划 1.1) ──
+    async _loadHistoryTab() {
+        const selEl = document.getElementById('historyChSel');
+        const listEl = document.getElementById('historyList');
+        if (!selEl || !listEl) return;
+        const chRef = selEl.value;
+        // Stash the selection on the surrounding modal so re-entering
+        // the tab restores it.
+        const modal = selEl.closest('.modal');
+        if (modal) modal._historyChRef = chRef;
+        if (!chRef) {
+            listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📜</div><div class="empty-state-title">请先选择章节</div></div>';
+            return;
+        }
+        const novel = (modal && modal._novel) ? modal._novel.name : this.currentNovel;
+        if (!novel) {
+            listEl.innerHTML = '<div class="code-block error">无法确定当前小说</div>';
+            return;
+        }
+        listEl.innerHTML = '<div class="loading"><div class="spinner"></div><span>加载历史版本...</span></div>';
+        const resp = await API.listChapterBak(novel, chRef);
+        if (!resp.success) {
+            listEl.innerHTML = '<div class="code-block error">' + (resp.error || '加载失败') + '</div>';
+            return;
+        }
+        const files = resp.files || [];
+        if (files.length === 0) {
+            listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📜</div><div class="empty-state-title">该章节暂无历史版本</div><div class="empty-state-desc">优化章节时会自动生成 .bak 备份</div></div>';
+            return;
+        }
+        listEl.innerHTML = files.map(function(f) {
+            const sizeKb = (f.size / 1024).toFixed(1);
+            // Escape backticks/quotes in the preview before inlining
+            // into the onclick handler below.
+            const escPreview = (f.preview || '').replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\n/g, ' ');
+            return '' +
+                '<div class="card mt-8" style="padding:12px">' +
+                '<div class="flex gap-8" style="align-items:center;justify-content:space-between">' +
+                '<div style="flex:1">' +
+                '<div><strong>📜 rev' + f.rev + '</strong> · <span class="text-sm text-secondary">' + f.modified_at + ' · ' + sizeKb + ' KB</span></div>' +
+                '<div class="text-sm text-secondary mt-4" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw">' + escPreview + '</div>' +
+                '</div>' +
+                '<div class="flex gap-8">' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._viewHistoryEntry(\'' + novel + '\',\'' + chRef + '\',\'' + f.filename + '\')">查看</button>' +
+                '<button class="btn btn-sm btn-primary" onclick="App._restoreHistoryEntry(\'' + novel + '\',\'' + chRef + '\',\'' + f.filename + '\')">恢复</button>' +
+                '<button class="btn btn-sm btn-outline" style="color:var(--danger)" onclick="App._deleteHistoryEntry(\'' + novel + '\',\'' + chRef + '\',\'' + f.filename + '\')">删除</button>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+        }).join('');
+    },
+
+    async _viewHistoryEntry(novel, chRef, filename) {
+        const resp = await API.getChapterBak(novel, chRef, filename);
+        if (!resp.success) { this.toast(resp.error || '加载失败', 'error'); return; }
+        const body = '<div class="editor-container"><div class="editor-panel"><div class="editor-panel-header">📜 ' + filename + '（只读）</div><textarea class="editor-textarea" id="histView" style="font-size:12px" readonly>' + (resp.content || '').replace(/</g, '&lt;') + '</textarea></div></div>';
+        const footer = '<button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button>';
+        this.modal('📜 ' + filename, body, footer, '90vw');
+    },
+
+    async _restoreHistoryEntry(novel, chRef, filename) {
+        if (!confirm('确认将「' + filename + '」恢复为当前章节「' + chRef + '」？\n当前章节内容将被覆盖，且本次操作不会自动生成新的 .bak 备份。')) return;
+        const resp = await API.restoreChapterBak(novel, chRef, filename);
+        if (!resp.success) { this.toast(resp.error || '恢复失败', 'error'); return; }
+        this.toast('✅ 已从 ' + filename + ' 恢复', 'success');
+        // Re-render the list (in case the user wants to keep browsing)
+        // and update the modal's overview numbers in the background.
+        await this._loadHistoryTab();
+        // Refresh the underlying novel data so the "概览" tab's
+        // total_chapters/total_words stay in sync after a restore.
+        const modal = document.querySelector('.modal');
+        if (modal && modal._novel) {
+            const nr = await API.getNovel(novel);
+            if (nr.success) modal._novel = nr.novel;
+        }
+    },
+
+    async _deleteHistoryEntry(novel, chRef, filename) {
+        if (!confirm('确认删除备份「' + filename + '」？此操作不可撤销。')) return;
+        const resp = await API.deleteChapterBak(novel, chRef, filename);
+        if (!resp.success) { this.toast(resp.error || '删除失败', 'error'); return; }
+        this.toast('🗑 已删除 ' + filename, 'success');
+        await this._loadHistoryTab();
     },
 
     async _openFileModal(novel, path) {

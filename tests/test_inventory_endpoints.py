@@ -53,7 +53,8 @@ def test_inventory_real_portal_app_has_82_endpoints():
     # refactored into a single conditional index() — see commit history.
     # Updated 2026-06-06 (harness item [9]): added /health endpoint, now 83.
     # Updated 2026-06-07 (arch 4.1): added /api/dashboard/stats, now 84.
-    assert len(endpoints) == 84, f"expected 84 endpoints, got {len(endpoints)} — portal/app.py changed"
+    # Updated 2026-06-07 (arch 1.1): added 4 chapter .bak history endpoints, now 88.
+    assert len(endpoints) == 88, f"expected 88 endpoints, got {len(endpoints)} — portal/app.py changed"
 
 
 def test_scan_handles_int_converter_in_route():

@@ -1,7 +1,7 @@
 # Novel Agent — System Functional Spec
 
 > Machine-generated + manual supplements. Source of truth: `portal/app.py` AST.
-> Auto-generated: 2026-06-06T16:47:02Z. Inventory: 84 endpoints.
+> Auto-generated: 2026-06-06T16:59:38Z. Inventory: 88 endpoints.
 >
 > Regenerate: `python3 scripts/inventory_endpoints.py && python3 scripts/render_spec.py`
 > Verify: `python3 scripts/verify_spec.py` (5 checks).
@@ -44,7 +44,7 @@ For high-value endpoints not detected automatically, see the Manual Notes.
 
 ---
 
-## 2. Data Model (84 tables)
+## 2. Data Model (88 tables)
 
 See [`portal/models_orm.py`](../../portal/models_orm.py) for canonical
 definitions. Brief grouping:
@@ -176,7 +176,7 @@ The 12 layers and their token budgets are documented there.
 
 ---
 
-## 5. API Endpoints (84)
+## 5. API Endpoints (88)
 
 ### 5.0 health
 #### Endpoint: GET /health
@@ -874,9 +874,45 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 <!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
 <!-- /MANUAL -->
 
+#### Endpoint: GET /api/novels/<novel_name>/chapters/<path:ch_ref>/bak
+
+- **Function**: `api_list_chapter_bak` (line 4145)
+- **Description**: List .bak files for one chapter (newest first).
+- **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
+<!-- MANUAL: GET_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak -->
+<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+<!-- /MANUAL -->
+
+#### Endpoint: GET /api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>
+
+- **Function**: `api_get_chapter_bak` (line 4178)
+- **Description**: Return the content of a single .bak file.
+- **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
+<!-- MANUAL: GET_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename> -->
+<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+<!-- /MANUAL -->
+
+#### Endpoint: POST /api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>/restore
+
+- **Function**: `api_restore_chapter_bak` (line 4205)
+- **Description**: Restore a .bak version as the current chapter.
+- **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
+<!-- MANUAL: POST_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>/restore -->
+<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+<!-- /MANUAL -->
+
+#### Endpoint: DELETE /api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>
+
+- **Function**: `api_delete_chapter_bak` (line 4248)
+- **Description**: Delete a single .bak file.
+- **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
+<!-- MANUAL: DELETE_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename> -->
+<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+<!-- /MANUAL -->
+
 #### Endpoint: GET /api/content/search
 
-- **Function**: `api_content_search` (line 4085)
+- **Function**: `api_content_search` (line 4275)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `search_all`- **DB calls**: none detected- **Tables read**: `searchs`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/content/search -->
@@ -885,7 +921,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/content/stats/<novel_name>
 
-- **Function**: `api_content_stats` (line 4095)
+- **Function**: `api_content_stats` (line 4285)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `get_novel_stats`- **DB calls**: none detected- **Tables read**: `novel_stats`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/content/stats/<novel_name> -->
@@ -894,7 +930,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/content/sync
 
-- **Function**: `api_content_sync` (line 4102)
+- **Function**: `api_content_sync` (line 4292)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/content/sync -->
@@ -903,7 +939,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/templates
 
-- **Function**: `api_list_templates` (line 4119)
+- **Function**: `api_list_templates` (line 4309)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/templates -->
@@ -912,7 +948,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/usage/stats
 
-- **Function**: `api_usage_stats` (line 4134)
+- **Function**: `api_usage_stats` (line 4324)
 - **Description**: Return token usage statistics.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/usage/stats -->
@@ -921,14 +957,14 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/characters/<novel_name>/<int:cid>/ai-profile
 
-- **Function**: `api_ai_character_profile` (line 4232)
+- **Function**: `api_ai_character_profile` (line 4422)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `get_character`- **DB calls**: none detected- **Tables read**: `characters`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/characters/<novel_name>/<int:cid>/ai-profile -->
 <!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
 <!-- /MANUAL -->
 
-### 5.83 assets
+### 5.87 assets
 #### Endpoint: GET /assets/<path:filename>
 
 - **Function**: `serve_react_assets` (line 537)
@@ -1022,6 +1058,10 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 | `POST` | `/api/revelation_schedule/<novel_name>` | `api_revelation_schedule_add` |
 | `PUT` | `/api/revelation_schedule/<novel_name>/<int:row_id>` | `api_revelation_schedule_manage` |
 | `POST` | `/api/novels/<novel_name>/cleanup-bak` | `api_cleanup_bak` |
+| `GET` | `/api/novels/<novel_name>/chapters/<path:ch_ref>/bak` | `api_list_chapter_bak` |
+| `GET` | `/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>` | `api_get_chapter_bak` |
+| `POST` | `/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>/restore` | `api_restore_chapter_bak` |
+| `DELETE` | `/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>` | `api_delete_chapter_bak` |
 | `GET` | `/api/content/search` | `api_content_search` |
 | `GET` | `/api/content/stats/<novel_name>` | `api_content_stats` |
 | `POST` | `/api/content/sync` | `api_content_sync` |

@@ -1,5 +1,5 @@
 {
-  "endpoint_count": 84,
+  "endpoint_count": 88,
   "endpoints": [
     {
       "db_calls": [],
@@ -1144,10 +1144,66 @@
     },
     {
       "db_calls": [],
+      "docstring": "List .bak files for one chapter (newest first).",
+      "func_name": "api_list_chapter_bak",
+      "key": "GET_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak",
+      "line_no": 4145,
+      "methods": [
+        "GET"
+      ],
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>/bak",
+      "tables_read": [],
+      "tables_written": []
+    },
+    {
+      "db_calls": [],
+      "docstring": "Return the content of a single .bak file.",
+      "func_name": "api_get_chapter_bak",
+      "key": "GET_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>",
+      "line_no": 4178,
+      "methods": [
+        "GET"
+      ],
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>",
+      "tables_read": [],
+      "tables_written": []
+    },
+    {
+      "db_calls": [],
+      "docstring": "Restore a .bak version as the current chapter.",
+      "func_name": "api_restore_chapter_bak",
+      "key": "POST_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>/restore",
+      "line_no": 4205,
+      "methods": [
+        "POST"
+      ],
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>/restore",
+      "tables_read": [],
+      "tables_written": []
+    },
+    {
+      "db_calls": [],
+      "docstring": "Delete a single .bak file.",
+      "func_name": "api_delete_chapter_bak",
+      "key": "DELETE_/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>",
+      "line_no": 4248,
+      "methods": [
+        "DELETE"
+      ],
+      "repo_calls": [],
+      "route": "/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>",
+      "tables_read": [],
+      "tables_written": []
+    },
+    {
+      "db_calls": [],
       "docstring": "",
       "func_name": "api_content_search",
       "key": "GET_/api/content/search",
-      "line_no": 4085,
+      "line_no": 4275,
       "methods": [
         "GET"
       ],
@@ -1165,7 +1221,7 @@
       "docstring": "",
       "func_name": "api_content_stats",
       "key": "GET_/api/content/stats/<novel_name>",
-      "line_no": 4095,
+      "line_no": 4285,
       "methods": [
         "GET"
       ],
@@ -1183,7 +1239,7 @@
       "docstring": "",
       "func_name": "api_content_sync",
       "key": "POST_/api/content/sync",
-      "line_no": 4102,
+      "line_no": 4292,
       "methods": [
         "POST"
       ],
@@ -1197,7 +1253,7 @@
       "docstring": "",
       "func_name": "api_list_templates",
       "key": "GET_/api/templates",
-      "line_no": 4119,
+      "line_no": 4309,
       "methods": [
         "GET"
       ],
@@ -1211,7 +1267,7 @@
       "docstring": "Return token usage statistics.",
       "func_name": "api_usage_stats",
       "key": "GET_/api/usage/stats",
-      "line_no": 4134,
+      "line_no": 4324,
       "methods": [
         "GET"
       ],
@@ -1225,7 +1281,7 @@
       "docstring": "",
       "func_name": "api_ai_character_profile",
       "key": "POST_/api/characters/<novel_name>/<int:cid>/ai-profile",
-      "line_no": 4232,
+      "line_no": 4422,
       "methods": [
         "POST"
       ],
@@ -1253,7 +1309,7 @@
       "tables_written": []
     }
   ],
-  "generated_at": "2026-06-06T16:47:02Z",
+  "generated_at": "2026-06-06T16:59:38Z",
   "repository_index": {
     "add_alias_name": {
       "defaults": [

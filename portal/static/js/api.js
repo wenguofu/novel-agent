@@ -50,6 +50,24 @@ const API = {
     // ── Optimize ──
     optimizeChapter(novel, data) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/optimize-chapter`, data); },
 
+    // ── Chapter .bak History (架构计划 1.1) ──
+    // The Portal "历史" tab browses per-chapter .bak files written by
+    // the optimize-chapter handler. ``ch_ref`` is the chapter ref
+    // (e.g. "vol-01/ch-001"); ``filename`` is the on-disk name
+    // (e.g. "vol-01-ch-001.rev1.md").
+    listChapterBak(novel, chRef) {
+        return this.request('GET', `/api/novels/${encodeURIComponent(novel)}/chapters/${encodeURIComponent(chRef)}/bak`);
+    },
+    getChapterBak(novel, chRef, filename) {
+        return this.request('GET', `/api/novels/${encodeURIComponent(novel)}/chapters/${encodeURIComponent(chRef)}/bak/${encodeURIComponent(filename)}`);
+    },
+    restoreChapterBak(novel, chRef, filename) {
+        return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/chapters/${encodeURIComponent(chRef)}/bak/${encodeURIComponent(filename)}/restore`);
+    },
+    deleteChapterBak(novel, chRef, filename) {
+        return this.request('DELETE', `/api/novels/${encodeURIComponent(novel)}/chapters/${encodeURIComponent(chRef)}/bak/${encodeURIComponent(filename)}`);
+    },
+
     // ── Status ──
     updateStatus(novel, content) { return this.request('POST', `/api/novels/${encodeURIComponent(novel)}/update-status`, { content }); },
 

@@ -4080,6 +4080,196 @@ def api_cleanup_bak(novel_name):
     return jsonify({"success": True, "deleted": count, "message": f"已删除 {count} 个备份文件"})
 
 
+# ─── Chapter .bak History (架构计划 1.1) ─────────────────────────────────
+# Powers the Portal "历史" tab: list / view / restore / delete individual
+# .bak files for a chapter. The optimize-chapter handler already writes
+# .bak files to ``manuscript/.bak/<ref>.rev{N}.md``; these endpoints let
+# the user browse and manage them.
+
+# Filename pattern: ``<ref-with-dash>.rev<N>.md``. The ``<ref-with-dash>``
+# part is a free-form alphanumeric/dash/underscore/dot prefix; the rev
+# part must be a positive integer. We allow dots in the prefix so e.g.
+# ``ch-001`` matches as expected.
+_BAK_FILENAME_RE = re.compile(r"^[\w\-.]+\.rev(\d+)\.md$")
+
+
+def _validate_bak_filename(filename):
+    """Return (ok, rev_int_or_none, error_message_or_none).
+
+    A safe ``filename`` must match ``<prefix>.rev<N>.md`` where ``<N>``
+    is a positive integer. This guards against path traversal
+    (``..``, ``/``, ``\\``) and against non-bak files being served.
+    """
+    if not filename or not isinstance(filename, str):
+        return False, None, "filename required"
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return False, None, "invalid filename"
+    m = _BAK_FILENAME_RE.match(filename)
+    if not m:
+        return False, None, "filename must match <prefix>.rev<N>.md"
+    return True, int(m.group(1)), None
+
+
+def _bak_dir_for(novel_name):
+    return os.path.join(get_novels_dir(), novel_name, "manuscript", ".bak")
+
+
+def _list_bak_for_chapter(novel_name, ch_ref):
+    """Return list of (filename, rev, mtime, size) for one chapter,
+    sorted newest-first. Only files whose name starts with
+    ``<ref-with-dash>.rev`` are returned (filters out other chapters'
+    backups sharing the same .bak directory)."""
+    bak_dir = _bak_dir_for(novel_name)
+    if not os.path.exists(bak_dir):
+        return []
+    prefix = ch_ref.replace("/", "-")
+    out = []
+    for f in os.listdir(bak_dir):
+        if not f.startswith(prefix + ".rev"):
+            continue
+        full = os.path.join(bak_dir, f)
+        if not os.path.isfile(full):
+            continue
+        st = os.stat(full)
+        # Extract rev from the filename (already known-valid because
+        # the optimize-chapter writer uses the same naming scheme, but
+        # we re-parse to be defensive).
+        m = re.search(r"\.rev(\d+)\.md$", f)
+        rev = int(m.group(1)) if m else 0
+        out.append((f, rev, st.st_mtime, st.st_size))
+    # Newest first
+    out.sort(key=lambda r: r[2], reverse=True)
+    return out
+
+
+@app.route("/api/novels/<novel_name>/chapters/<path:ch_ref>/bak", methods=["GET"])
+def api_list_chapter_bak(novel_name, ch_ref):
+    """List .bak files for one chapter (newest first).
+
+    Each entry: ``{filename, rev, size, modified_at, preview}``.
+    ``preview`` is the first 200 chars of the file content.
+    """
+    try:
+        entries = _list_bak_for_chapter(novel_name, ch_ref)
+        files = []
+        for fname, rev, mtime, size in entries:
+            preview = ""
+            try:
+                with open(os.path.join(_bak_dir_for(novel_name), fname),
+                          encoding="utf-8") as f:
+                    preview = f.read(200)
+            except OSError:
+                preview = ""
+            from datetime import datetime, timezone
+            modified_at = datetime.fromtimestamp(mtime, tz=timezone.utc) \
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+            files.append({
+                "filename": fname,
+                "rev": rev,
+                "size": size,
+                "modified_at": modified_at,
+                "preview": preview,
+            })
+        return jsonify({"success": True, "files": files})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>",
+           methods=["GET"])
+def api_get_chapter_bak(novel_name, ch_ref, filename):
+    """Return the content of a single .bak file."""
+    ok, _rev, err = _validate_bak_filename(filename)
+    if not ok:
+        return jsonify({"success": False, "error": err or "invalid filename"}), 400
+    # The file must also belong to this chapter (filename prefix check)
+    expected_prefix = ch_ref.replace("/", "-") + ".rev"
+    if not filename.startswith(expected_prefix):
+        return jsonify({"success": False,
+                        "error": "filename does not belong to this chapter"}), 400
+    bak_path = os.path.join(_bak_dir_for(novel_name), filename)
+    if not os.path.exists(bak_path):
+        return jsonify({"success": False, "error": "file not found"}), 404
+    try:
+        with open(bak_path, encoding="utf-8") as f:
+            content = f.read()
+        return jsonify({
+            "success": True,
+            "filename": filename,
+            "content": content,
+        })
+    except OSError as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>/restore",
+           methods=["POST"])
+def api_restore_chapter_bak(novel_name, ch_ref, filename):
+    """Restore a .bak version as the current chapter.
+
+    The .bak file is copied to ``manuscript/<ch_ref>.md`` (overwriting
+    whatever is currently there). The .bak file itself is left in place
+    so the user can browse history after the restore.
+    """
+    ok, _rev, err = _validate_bak_filename(filename)
+    if not ok:
+        return jsonify({"success": False, "error": err or "invalid filename"}), 400
+    expected_prefix = ch_ref.replace("/", "-") + ".rev"
+    if not filename.startswith(expected_prefix):
+        return jsonify({"success": False,
+                        "error": "filename does not belong to this chapter"}), 400
+    bak_path = os.path.join(_bak_dir_for(novel_name), filename)
+    if not os.path.exists(bak_path):
+        return jsonify({"success": False, "error": "file not found"}), 404
+    try:
+        import shutil as _shutil
+        # ch_ref like ``vol-01/ch-001`` → ``manuscript/vol-01/ch-001.md``
+        ch_path = os.path.join(
+            get_novels_dir(), novel_name, "manuscript", f"{ch_ref}.md"
+        )
+        os.makedirs(os.path.dirname(ch_path), exist_ok=True)
+        _shutil.copy2(bak_path, ch_path)
+        # Best-effort: sync the chapters table so the UI reflects the
+        # restored content without a manual refresh.
+        try:
+            from content_db import sync_novel_from_files
+            sync_novel_from_files(novel_name)
+        except Exception as e:
+            logging.warning(f"[restore-bak] sync failed: {e}")
+        return jsonify({
+            "success": True,
+            "restored_from": filename,
+            "chapter_ref": ch_ref,
+        })
+    except OSError as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/novels/<novel_name>/chapters/<path:ch_ref>/bak/<path:filename>",
+           methods=["DELETE"])
+def api_delete_chapter_bak(novel_name, ch_ref, filename):
+    """Delete a single .bak file."""
+    ok, _rev, err = _validate_bak_filename(filename)
+    if not ok:
+        return jsonify({"success": False, "error": err or "invalid filename"}), 400
+    expected_prefix = ch_ref.replace("/", "-") + ".rev"
+    if not filename.startswith(expected_prefix):
+        return jsonify({"success": False,
+                        "error": "filename does not belong to this chapter"}), 400
+    bak_path = os.path.join(_bak_dir_for(novel_name), filename)
+    if not os.path.exists(bak_path):
+        return jsonify({"success": False, "error": "file not found"}), 404
+    try:
+        os.remove(bak_path)
+        return jsonify({
+            "success": True,
+            "deleted": filename,
+            "chapter_ref": ch_ref,
+        })
+    except OSError as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ─── Content DB ────────────────────────────────────────────────────────────
 
 @app.route("/api/content/search")
