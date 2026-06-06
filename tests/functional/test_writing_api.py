@@ -159,6 +159,108 @@ class TestOptimizeChapter:
         res = client.get(f"/api/novels/{sample_novel}/optimize-chapter")
         assert_wrong_method_405(res)
 
+    # ─── T1: ?preview=true opt-out (M5.2) ──────────────────────────────
+    # The chapter file lives at manuscript/<vol>/<ch>.md (nested). The
+    # route's ``read_novel_file(novel, "manuscript", f"{chapter_ref}.md")``
+    # joins those parts, so for chapter_ref="vol-01/ch-001" the on-disk
+    # path is ``manuscript/vol-01/ch-001.md``.
+
+    def test_preview_true_does_not_save(self, client, sample_novel,
+                                        monkeypatch, tmp_path):
+        """?preview=true returns LLM output but does not write the file
+        or create a .bak backup."""
+        fake_deepseek_chat(monkeypatch, content="优化后章节。")
+        # Pre-create the manuscript file the handler reads. Use the
+        # nested path the route actually resolves to.
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        ch_file = ms_dir / "ch-001.md"
+        original = "# 第一章\n\n原文。\n"
+        ch_file.write_text(original, encoding="utf-8")
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter?preview=true",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "volume": "vol-01",
+                "review_text": "请加强冲突",
+                "script_issues": "无重大问题",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        assert data.get("preview") is True
+        assert data["content"] == "优化后章节。"
+        assert data["chapter_ref"] == "vol-01/ch-001"
+        # The on-disk file must be untouched.
+        assert ch_file.read_text(encoding="utf-8") == original
+        # No .bak file should have been created.
+        bak_dir = tmp_path / "novels" / sample_novel / "manuscript" / ".bak"
+        assert not bak_dir.exists() or not any(bak_dir.iterdir()), \
+            f"preview mode must not create .bak files, found: {list(bak_dir.iterdir()) if bak_dir.exists() else 'no dir'}"
+
+    def test_preview_false_or_missing_keeps_old_contract(
+            self, client, sample_novel, monkeypatch, tmp_path):
+        """Default POST and explicit ?preview=false both still proceed
+        past the LLM call and the response has no ``preview`` key (or
+        ``preview is False``)."""
+        # Pre-create the chapter file so the route gets past the 404
+        # check and actually runs the LLM.
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        (ms_dir / "ch-001.md").write_text("# 第一章\n\n原文。\n",
+                                          encoding="utf-8")
+
+        # 1. No query param: must still proceed past LLM (success=True).
+        fake_deepseek_chat(monkeypatch, content="优化后章节。")
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "volume": "vol-01",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        # preview key is absent or explicitly False — either is OK for
+        # the default contract, but it must not be True.
+        assert not data.get("preview"), \
+            f"default mode must not return preview=True, got {data!r}"
+
+        # 2. Explicit ?preview=false: same contract.
+        fake_deepseek_chat(monkeypatch, content="优化后章节2。")
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter?preview=false",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "volume": "vol-01",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        assert not data.get("preview"), \
+            f"preview=false must not return preview=True, got {data!r}"
+
+    def test_preview_unknown_chapter_404(self, client, sample_novel,
+                                         monkeypatch):
+        """?preview=true with an unknown chapter must still 404 — the
+        chapter-read check happens before the preview check."""
+        fake_deepseek_chat(monkeypatch, content="不会被返回的。")
+        # No chapter file on disk for vol-99/ch-999.
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter?preview=true",
+            json={"chapter_ref": "vol-99/ch-999"},
+        )
+        assert res.status_code == 404
+        data = res.get_json()
+        assert data["success"] is False
+
 
 # ─── POST /api/novels/<n>/run-script ──────────────────────────────────
 

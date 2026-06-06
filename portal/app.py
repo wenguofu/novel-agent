@@ -1893,6 +1893,8 @@ def api_optimize_chapter(novel_name):
     if not ch_content:
         return jsonify({"success": False, "error": f"章节不存在: {chapter_ref}"}), 404
 
+    is_preview = request.args.get("preview", "").lower() in ("1", "true", "yes", "on")
+
     system_prompt = f"""你是一个专业的小说编辑。请根据审稿意见优化以下章节。只修复问题，不要改变章节的核心内容和情节走向。
 
 审稿意见：
@@ -1915,29 +1917,33 @@ def api_optimize_chapter(novel_name):
     if not result["success"]:
         return jsonify(result)
 
-    # Backup original before overwriting
-    bak_dir = os.path.join(get_novels_dir(), novel_name, "manuscript", ".bak")
-    os.makedirs(bak_dir, exist_ok=True)
-    ch_file = os.path.join(get_novels_dir(), novel_name, "manuscript", f"{chapter_ref}.md")
-    if os.path.exists(ch_file):
-        # Find next revision number
-        rev = 1
-        while os.path.exists(os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md")):
-            rev += 1
-        import shutil as _shutil
-        _shutil.copy2(ch_file, os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md"))
-        # Keep only last 5 versions
-        bak_files = sorted([f for f in os.listdir(bak_dir) if chapter_ref.replace('/','-') in f])
-        for old_f in bak_files[:-5]:
-            os.remove(os.path.join(bak_dir, old_f))
+    if not is_preview:
+        # Backup original before overwriting
+        bak_dir = os.path.join(get_novels_dir(), novel_name, "manuscript", ".bak")
+        os.makedirs(bak_dir, exist_ok=True)
+        ch_file = os.path.join(get_novels_dir(), novel_name, "manuscript", f"{chapter_ref}.md")
+        if os.path.exists(ch_file):
+            # Find next revision number
+            rev = 1
+            while os.path.exists(os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md")):
+                rev += 1
+            import shutil as _shutil
+            _shutil.copy2(ch_file, os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md"))
+            # Keep only last 5 versions
+            bak_files = sorted([f for f in os.listdir(bak_dir) if chapter_ref.replace('/','-') in f])
+            for old_f in bak_files[:-5]:
+                os.remove(os.path.join(bak_dir, old_f))
 
-    return jsonify({
+    response = {
         "success": True,
         "content": result["content"],
         "chapter_ref": chapter_ref,
         "word_count": count_words(result["content"]),
         "usage": result.get("usage", {}),
-    })
+    }
+    if is_preview:
+        response["preview"] = True
+    return jsonify(response)
 
 
 @app.route("/api/novels/<novel_name>/run-script", methods=["POST"])
