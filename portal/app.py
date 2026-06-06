@@ -61,6 +61,13 @@ from errors import (
 # endpoint and slow-call detection.
 from logging_config import StructuredLogger, with_logging, health_tracker  # noqa: E402
 
+# API resilience — circuit breaker + retry + response tracking (harness [7]).
+# `api_resilient("op")` wraps a function with the global `deepseek_circuit`
+# (fail-fast after 5 consecutive failures), 3-attempt exponential-backoff
+# retry, and per-operation response time tracking via `response_tracker`.
+# See portal/resilience.py for details.
+from resilience import api_resilient, deepseek_circuit, response_tracker  # noqa: E402
+
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
 
@@ -432,6 +439,7 @@ def _build_openai_payload(messages, system_prompt, model, temperature, max_token
     }
 
 
+@api_resilient("deepseek_chat")
 def deepseek_chat(messages, system_prompt=None, temperature=None, max_tokens=None, top_p=None, stream=False, operation=None, novel=""):
     cfg = get_active_deepseek_config()
     api_key = cfg["api_key"]
