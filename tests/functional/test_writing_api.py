@@ -132,20 +132,22 @@ class TestOptimizeChapter:
 
     def test_missing_field_returns_404_for_unknown_chapter(
             self, client, sample_novel, monkeypatch):
-        # The route has no explicit required-field validation; an
-        # empty body yields chapter_ref="" which then causes
-        # ``read_novel_file(novel_name, "manuscript", ".md")`` to
-        # return empty, producing a 404. We assert that 404 with
-        # success=False (the same code path the not_found dim
-        # exercises, but framed as the "missing all required fields"
-        # case).
+        # M5.2 T4.1: an empty body yields chapter_ref="" which is
+        # rejected by ``_normalize_chapter_ref`` with 400 BEFORE
+        # the chapter-read check. This is the more specific
+        # contract: an empty chapter_ref is an invalid value, not
+        # a missing file. We assert 400 + success=False (the same
+        # "missing field" envelope, but the route's actual
+        # contract is now 400 because validation runs first).
         fake_deepseek_chat(monkeypatch)
         res = client.post(
             f"/api/novels/{sample_novel}/optimize-chapter", json={}
         )
-        # The route's actual behavior: 404 because no chapter file.
-        # assert_not_found is strict on 404, which matches the route.
-        assert_not_found(res)
+        assert res.status_code == 400, \
+            f"expected 400 for empty chapter_ref, got {res.status_code}: {res.data!r}"
+        data = res.get_json()
+        assert data.get("success") is False
+        assert "error" in data and "chapter_ref" in data["error"].lower()
 
     def test_missing_chapter_returns_404(self, client, sample_novel,
                                           monkeypatch):
@@ -1085,3 +1087,132 @@ class TestOptimizeReReview:
             f"diff.all_pass expected True (post is clean), "
             f"got {diff['all_pass']!r}"
         )
+
+    # ─── T4.1: NIT-2 followup (post-rev file preservation) ─────────────
+    # The T4 NIT-2 fix writes the optimized content to
+    # ``manuscript/{chapter_ref}-post-rev{N}.md`` so the 3 review
+    # scripts can read it from disk, then removes it in a ``finally``.
+    # If a real file already exists at that path (user manually saved
+    # a draft, previous run leaked because cleanup crashed, etc.),
+    # the NIT-2 fix would overwrite and then delete it — data loss.
+    # T4.1 captures the pre-existence state and original content
+    # BEFORE the write, then restores the original in the ``finally``
+    # if a real file existed.
+
+    def test_post_rev_file_does_not_clobber_existing_real_file(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """M5.2 T4.1 regression: if a real file already exists at the
+        post-rev path, the optimize must NOT clobber it. The original
+        content must be preserved and the post-review must still work.
+        """
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        ch_file = ms_dir / "ch-001.md"
+        ch_file.write_text("# 原文\n\n原始内容。\n", encoding="utf-8")
+
+        # Pre-create a "real" file at the post-rev path with
+        # distinct, easily-recognizable content.
+        post_rev_file = ms_dir / "ch-001-post-rev1.md"
+        original_post_rev = "ORIGINAL POST-REV CONTENT" * 100
+        post_rev_file.write_text(original_post_rev, encoding="utf-8")
+
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+        fake_deepseek_chat(monkeypatch, content="优化后。")
+        _stub_review_scripts(monkeypatch)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+
+        # The post-review block must still be present in the
+        # response (the post-review ran against the in-memory
+        # optimized content during execution, even though the
+        # on-disk file was restored to the original afterwards).
+        assert "post_review" in data, (
+            f"missing post_review in response: keys={sorted(data.keys())!r}"
+        )
+        assert "pre_review" in data, (
+            f"missing pre_review in response: keys={sorted(data.keys())!r}"
+        )
+        # Sanity: the post_review block must have reasonable
+        # structured fields (the same shape the T3 tests assert).
+        post = data["post_review"]
+        for key in ("wc_ok", "compliance_ok", "forbidden_ok"):
+            assert key in post, (
+                f"post_review missing {key!r}: {sorted(post.keys())!r}"
+            )
+
+        # The CRITICAL assertion: the pre-existing post-rev file
+        # must STILL contain the original content (not the
+        # optimized content, and the file must not be deleted).
+        assert post_rev_file.exists(), (
+            f"post-rev file was deleted by optimize: {post_rev_file}"
+        )
+        actual = post_rev_file.read_text(encoding="utf-8")
+        assert actual == original_post_rev, (
+            f"post-rev file was clobbered by optimize. "
+            f"expected {len(original_post_rev)} bytes of original "
+            f"content, got {len(actual)} bytes. "
+            f"Original starts with: {original_post_rev[:50]!r}, "
+            f"actual starts with: {actual[:50]!r}"
+        )
+
+    # ─── T4.1: path-traversal rejection ───────────────────────────────
+    # The chapter_ref is used to build on-disk paths and to key DB
+    # rows. Accepting unsanitized user input would let an attacker
+    # write+delete files outside the manuscript dir (the NIT-2 fix
+    # in T4 made the impact worse: write+read+delete on the path).
+    # T4.1 adds a strict ``_normalize_chapter_ref`` validator and
+    # rejects anything that doesn't match ``vol-NN/ch-NNN`` with a
+    # 400 + ``{"success": false, "error": "invalid chapter_ref"}``.
+
+    def test_optimize_chapter_ref_rejects_path_traversal(
+            self, client, sample_novel, monkeypatch, tmp_path):
+        """M5.2 T4.1 regression: optimize-chapter rejects an invalid
+        chapter_ref with 400 + success=False. Uses an invalid shape
+        that the route can actually receive (the URL path component
+        can't include ``..`` because Werkzeug refuses path-traversal
+        by default, so we exercise the body-side validator with a
+        malformed ref that contains traversal characters).
+        """
+        # Pre-create a chapter file at the legitimate ref so the
+        # route would otherwise get past the 404 check.
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        (ms_dir / "ch-001.md").write_text("# 原文\n\n", encoding="utf-8")
+
+        # The validator must reject anything that doesn't match the
+        # ``vol-NN/ch-NNN`` shape. Two variants here:
+        #   * "vol-99/../../etc"  — contains ".." (path-traversal)
+        #   * "../../etc/passwd" — contains ".." and "/", wrong shape
+        # Both must be rejected with 400 + success=False.
+        for bad_ref in ("vol-99/../../etc", "../../etc/passwd", "vol-99-ch-001"):
+            res = client.post(
+                f"/api/novels/{sample_novel}/optimize-chapter",
+                json={
+                    "chapter_ref": bad_ref,
+                    "review_text": "r",
+                    "script_issues": "s",
+                },
+            )
+            assert res.status_code == 400, (
+                f"expected 400 for chapter_ref={bad_ref!r}, got "
+                f"{res.status_code}: {res.data!r}"
+            )
+            data = res.get_json()
+            assert data.get("success") is False, (
+                f"expected success=False for chapter_ref={bad_ref!r}, "
+                f"got {data!r}"
+            )
+            assert "error" in data and "chapter_ref" in data["error"].lower(), (
+                f"expected an error mentioning chapter_ref for "
+                f"chapter_ref={bad_ref!r}, got {data!r}"
+            )

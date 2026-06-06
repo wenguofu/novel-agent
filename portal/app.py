@@ -1731,6 +1731,51 @@ def api_generate_chapter(novel_name):
     })
 
 
+# Validates the chapter_ref path component so it can never escape the
+# manuscript dir via ``..`` or contain other path-traversal characters.
+# Allowed shape: ``vol-NN/ch-NNN`` (lowercase, digits, exactly one
+# ``/`` between the volume and chapter segments, and a ``-`` separating
+# the ``vol``/``ch`` prefix from the number). The post-rev flow derives
+# ``{chapter_ref}-post-rev{N}`` from the same value, so anything that
+# would let an attacker escape the manuscript dir at the chapter_ref
+# level is rejected here.
+_CHAPTER_REF_PATTERN = re.compile(r"^vol-\d{2}/ch-\d{3}$")
+
+
+def _normalize_chapter_ref(chapter_ref):
+    """Validate ``chapter_ref`` and return the canonical string.
+
+    Rejects:
+      * anything that doesn't match the canonical
+        ``vol-<NN>/ch-<NNN>`` shape (the existing on-disk convention)
+      * any path-traversal character (``..``, leading ``/``, embedded
+        ``\\``, etc.)
+      * non-alnum/hyphen characters (so we don't have to worry about
+        shell metacharacters, control chars, or unicode normalization
+        tricks in the path).
+
+    Raises ``ValueError("invalid chapter_ref: <reason>")`` on bad input
+    so callers can convert that to a 400 response.
+    """
+    if not isinstance(chapter_ref, str):
+        raise ValueError("invalid chapter_ref: must be a string")
+    if not chapter_ref:
+        raise ValueError("invalid chapter_ref: must be non-empty")
+    if chapter_ref != chapter_ref.strip():
+        raise ValueError("invalid chapter_ref: must not have leading/trailing whitespace")
+    if ".." in chapter_ref:
+        raise ValueError("invalid chapter_ref: '..' is not allowed")
+    if "\\" in chapter_ref:
+        raise ValueError("invalid chapter_ref: backslashes are not allowed")
+    if chapter_ref.startswith("/") or chapter_ref.endswith("/"):
+        raise ValueError("invalid chapter_ref: must not start or end with '/'")
+    if not _CHAPTER_REF_PATTERN.match(chapter_ref):
+        raise ValueError(
+            f"invalid chapter_ref: must match vol-NN/ch-NNN shape, got {chapter_ref!r}"
+        )
+    return chapter_ref
+
+
 def _run_review(novel_name, chapter_ref, ch_content):
     """Run the 3 review scripts + DeepSeek AI review; return a flat
     review-result dict. NO database writes, NO file writes.
@@ -2010,6 +2055,16 @@ def api_review_chapter(novel_name):
         # Normalize chapter_ref: vol-01-ch-001 -> vol-01/ch-001
         chapter_ref = chapter_ref.replace("-ch-", "/ch-")
 
+    # M5.2 T4.1: reject path-traversal characters in chapter_ref
+    # BEFORE any file IO. The chapter_ref is used to build on-disk
+    # paths (``manuscript/{chapter_ref}.md``) and to key DB rows, so
+    # accepting unsanitized user input would let an attacker write
+    # outside the manuscript dir.
+    try:
+        chapter_ref = _normalize_chapter_ref(chapter_ref)
+    except ValueError as e:
+        return jsonify({"success": False, "error": "invalid chapter_ref"}), 400
+
     ch_content = read_novel_file(novel_name, "manuscript", f"{chapter_ref}.md")
     if not ch_content:
         return jsonify({"success": False, "error": f"章节不存在: {chapter_ref}"}), 404
@@ -2041,11 +2096,22 @@ def api_optimize_chapter(novel_name):
     review_text = data.get("review_text", "")
     script_issues = data.get("script_issues", "")
 
+    # M5.2 T4.1: reject path-traversal characters in chapter_ref
+    # BEFORE any file IO. The post-rev NIT-2 fix below writes the
+    # optimized content to ``manuscript/{post_review_ref}.md`` (where
+    # ``post_review_ref = {chapter_ref}-post-rev{N}``) and cleans it
+    # up in a ``finally`` block — accepting unsanitized input would
+    # let an attacker write+delete files outside the manuscript dir.
+    try:
+        chapter_ref = _normalize_chapter_ref(chapter_ref)
+    except ValueError as e:
+        return jsonify({"success": False, "error": "invalid chapter_ref"}), 400
+
+    is_preview = request.args.get("preview", "").lower() in ("1", "true", "yes", "on")
+
     ch_content = read_novel_file(novel_name, "manuscript", f"{chapter_ref}.md")
     if not ch_content:
         return jsonify({"success": False, "error": f"章节不存在: {chapter_ref}"}), 404
-
-    is_preview = request.args.get("preview", "").lower() in ("1", "true", "yes", "on")
 
     system_prompt = f"""你是一个专业的小说编辑。请根据审稿意见优化以下章节。只修复问题，不要改变章节的核心内容和情节走向。
 
@@ -2155,8 +2221,20 @@ def api_optimize_chapter(novel_name):
         # then clean up in a ``finally`` so the manuscript dir
         # doesn't accumulate post-rev stale files. The cleanup runs
         # on both the success and the failure paths.
+        #
+        # M5.2 T4.1 NIT-2 followup: the NIT-2 fix above would
+        # overwrite and then delete a real file if one already exists
+        # at the post-rev path (e.g. the user manually saved a draft
+        # under that name, or a previous run leaked because cleanup
+        # crashed). Capture the pre-existence state and original
+        # content BEFORE the write, then restore the original in the
+        # ``finally`` so the real file is not clobbered.
         post_rev_path = os.path.join(
             get_novels_dir(), novel_name, "manuscript", f"{post_review_ref}.md"
+        )
+        pre_existed = os.path.exists(post_rev_path)
+        pre_existed_content = (
+            open(post_rev_path, encoding="utf-8").read() if pre_existed else None
         )
         try:
             write_novel_file(
@@ -2180,13 +2258,27 @@ def api_optimize_chapter(novel_name):
                     "pre_review": pre_result,
                 }), 200
         finally:
-            if os.path.exists(post_rev_path):
+            # Restore the original file if one existed; otherwise
+            # remove the temp file we wrote. Either way, the
+            # manuscript dir ends up in the same state it was in
+            # before the post-review ran.
+            if pre_existed:
                 try:
-                    os.remove(post_rev_path)
+                    Path(post_rev_path).write_text(
+                        pre_existed_content, encoding="utf-8"
+                    )
                 except OSError as e:
                     logging.warning(
-                        f"[optimize-chapter] failed to clean up post-rev file: {e}"
+                        f"[optimize-chapter] failed to restore post-rev file: {e}"
                     )
+            else:
+                if os.path.exists(post_rev_path):
+                    try:
+                        os.remove(post_rev_path)
+                    except OSError as e:
+                        logging.warning(
+                            f"[optimize-chapter] failed to clean up post-rev file: {e}"
+                        )
 
     response = {
         "success": True,
