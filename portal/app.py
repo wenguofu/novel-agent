@@ -37,8 +37,31 @@ from config import (
     DEFAULT_TOP_P,
 )
 
+# Structured error handling — exception hierarchy + Flask handlers
+# (defined in portal/errors.py). See harness plan item [5].
+from errors import (
+    register_error_handlers,
+    NovelAgentError,
+    APIError,
+    NotFoundError,
+    ValidationError,
+    DatabaseError,
+    ConfigError,
+    RateLimitError,
+    GateBlockedError,
+    safe_call,
+    safe_db_call,
+    safe_io_call,
+)
+
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
+
+# Register centralized error handlers (404 JSON, 405 JSON, 500 JSON,
+# NovelAgentError → structured). The SPA-fallback 404 handler below
+# overrides the 404 from this call so React client routes still
+# resolve to index.html.
+register_error_handlers(app)
 
 # ─── Load Hermes env vars at startup ─────────────────────────────────────
 _HERMES_ENV = os.path.expanduser("~/.hermes/.env")
@@ -70,15 +93,18 @@ def _init_usage_db():
     pass
 
 def log_token_usage(model, operation, prompt_tokens, completion_tokens, novel=""):
-    """Log token usage to usage.db. Non-blocking, errors are silent."""
+    """Log token usage to usage.db. Non-blocking; tracking errors are
+    logged but never raised so the main flow is not blocked."""
     try:
         total_tokens = prompt_tokens + completion_tokens
         cost = _estimate_cost(model, prompt_tokens, completion_tokens)
 
         from repository import get_repo
         get_repo().log_usage(model, operation, prompt_tokens, completion_tokens, novel=novel, cost=cost)
-    except Exception:
-        pass  # tracking failure must not block main flow
+    except Exception as e:
+        # Tracking failure must not block the main flow, but we no
+        # longer swallow silently — log so operators can see it.
+        logging.warning(f"[log_token_usage] tracking failed: {e}")
 
 
 def _estimate_cost(model, prompt_tokens, completion_tokens):
@@ -438,12 +464,16 @@ if _HAS_REACT_BUILD:
     def serve_react_assets(filename):
         return send_from_directory(_REACT_ASSETS, filename)
 
-    # SPA fallback: serve index.html for any non-API, non-asset route
+    # SPA fallback: serve index.html for any non-API, non-asset route.
+    # For /api/* paths, return a structured JSON error using the
+    # shape defined in errors.py so the SPA fallback does not lose
+    # the contract documented in tests/functional/_helpers.py
+    # (success=False on 404).
     @app.errorhandler(404)
     def spa_fallback(e):
         if not request.path.startswith("/api/"):
             return send_from_directory(_REACT_DIST, "index.html")
-        return jsonify({"error": "Not found"}), 404
+        return NotFoundError("接口不存在").to_response()
 
 @app.route("/")
 def index():
@@ -635,8 +665,8 @@ def api_delete_chapter(novel_name, ch_ref):
     try:
         with open(ch_path, "r", encoding="utf-8") as f:
             chapter_content = f.read()
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"[chapter-delete] failed to read {ch_path} for rollback: {e}")
 
     os.remove(ch_path)
 
@@ -648,8 +678,8 @@ def api_delete_chapter(novel_name, ch_ref):
         try:
             from repository import get_repo
             repo = get_repo()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"[chapter-delete] failed to obtain repo for rollback: {e}")
 
         if repo:
             # 1. Delete chapter from DB
@@ -759,8 +789,8 @@ def api_delete_chapter(novel_name, ch_ref):
             try:
                 from content_db import sync_novel_from_files
                 sync_novel_from_files(novel_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning(f"[chapter-delete] post-delete re-sync failed for {novel_name}: {e}")
 
     except Exception as e:
         rollback_log.append(f"回滚异常: {e}")
@@ -866,8 +896,8 @@ def api_gate_status(novel_name):
             for pkey, pval in gate_data.get("stages", {}).items():
                 if pkey in phases and pval == "completed":
                     phases[pkey]["status"] = pval
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"[stage-status] failed to parse {gate_file}: {e}")
 
     writing_ready = all(
         phases[p]["status"] == "completed" for p in WRITING_PREREQS
@@ -1482,8 +1512,8 @@ def api_ai_stream():
                                                     completion_tokens=stream_usage.get("completion_tokens", 0),
                                                     novel=novel,
                                                 )
-                                            except Exception:
-                                                pass
+                                            except Exception as e:
+                                                logging.warning(f"[stream-anthropic] usage log failed: {e}")
                                 except json.JSONDecodeError:
                                     continue
                     else:
@@ -1502,8 +1532,8 @@ def api_ai_stream():
                                                 completion_tokens=stream_usage.get("completion_tokens", 0),
                                                 novel=novel,
                                             )
-                                        except Exception:
-                                            pass
+                                        except Exception as e:
+                                            logging.warning(f"[stream-openai] usage log failed: {e}")
                                     break
                                 try:
                                     chunk = json.loads(chunk_str)
@@ -2616,8 +2646,9 @@ def api_styles():
                 "prompt": s.get("prompt", ""),
                 "distilled": False,
             })
-    except Exception:
-        pass
+    except Exception as e:
+        # DB presets unavailable — fall back to distilled fingerprints only.
+        logging.warning(f"[api_styles] repo preset load failed: {e}")
 
     # Add distilled style fingerprints from agent-system/styles/
     import glob as _glob
@@ -2637,8 +2668,9 @@ def api_styles():
                     "dialogue_ratio": data.get("dialogue_ratio", 0),
                     "sentence_length_mean": data.get("sentence_length_mean", 0),
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                # Skip this style file but keep loading the rest.
+                logging.warning(f"[api_styles] failed to load style {fpath}: {e}")
 
     return jsonify({"success": True, "styles": styles})
 
