@@ -1,0 +1,47 @@
+{
+  "author": "老鹰吃小鸡",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 16,
+  "sentence_length_std": 7,
+  "paragraph_length_mean": 4,
+  "dialogue_ratio": 0.22,
+  "transition_density": 4,
+  "modal_density": 7,
+  "metaphor_density": 3,
+  "vocabulary_richness": 0.14,
+  "sentence_length_histogram": {
+    "0-10": 25,
+    "11-20": 45,
+    "21-30": 20,
+    "31+": 10
+  },
+  "transitions": {
+    "系统": 30,
+    "升级": 25,
+    "任务": 20,
+    "解锁": 15,
+    "奖励": 12
+  },
+  "sentence_openers": [
+    {
+      "opener": "叮",
+      "frequency": 0.15
+    },
+    {
+      "opener": "他",
+      "frequency": 0.22
+    },
+    {
+      "opener": "系统",
+      "frequency": 0.1
+    }
+  ],
+  "excerpts": [
+    "叮！恭喜宿主完成隐藏任务，获得SSS级奖励。",
+    "他的面板上浮现出一行新的数值——力量：999+。",
+    "这一拳下去，整个副本都在震。"
+  ],
+  "style_notes": "系统流、升级爽快、节奏极快、数据面板、打怪升级、日更万字"
+}

@@ -1,0 +1,47 @@
+{
+  "author": "爱潜水的乌贼",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 23,
+  "sentence_length_std": 11,
+  "paragraph_length_mean": 4,
+  "dialogue_ratio": 0.28,
+  "transition_density": 5,
+  "modal_density": 5,
+  "metaphor_density": 7,
+  "vocabulary_richness": 0.2,
+  "sentence_length_histogram": {
+    "0-10": 12,
+    "11-20": 35,
+    "21-30": 33,
+    "31+": 20
+  },
+  "transitions": {
+    "然而": 25,
+    "最终": 20,
+    "似乎": 18,
+    "隐约": 15,
+    "仿佛": 12
+  },
+  "sentence_openers": [
+    {
+      "opener": "他",
+      "frequency": 0.2
+    },
+    {
+      "opener": "这",
+      "frequency": 0.1
+    },
+    {
+      "opener": "隐约",
+      "frequency": 0.05
+    }
+  ],
+  "excerpts": [
+    "他隐约感觉到，那个隐藏在迷雾中的真相，正在一点点浮现。",
+    "仪式在午夜开始，烛火摇曳，墙上的影子像在跳舞。",
+    "最终他还是选择了那条路，尽管前方是深渊。"
+  ],
+  "style_notes": "克苏鲁风、悬疑质感、世界观严谨、力量体系精密、氛围渲染强"
+}

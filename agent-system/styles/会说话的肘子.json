@@ -1,0 +1,47 @@
+{
+  "author": "会说话的肘子",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 17,
+  "sentence_length_std": 8,
+  "paragraph_length_mean": 3,
+  "dialogue_ratio": 0.38,
+  "transition_density": 4,
+  "modal_density": 12,
+  "metaphor_density": 4,
+  "vocabulary_richness": 0.15,
+  "sentence_length_histogram": {
+    "0-10": 22,
+    "11-20": 42,
+    "21-30": 22,
+    "31+": 14
+  },
+  "transitions": {
+    "卧槽": 20,
+    "结果": 18,
+    "然后": 16,
+    "突然": 14,
+    "我靠": 10
+  },
+  "sentence_openers": [
+    {
+      "opener": "我",
+      "frequency": 0.22
+    },
+    {
+      "opener": "他",
+      "frequency": 0.18
+    },
+    {
+      "opener": "这",
+      "frequency": 0.1
+    }
+  ],
+  "excerpts": [
+    "卧槽，这剧本不对啊！说好的新手村呢？",
+    "他以为自己在第二层，其实他在第五层，而我已经在大气层。",
+    "世界上最远的距离，不是生与死，而是你在副本里，我在副本外。"
+  ],
+  "style_notes": "第一人称、吐槽风、幽默感强、对话松弛自然、现代感、节奏快"
+}

@@ -1,0 +1,47 @@
+{
+  "author": "猫腻",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 25,
+  "sentence_length_std": 14,
+  "paragraph_length_mean": 3,
+  "dialogue_ratio": 0.35,
+  "transition_density": 5,
+  "modal_density": 4,
+  "metaphor_density": 8,
+  "vocabulary_richness": 0.22,
+  "sentence_length_histogram": {
+    "0-10": 10,
+    "11-20": 30,
+    "21-30": 35,
+    "31+": 25
+  },
+  "transitions": {
+    "然而": 30,
+    "却": 28,
+    "或许": 20,
+    "原来": 18,
+    "终究": 15
+  },
+  "sentence_openers": [
+    {
+      "opener": "他",
+      "frequency": 0.2
+    },
+    {
+      "opener": "这是",
+      "frequency": 0.12
+    },
+    {
+      "opener": "或许",
+      "frequency": 0.08
+    }
+  ],
+  "excerpts": [
+    "这世上有很多事情，你以为明天一定可以再继续做的。",
+    "他只是笑了笑，没有说话，那笑容里有种说不清的东西。",
+    "原来，这就是人间。"
+  ],
+  "style_notes": "文青风、哲思性强、句子优美、对话有深度、情感细腻、慢热"
+}

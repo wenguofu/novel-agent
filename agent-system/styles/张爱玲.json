@@ -1,0 +1,103 @@
+{
+  "author": "张爱玲",
+  "source": "张爱玲 代表作片段",
+  "sample_size_chars": 256,
+  "sample_count": 1,
+  "sentence_length_mean": 38.5,
+  "sentence_length_std": 10.70436048222094,
+  "sentence_length_histogram": {
+    "1-10": 0,
+    "11-20": 0,
+    "21-30": 1,
+    "31-50": 4,
+    "51-80": 1,
+    "81+": 0
+  },
+  "paragraph_length_mean": 231.0,
+  "sentences_per_paragraph": 6.0,
+  "unique_word_ratio": 0.7266811279826464,
+  "hapax_ratio": 0.8507462686567164,
+  "top_20_words": [
+    {
+      "word": "三十",
+      "count": 5
+    },
+    {
+      "word": "十年",
+      "count": 5
+    },
+    {
+      "word": "前的",
+      "count": 5
+    },
+    {
+      "word": "月亮",
+      "count": 5
+    },
+    {
+      "word": "的月",
+      "count": 5
+    },
+    {
+      "word": "年前",
+      "count": 4
+    }
+  ],
+  "dialogue_ratio": 0.0,
+  "action_ratio": 0.013,
+  "description_ratio": 0.026,
+  "transitions": {
+    "然而": 1
+  },
+  "transition_density": 4.33,
+  "modal_particles": {
+    "了": 1,
+    "的": 19
+  },
+  "modal_density": 86.58,
+  "sentence_openers": [
+    {
+      "opener": "三十",
+      "count": 1
+    },
+    {
+      "opener": "年轻",
+      "count": 1
+    },
+    {
+      "opener": "老年",
+      "count": 1
+    },
+    {
+      "opener": "她睁",
+      "count": 1
+    },
+    {
+      "opener": "她摸",
+      "count": 1
+    },
+    {
+      "opener": "她自",
+      "count": 1
+    }
+  ],
+  "adjective_density": 25.97,
+  "adverb_density": 0.0,
+  "emotion_word_density": 0.0,
+  "punctuation_profile": {
+    "comma": 3.896103896103896,
+    "period": 2.5974025974025974,
+    "semicolon": 0.4329004329004329,
+    "colon": 0.0,
+    "question": 0.0,
+    "exclamation": 0.0,
+    "ellipsis": 0.4329004329004329
+  },
+  "metaphor_density": 12.99,
+  "parallelism_density": 4.33,
+  "excerpts": [
+    "三十年前的上海，一个有月亮的晚上……我们也许没赶上看见三十年前的月亮",
+    "老年人回忆中的三十年前的月亮是欢愉的，比眼前的月亮大、圆、白；然而隔着三十年的辛苦路往回看，再好的月色也不免带点凄凉",
+    "她摸索着腕上的翠玉镯子，徐徐将那镯子顺着骨瘦如柴的手臂往上推，一直推到腋下"
+  ]
+}

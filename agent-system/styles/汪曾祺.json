@@ -1,0 +1,100 @@
+{
+  "author": "汪曾祺",
+  "source": "汪曾祺 代表作片段",
+  "sample_size_chars": 246,
+  "sample_count": 1,
+  "sentence_length_mean": 16.23076923076923,
+  "sentence_length_std": 7.391823405252446,
+  "sentence_length_histogram": {
+    "1-10": 5,
+    "11-20": 4,
+    "21-30": 3,
+    "31-50": 1,
+    "51-80": 0,
+    "81+": 0
+  },
+  "paragraph_length_mean": 211.0,
+  "sentences_per_paragraph": 13.0,
+  "unique_word_ratio": 0.7220902612826603,
+  "hapax_ratio": 0.8092105263157895,
+  "top_20_words": [],
+  "dialogue_ratio": 0.0,
+  "action_ratio": 0.047,
+  "description_ratio": 0.019,
+  "transitions": {
+    "可是": 2,
+    "因为": 3
+  },
+  "transition_density": 23.7,
+  "modal_particles": {
+    "啦": 1,
+    "了": 2,
+    "的": 7,
+    "地": 3,
+    "得": 2
+  },
+  "modal_density": 71.09,
+  "sentence_openers": [
+    {
+      "opener": "这个",
+      "count": 2
+    },
+    {
+      "opener": "明海",
+      "count": 1
+    },
+    {
+      "opener": "他是",
+      "count": 1
+    },
+    {
+      "opener": "赵，",
+      "count": 1
+    },
+    {
+      "opener": "叫做",
+      "count": 1
+    },
+    {
+      "opener": "一出",
+      "count": 1
+    },
+    {
+      "opener": "庵，",
+      "count": 1
+    },
+    {
+      "opener": "庵叫",
+      "count": 1
+    },
+    {
+      "opener": "连庵",
+      "count": 1
+    },
+    {
+      "opener": "他们",
+      "count": 1
+    }
+  ],
+  "adjective_density": 18.96,
+  "adverb_density": 14.22,
+  "emotion_word_density": 0.0,
+  "punctuation_profile": {
+    "comma": 8.530805687203792,
+    "period": 6.161137440758294,
+    "semicolon": 0.0,
+    "colon": 0.0,
+    "question": 0.0,
+    "exclamation": 0.0,
+    "ellipsis": 0.0
+  },
+  "metaphor_density": 0.0,
+  "parallelism_density": 4.74,
+  "excerpts": [
+    "叫做庄，可是人家住得很分散，这里两三家，那里两三家",
+    "一出门，远远可以看到，走起来得走一会，因为没有大路，都是弯弯曲曲的田埂",
+    "这个庵里无所谓清规，连这两个字也没人提起",
+    "把大殿上吃饭的方桌往门口一搭，斜放着，就是牌桌",
+    "桌子一放好，仁山就从他的方丈里把筹码拿出来，哗啦一声倒在桌上"
+  ]
+}

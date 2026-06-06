@@ -1,0 +1,96 @@
+{
+  "author": "海明威",
+  "source": "海明威 代表作片段",
+  "sample_size_chars": 225,
+  "sample_count": 1,
+  "sentence_length_mean": 33.5,
+  "sentence_length_std": 17.046505018135925,
+  "sentence_length_histogram": {
+    "1-10": 0,
+    "11-20": 2,
+    "21-30": 0,
+    "31-50": 3,
+    "51-80": 1,
+    "81+": 0
+  },
+  "paragraph_length_mean": 201.0,
+  "sentences_per_paragraph": 6.0,
+  "unique_word_ratio": 0.773067331670823,
+  "hapax_ratio": 0.8612903225806452,
+  "top_20_words": [
+    {
+      "word": "一条",
+      "count": 4
+    },
+    {
+      "word": "老人",
+      "count": 3
+    },
+    {
+      "word": "孩子",
+      "count": 3
+    }
+  ],
+  "dialogue_ratio": 0.013,
+  "action_ratio": 0.025,
+  "description_ratio": 0.02,
+  "transitions": {
+    "可是": 1,
+    "于是": 1,
+    "另外": 1
+  },
+  "transition_density": 14.93,
+  "modal_particles": {
+    "了": 7,
+    "的": 9,
+    "地": 1,
+    "得": 1
+  },
+  "modal_density": 89.55,
+  "sentence_openers": [
+    {
+      "opener": "他是",
+      "count": 1
+    },
+    {
+      "opener": "头四",
+      "count": 1
+    },
+    {
+      "opener": "可是",
+      "count": 1
+    },
+    {
+      "opener": "老人",
+      "count": 1
+    },
+    {
+      "opener": "腮帮",
+      "count": 1
+    },
+    {
+      "opener": "褐斑",
+      "count": 1
+    }
+  ],
+  "adjective_density": 19.9,
+  "adverb_density": 4.98,
+  "emotion_word_density": 0.0,
+  "punctuation_profile": {
+    "comma": 6.467661691542288,
+    "period": 2.9850746268656714,
+    "semicolon": 0.0,
+    "colon": 0.0,
+    "question": 0.0,
+    "exclamation": 0.0,
+    "ellipsis": 0.0
+  },
+  "metaphor_density": 4.98,
+  "parallelism_density": 9.95,
+  "excerpts": [
+    "他是个独自在湾流中一条小船上钓鱼的老人，至今已去了八十四天，一条鱼也没逮住",
+    "可是，过了四十天还没捉到一条鱼，孩子的父母对他说，老人如今准是十足地\"倒了血霉\"，于是孩子听从了他们的吩咐，上了另外一条船，头一个礼拜就捕到了三条好鱼",
+    "腮帮上有些褐斑，那是太阳在热带海面上反射的光线所引起的良性皮肤癌变",
+    "褐斑从他脸的两侧一直蔓延下去，他的双手常用绳索拉大鱼，留下了刻得很深的伤疤"
+  ]
+}

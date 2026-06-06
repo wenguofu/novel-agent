@@ -1,0 +1,47 @@
+{
+  "author": "番茄",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 15,
+  "sentence_length_std": 8,
+  "paragraph_length_mean": 3,
+  "dialogue_ratio": 0.2,
+  "transition_density": 3,
+  "modal_density": 8,
+  "metaphor_density": 2,
+  "vocabulary_richness": 0.12,
+  "sentence_length_histogram": {
+    "0-10": 30,
+    "11-20": 45,
+    "21-30": 15,
+    "31+": 10
+  },
+  "transitions": {
+    "突然": 25,
+    "顿时": 20,
+    "只见": 18,
+    "立刻": 15,
+    "瞬间": 12
+  },
+  "sentence_openers": [
+    {
+      "opener": "他",
+      "frequency": 0.25
+    },
+    {
+      "opener": "只见",
+      "frequency": 0.1
+    },
+    {
+      "opener": "轰",
+      "frequency": 0.08
+    }
+  ],
+  "excerpts": [
+    "他一步踏出，天地变色，日月无光。",
+    "只见那少年缓缓抬头，眼中闪过一丝金色光芒。",
+    "轰！整个大殿都在这一拳之下颤抖。"
+  ],
+  "style_notes": "升级流、节奏快、短句多、打斗描写密集、爽点密集、主角杀伐果断"
+}

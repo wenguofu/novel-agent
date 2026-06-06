@@ -1,0 +1,87 @@
+{
+  "author": "古龙",
+  "source": "古龙 代表作片段",
+  "sample_size_chars": 196,
+  "sample_count": 1,
+  "sentence_length_mean": 33.6,
+  "sentence_length_std": 25.49195951667898,
+  "sentence_length_histogram": {
+    "1-10": 0,
+    "11-20": 3,
+    "21-30": 0,
+    "31-50": 1,
+    "51-80": 0,
+    "81+": 1
+  },
+  "paragraph_length_mean": 168.0,
+  "sentences_per_paragraph": 5.0,
+  "unique_word_ratio": 0.8388059701492537,
+  "hapax_ratio": 0.8718861209964412,
+  "top_20_words": [
+    {
+      "word": "寂寞",
+      "count": 4
+    },
+    {
+      "word": "雪将",
+      "count": 2
+    }
+  ],
+  "dialogue_ratio": 0.0,
+  "action_ratio": 0.012,
+  "description_ratio": 0.03,
+  "transitions": {
+    "却": 2,
+    "虽": 1,
+    "虽然": 1,
+    "而且": 1
+  },
+  "transition_density": 29.76,
+  "modal_particles": {
+    "了": 3,
+    "的": 5,
+    "地": 3,
+    "得": 2
+  },
+  "modal_density": 77.38,
+  "sentence_openers": [
+    {
+      "opener": "冷风",
+      "count": 1
+    },
+    {
+      "opener": "万里",
+      "count": 1
+    },
+    {
+      "opener": "雪将",
+      "count": 1
+    },
+    {
+      "opener": "李寻",
+      "count": 1
+    },
+    {
+      "opener": "人生",
+      "count": 1
+    }
+  ],
+  "adjective_density": 29.76,
+  "adverb_density": 17.86,
+  "emotion_word_density": 23.81,
+  "punctuation_profile": {
+    "comma": 10.119047619047619,
+    "period": 2.976190476190476,
+    "semicolon": 0.0,
+    "colon": 0.0,
+    "question": 0.0,
+    "exclamation": 0.0,
+    "ellipsis": 0.0
+  },
+  "metaphor_density": 5.95,
+  "parallelism_density": 11.9,
+  "excerpts": [
+    "雪将住，风未定，一辆马车自北而来，滚动的车轮辗碎了地上的冰雪，却辗不碎天地间的寂寞",
+    "李寻欢打了个呵欠，将两条腿在柔软的貂皮上尽量伸直，车厢里虽然很温暖很舒服，但这段旅途实在太长，太寂寞，他不但已觉得疲倦，而且觉得很厌恶，他平生最厌恶的就是寂寞，却偏偏时常与寂寞为伍"
+  ]
+}

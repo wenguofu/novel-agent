@@ -1,0 +1,103 @@
+{
+  "author": "沈从文",
+  "source": "沈从文 代表作片段",
+  "sample_size_chars": 290,
+  "sample_count": 1,
+  "sentence_length_mean": 25.2,
+  "sentence_length_std": 9.795917517006766,
+  "sentence_length_histogram": {
+    "1-10": 0,
+    "11-20": 5,
+    "21-30": 2,
+    "31-50": 3,
+    "51-80": 0,
+    "81+": 0
+  },
+  "paragraph_length_mean": 252.0,
+  "sentences_per_paragraph": 10.0,
+  "unique_word_ratio": 0.7773359840954275,
+  "hapax_ratio": 0.8491048593350383,
+  "top_20_words": [
+    {
+      "word": "一个",
+      "count": 3
+    },
+    {
+      "word": "小溪",
+      "count": 3
+    }
+  ],
+  "dialogue_ratio": 0.01,
+  "action_ratio": 0.004,
+  "description_ratio": 0.071,
+  "transitions": {
+    "却": 1,
+    "故": 3
+  },
+  "transition_density": 15.87,
+  "modal_particles": {
+    "了": 4,
+    "的": 5,
+    "地": 1,
+    "得": 1
+  },
+  "modal_density": 43.65,
+  "sentence_openers": [
+    {
+      "opener": "小溪",
+      "count": 2
+    },
+    {
+      "opener": "由四",
+      "count": 1
+    },
+    {
+      "opener": "这官",
+      "count": 1
+    },
+    {
+      "opener": "这人",
+      "count": 1
+    },
+    {
+      "opener": "溪流",
+      "count": 1
+    },
+    {
+      "opener": "静静",
+      "count": 1
+    },
+    {
+      "opener": "翠翠",
+      "count": 1
+    },
+    {
+      "opener": "自然",
+      "count": 1
+    },
+    {
+      "opener": "人又",
+      "count": 1
+    }
+  ],
+  "adjective_density": 71.43,
+  "adverb_density": 3.97,
+  "emotion_word_density": 3.97,
+  "punctuation_profile": {
+    "comma": 8.73015873015873,
+    "period": 3.968253968253968,
+    "semicolon": 0.0,
+    "colon": 0.0,
+    "question": 0.0,
+    "exclamation": 0.0,
+    "ellipsis": 0.0
+  },
+  "metaphor_density": 19.84,
+  "parallelism_density": 11.9,
+  "excerpts": [
+    "这官路将近湘西边境到了一个地方名为\"茶峒\"的小山城时，有一小溪，溪边有座白色小塔，塔下住了一户单独的人家",
+    "溪流如弓背，山路如弓弦，故远近有了小小差异",
+    "翠翠在风日里长养着，故把皮肤变得黑黑的，触目为青山绿水，故眸子清明如水晶",
+    "人又那么乖，如山头黄麂一样，从不想到残忍事情，从不发愁，从不动气"
+  ]
+}

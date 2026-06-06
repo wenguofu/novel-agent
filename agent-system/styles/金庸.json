@@ -1,0 +1,87 @@
+{
+  "author": "金庸",
+  "source": "金庸 代表作片段",
+  "sample_size_chars": 232,
+  "sample_count": 1,
+  "sentence_length_mean": 25.625,
+  "sentence_length_std": 8.305683295190107,
+  "sentence_length_histogram": {
+    "1-10": 0,
+    "11-20": 2,
+    "21-30": 4,
+    "31-50": 2,
+    "51-80": 0,
+    "81+": 0
+  },
+  "paragraph_length_mean": 205.0,
+  "sentences_per_paragraph": 8.0,
+  "unique_word_ratio": 0.8606356968215159,
+  "hapax_ratio": 0.8920454545454546,
+  "top_20_words": [],
+  "dialogue_ratio": 0.078,
+  "action_ratio": 0.01,
+  "description_ratio": 0.044,
+  "transitions": {
+    "故": 1
+  },
+  "transition_density": 4.88,
+  "modal_particles": {
+    "了": 3,
+    "的": 4,
+    "得": 3
+  },
+  "modal_density": 48.78,
+  "sentence_openers": [
+    {
+      "opener": "钱塘",
+      "count": 1
+    },
+    {
+      "opener": "江畔",
+      "count": 1
+    },
+    {
+      "opener": "村前",
+      "count": 1
+    },
+    {
+      "opener": "两株",
+      "count": 1
+    },
+    {
+      "opener": "那说",
+      "count": 1
+    },
+    {
+      "opener": "只听",
+      "count": 1
+    },
+    {
+      "opener": "\"小",
+      "count": 1
+    },
+    {
+      "opener": "几处",
+      "count": 1
+    }
+  ],
+  "adjective_density": 43.9,
+  "adverb_density": 0.0,
+  "emotion_word_density": 0.0,
+  "punctuation_profile": {
+    "comma": 6.341463414634147,
+    "period": 3.414634146341464,
+    "semicolon": 0.0,
+    "colon": 0.4878048780487805,
+    "question": 0.0,
+    "exclamation": 0.0,
+    "ellipsis": 0.0
+  },
+  "metaphor_density": 4.88,
+  "parallelism_density": 4.88,
+  "excerpts": [
+    "钱塘江浩浩江水，日日夜夜无穷无休的从临安牛家村边绕过，东流入海",
+    "村前村后的野草刚起始变黄，一抹斜阳映照之下，更增了几分萧索",
+    "那说话人五十来岁年纪，一件青布长袍早洗得褪成了蓝灰色"
+  ]
+}

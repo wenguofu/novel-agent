@@ -1,0 +1,105 @@
+{
+  "author": "鲁迅",
+  "source": "鲁迅 代表作片段",
+  "sample_size_chars": 335,
+  "sample_count": 1,
+  "sentence_length_mean": 20.846153846153847,
+  "sentence_length_std": 12.960568327081447,
+  "sentence_length_histogram": {
+    "1-10": 3,
+    "11-20": 4,
+    "21-30": 2,
+    "31-50": 4,
+    "51-80": 0,
+    "81+": 0
+  },
+  "paragraph_length_mean": 271.0,
+  "sentences_per_paragraph": 13.0,
+  "unique_word_ratio": 0.7467652495378928,
+  "hapax_ratio": 0.7995049504950495,
+  "top_20_words": [
+    {
+      "word": "没有",
+      "count": 4
+    }
+  ],
+  "dialogue_ratio": 0.036,
+  "action_ratio": 0.011,
+  "description_ratio": 0.011,
+  "transitions": {
+    "然而": 2,
+    "却": 1,
+    "所以": 1,
+    "还有": 1
+  },
+  "transition_density": 18.45,
+  "modal_particles": {
+    "呢": 1,
+    "了": 5,
+    "的": 10,
+    "得": 1
+  },
+  "modal_density": 62.73,
+  "sentence_openers": [
+    {
+      "opener": "今天",
+      "count": 1
+    },
+    {
+      "opener": "我不",
+      "count": 1
+    },
+    {
+      "opener": "才知",
+      "count": 1
+    },
+    {
+      "opener": "不然",
+      "count": 1
+    },
+    {
+      "opener": "我怕",
+      "count": 1
+    },
+    {
+      "opener": "我翻",
+      "count": 1
+    },
+    {
+      "opener": "我横",
+      "count": 1
+    },
+    {
+      "opener": "我也",
+      "count": 1
+    },
+    {
+      "opener": "没有",
+      "count": 1
+    },
+    {
+      "opener": "救救",
+      "count": 1
+    }
+  ],
+  "adjective_density": 11.07,
+  "adverb_density": 0.0,
+  "emotion_word_density": 0.0,
+  "punctuation_profile": {
+    "comma": 9.59409594095941,
+    "period": 2.952029520295203,
+    "semicolon": 1.4760147601476015,
+    "colon": 0.0,
+    "question": 0.7380073800738007,
+    "exclamation": 0.7380073800738007,
+    "ellipsis": 0.36900369003690037
+  },
+  "metaphor_density": 0.0,
+  "parallelism_density": 11.07,
+  "excerpts": [
+    "我不见他，已是三十多年；今天见了，精神分外爽快",
+    "我翻开历史一查，这历史没有年代，歪歪斜斜的每叶上都写着\"仁义道德\"几个字",
+    "阿Q没有家，住在未庄的土谷祠里；也没有固定的职业，只给人家做短工，割麦便割麦，舂米便舂米，撑船便撑船",
+    "所以，人们忙碌的时候，也还记起阿Q来，然而记起的是做工，并不是\"行状\"；一闲空，连阿Q都早忘却，更不必说\"行状\"了"
+  ]
+}

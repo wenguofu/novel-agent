@@ -1,0 +1,91 @@
+{
+  "author": "余华",
+  "source": "余华 代表作片段",
+  "sample_size_chars": 197,
+  "sample_count": 1,
+  "sentence_length_mean": 29.5,
+  "sentence_length_std": 6.800735254367722,
+  "sentence_length_histogram": {
+    "1-10": 0,
+    "11-20": 1,
+    "21-30": 1,
+    "31-50": 4,
+    "51-80": 0,
+    "81+": 0
+  },
+  "paragraph_length_mean": 177.0,
+  "sentences_per_paragraph": 6.0,
+  "unique_word_ratio": 0.7762039660056658,
+  "hapax_ratio": 0.8284671532846716,
+  "top_20_words": [
+    {
+      "word": "讲述",
+      "count": 3
+    },
+    {
+      "word": "夏天",
+      "count": 2
+    }
+  ],
+  "dialogue_ratio": 0.0,
+  "action_ratio": 0.028,
+  "description_ratio": 0.0,
+  "transitions": {
+    "后来": 1
+  },
+  "transition_density": 5.65,
+  "modal_particles": {
+    "了": 5,
+    "的": 10,
+    "地": 1,
+    "得": 1
+  },
+  "modal_density": 96.05,
+  "sentence_openers": [
+    {
+      "opener": "我比",
+      "count": 1
+    },
+    {
+      "opener": "那一",
+      "count": 1
+    },
+    {
+      "opener": "我遇",
+      "count": 1
+    },
+    {
+      "opener": "这位",
+      "count": 1
+    },
+    {
+      "opener": "他喜",
+      "count": 1
+    },
+    {
+      "opener": "他的",
+      "count": 1
+    }
+  ],
+  "adjective_density": 0.0,
+  "adverb_density": 5.65,
+  "emotion_word_density": 22.6,
+  "punctuation_profile": {
+    "comma": 5.649717514124294,
+    "period": 3.389830508474576,
+    "semicolon": 0.0,
+    "colon": 0.0,
+    "question": 0.0,
+    "exclamation": 0.0,
+    "ellipsis": 0.0
+  },
+  "metaphor_density": 22.6,
+  "parallelism_density": 16.95,
+  "excerpts": [
+    "我比现在年轻十岁的时候，获得了一个游手好闲的职业，去乡间收集民间歌谣",
+    "那一年的整个夏天，我如同一只乱飞的麻雀，游荡在知了和阳光充斥的村舍田野",
+    "我遇到那位名叫福贵的老人时，是夏天刚刚来到的季节",
+    "这位老人后来和我一起坐在了那棵茂盛的树下，在那个充满阳光的下午，他向我讲述了自己",
+    "他喜欢回想过去，喜欢讲述自己，似乎这样一来，他就可以一次一次地重度此生了"
+  ]
+}

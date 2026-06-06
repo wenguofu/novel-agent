@@ -1,0 +1,47 @@
+{
+  "author": "辰东",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 22,
+  "sentence_length_std": 12,
+  "paragraph_length_mean": 4,
+  "dialogue_ratio": 0.18,
+  "transition_density": 4,
+  "modal_density": 6,
+  "metaphor_density": 5,
+  "vocabulary_richness": 0.18,
+  "sentence_length_histogram": {
+    "0-10": 15,
+    "11-20": 35,
+    "21-30": 30,
+    "31+": 20
+  },
+  "transitions": {
+    "万古": 20,
+    "洪荒": 18,
+    "逆天": 15,
+    "禁忌": 12,
+    "轮回": 10
+  },
+  "sentence_openers": [
+    {
+      "opener": "在这",
+      "frequency": 0.15
+    },
+    {
+      "opener": "上古",
+      "frequency": 0.1
+    },
+    {
+      "opener": "那",
+      "frequency": 0.12
+    }
+  ],
+  "excerpts": [
+    "在那遥远的太古时代，诸神并立，万族争锋。",
+    "这是一条染血的路，一步一叩首，亦无悔。",
+    "岁月如刀斩天骄，长生路上叹妖娆。"
+  ],
+  "style_notes": "宏大世界观、史诗感、语句偏长、神话意象密集、悲壮苍凉"
+}

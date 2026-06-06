@@ -1,0 +1,47 @@
+{
+  "author": "烽火戏诸侯",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 20,
+  "sentence_length_std": 10,
+  "paragraph_length_mean": 3,
+  "dialogue_ratio": 0.3,
+  "transition_density": 6,
+  "modal_density": 5,
+  "metaphor_density": 10,
+  "vocabulary_richness": 0.25,
+  "sentence_length_histogram": {
+    "0-10": 15,
+    "11-20": 40,
+    "21-30": 30,
+    "31+": 15
+  },
+  "transitions": {
+    "原来": 25,
+    "却": 22,
+    "大概": 18,
+    "终究": 15,
+    "其实": 12
+  },
+  "sentence_openers": [
+    {
+      "opener": "那",
+      "frequency": 0.18
+    },
+    {
+      "opener": "他曾",
+      "frequency": 0.1
+    },
+    {
+      "opener": "少年",
+      "frequency": 0.08
+    }
+  ],
+  "excerpts": [
+    "天下有一石风流，他独占八斗。",
+    "少年挎刀出北凉，身后是漫天的雪。",
+    "书上说，天下没有不散的筵席。不要怕，书上还说了，人生何处不相逢。"
+  ],
+  "style_notes": "江湖气、文人风骨、旁白精妙、典故密集、情感克制、金句频出"
+}

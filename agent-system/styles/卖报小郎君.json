@@ -1,0 +1,47 @@
+{
+  "author": "卖报小郎君",
+  "source": "网文作家风格指纹（基于公开作品特征分析）",
+  "sample_size_chars": 0,
+  "sample_count": 0,
+  "sentence_length_mean": 18,
+  "sentence_length_std": 9,
+  "paragraph_length_min": 2,
+  "dialogue_ratio": 0.4,
+  "transition_density": 5,
+  "modal_density": 10,
+  "metaphor_density": 6,
+  "vocabulary_richness": 0.16,
+  "sentence_length_histogram": {
+    "0-10": 20,
+    "11-20": 40,
+    "21-30": 25,
+    "31+": 15
+  },
+  "transitions": {
+    "忽然": 22,
+    "然后": 20,
+    "这时候": 18,
+    "结果": 15,
+    "没想到": 12
+  },
+  "sentence_openers": [
+    {
+      "opener": "他",
+      "frequency": 0.2
+    },
+    {
+      "opener": "忽然",
+      "frequency": 0.08
+    },
+    {
+      "opener": "这",
+      "frequency": 0.1
+    }
+  ],
+  "excerpts": [
+    "他忽然觉得事情有点不对劲，这种感觉很微妙，像第六感在作祟。",
+    "谁也没想到，那个不起眼的青年，竟然是隐藏的大佬。",
+    "她嘴角微扬，眼里有光，那是一种志在必得的笃定。"
+  ],
+  "style_notes": "轻松幽默、对话生动、节奏明快、悬念设置巧妙、反转自然"
+}
