@@ -15,10 +15,10 @@
 **Spec reference:** [docs/superpowers/specs/2026-06-03-tdd-system-func-spec-design.md §M3](../specs/2026-06-03-tdd-system-func-spec-design.md)
 
 **Pre-flight checklist:**
-- [ ] Working tree clean (152/152 tests passing — verified at plan start)
-- [ ] `python3 scripts/verify_spec.py` → 5/5 OK (82 endpoints, 25/25 Manual Notes)
-- [ ] On `main` branch (user pre-authorized "main 直跑" for M1/M2; same applies here)
-- [ ] Endpoint count: **82 unique routes** (was 83 before the 2026-06-04 dedupe of two `index()` functions in `portal/app.py` — see commit `00dac4a`).
+- [x] Working tree clean (152/152 tests passing — verified at plan start)
+- [x] `python3 scripts/verify_spec.py` → 5/5 OK (82 endpoints, 25/25 Manual Notes)
+- [x] On `main` branch (user pre-authorized "main 直跑" for M1/M2; same applies here)
+- [x] Endpoint count: **82 unique routes** (was 83 before the 2026-06-04 dedupe of two `index()` functions in `portal/app.py` — see commit `00dac4a`).
 
 ---
 
@@ -88,7 +88,7 @@ novel-agent/
 **Files:**
 - Modify: `requirements.txt:1-3` (add new deps at the end)
 
-- [ ] **Step 1: Append deps to requirements.txt**
+- [x] **Step 1: Append deps to requirements.txt**
 
 Add these two lines at the end of `requirements.txt`:
 
@@ -98,7 +98,7 @@ pre-commit>=3.5
 pytest-cov>=4.1
 ```
 
-- [ ] **Step 2: Install**
+- [x] **Step 2: Install**
 
 ```bash
 pip install pre-commit pytest-cov
@@ -106,7 +106,7 @@ pip install pre-commit pytest-cov
 
 Expected: `Successfully installed pre-commit-3.x.x ... pytest-cov-4.x.x ...`
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 pre-commit --version
@@ -115,7 +115,7 @@ python3 -m pytest --help 2>&1 | grep -q -- '--cov' && echo "pytest-cov OK"
 
 Expected: `pre-commit` version ≥ 3.5 prints; `--cov` flag registered.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add requirements.txt
@@ -131,7 +131,7 @@ git commit -m "chore(M3): add pre-commit + pytest-cov deps"
 - Create: `tests/functional/conftest.py` (tmp_db, client, sample_novel fixtures)
 - Create: `tests/functional/test_smoke.py` (smoke tests using the fixtures)
 
-- [ ] **Step 1: Write the failing smoke test**
+- [x] **Step 1: Write the failing smoke test**
 
 Create `tests/functional/test_smoke.py`:
 
@@ -161,7 +161,7 @@ def test_sample_novel_fixture_creates_novel(client, sample_novel):
     assert data["novel"]["name"] == sample_novel
 ```
 
-- [ ] **Step 2: Run test, expect FAIL (no `client`/`sample_novel` fixtures)**
+- [x] **Step 2: Run test, expect FAIL (no `client`/`sample_novel` fixtures)**
 
 ```bash
 python3 -m pytest tests/functional/test_smoke.py -v
@@ -169,7 +169,7 @@ python3 -m pytest tests/functional/test_smoke.py -v
 
 Expected: `ERROR — fixture 'client' not found`, `fixture 'sample_novel' not found`.
 
-- [ ] **Step 3: Implement the fixtures**
+- [x] **Step 3: Implement the fixtures**
 
 Create `tests/functional/conftest.py`:
 
@@ -236,7 +236,7 @@ def sample_novel(client, tmp_db, tmp_path):
     return "test_novel"
 ```
 
-- [ ] **Step 4: Run smoke tests, expect PASS**
+- [x] **Step 4: Run smoke tests, expect PASS**
 
 ```bash
 python3 -m pytest tests/functional/test_smoke.py -v
@@ -244,7 +244,7 @@ python3 -m pytest tests/functional/test_smoke.py -v
 
 Expected: 3 passed.
 
-- [ ] **Step 5: Run full suite, expect 152 + 3 = 155 pass**
+- [x] **Step 5: Run full suite, expect 152 + 3 = 155 pass**
 
 ```bash
 python3 -m pytest tests/ -q
@@ -252,7 +252,7 @@ python3 -m pytest tests/ -q
 
 Expected: `155 passed, 0 failed`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/functional/
@@ -268,7 +268,7 @@ git commit -m "feat(M3): functional test fixtures (tmp_db, client, sample_novel)
 - Create: `.pre-commit-config.yaml`
 - Create: `tests/test_check_tdd_compliance.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_check_tdd_compliance.py`:
 
@@ -337,7 +337,7 @@ def test_allows_hotfix_commits(tmp_path):
     assert result.returncode == 0, f"hotfix should bypass, got: {result.stdout}\n{result.stderr}"
 ```
 
-- [ ] **Step 2: Run test, expect FAIL (script doesn't exist)**
+- [x] **Step 2: Run test, expect FAIL (script doesn't exist)**
 
 ```bash
 python3 -m pytest tests/test_check_tdd_compliance.py -v
@@ -345,7 +345,7 @@ python3 -m pytest tests/test_check_tdd_compliance.py -v
 
 Expected: `FileNotFoundError` on `bash /path/to/check_tdd_compliance.sh`.
 
-- [ ] **Step 3: Implement the check script**
+- [x] **Step 3: Implement the check script**
 
 Create `scripts/check_tdd_compliance.sh`:
 
@@ -410,7 +410,7 @@ echo "[check_tdd] OK"
 exit 0
 ```
 
-- [ ] **Step 4: Make executable + run test, expect PASS**
+- [x] **Step 4: Make executable + run test, expect PASS**
 
 ```bash
 chmod +x scripts/check_tdd_compliance.sh
@@ -419,7 +419,7 @@ python3 -m pytest tests/test_check_tdd_compliance.py -v
 
 Expected: 3 passed.
 
-- [ ] **Step 5: Wire up pre-commit config**
+- [x] **Step 5: Wire up pre-commit config**
 
 Create `.pre-commit-config.yaml`:
 
@@ -439,7 +439,7 @@ repos:
         stages: [pre-commit]
 ```
 
-- [ ] **Step 6: Run full suite, expect 155 + 3 = 158 pass**
+- [x] **Step 6: Run full suite, expect 155 + 3 = 158 pass**
 
 ```bash
 python3 -m pytest tests/ -q
@@ -447,7 +447,7 @@ python3 -m pytest tests/ -q
 
 Expected: `158 passed, 0 failed`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/check_tdd_compliance.sh .pre-commit-config.yaml tests/test_check_tdd_compliance.py
@@ -470,7 +470,7 @@ git commit -m "feat(M3): pre-commit TDD gate (portal changes require test change
 
 This task establishes the **4-dim pattern** that the M2 core endpoints follow. Tasks 5-13 reference this pattern.
 
-- [ ] **Step 1: Write the test file**
+- [x] **Step 1: Write the test file**
 
 ```python
 """Functional tests for chapter lifecycle endpoints (M2 core 4-dim pattern).
@@ -583,7 +583,7 @@ class TestReviewChapter:
         assert res.status_code == 405
 ```
 
-- [ ] **Step 2: Run, expect PASS (some may be skipped if endpoint returns 404 due to missing DB state)**
+- [x] **Step 2: Run, expect PASS (some may be skipped if endpoint returns 404 due to missing DB state)**
 
 ```bash
 python3 -m pytest tests/functional/test_chapter_lifecycle.py -v
@@ -591,7 +591,7 @@ python3 -m pytest tests/functional/test_chapter_lifecycle.py -v
 
 Expected: ~10-12 tests passed (or skipped, noted in commit message).
 
-- [ ] **Step 3: Run full suite**
+- [x] **Step 3: Run full suite**
 
 ```bash
 python3 -m pytest tests/ -q
@@ -599,7 +599,7 @@ python3 -m pytest tests/ -q
 
 Expected: `158 + ~12 = ~170 passed`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/functional/test_chapter_lifecycle.py
@@ -615,17 +615,17 @@ git commit -m "feat(M3): functional tests for chapter lifecycle (5 endpoints, 4-
 
 **Endpoints (9):** `GET /api/novels`, `GET /api/novels/<n>`, `GET /api/novels/<n>/file`, `GET /api/novels/<n>/status`, `GET /api/novels/<n>/gate-status`, `GET /api/novels/<n>/export`, `POST /api/novels/create`, `POST /api/novels/<n>/file/write`, `POST /api/novels/<n>/update-status`
 
-- [ ] **Step 1: Write test file (follow 4-dim pattern from Task 4)**
+- [x] **Step 1: Write test file (follow 4-dim pattern from Task 4)**
 
 Use the same class structure (`TestXxxEndpoint`) with 4-dim tests per endpoint. For GET-only endpoints, omit `missing_field_*` (no body). For status/export/file endpoints, use 2-dim (happy_path + wrong_method).
 
-- [ ] **Step 2: Run, expect PASS**
+- [x] **Step 2: Run, expect PASS**
 
 ```bash
 python3 -m pytest tests/functional/test_novel_management.py -v
 ```
 
-- [ ] **Step 3: Run full suite + commit**
+- [x] **Step 3: Run full suite + commit**
 
 ```bash
 python3 -m pytest tests/ -q
@@ -642,11 +642,11 @@ git commit -m "feat(M3): functional tests for novel management (9 endpoints, 2-4
 
 **Endpoints (5):** `GET /api/novels/<n>/outline/<vol>`, `POST /api/novels/<n>/outline/<vol>/edit`, `GET /api/novels/<n>/chapter-outlines/<vol>`, `PUT /api/novels/<n>/chapter-outlines/<vol>/<int:ch>`, `GET /api/novels/<n>/danger-issue/<vol>/<ch>`
 
-- [ ] **Step 1: Write test file (follow 4-dim pattern from Task 4)**
+- [x] **Step 1: Write test file (follow 4-dim pattern from Task 4)**
 
 For outline/chapter-outlines, pre-create the outline file in `novels/<n>/outline/vol-XX-chapters.md` so the GET can find it.
 
-- [ ] **Step 2: Run, expect PASS + commit**
+- [x] **Step 2: Run, expect PASS + commit**
 
 ```bash
 python3 -m pytest tests/functional/test_outline_api.py -v
@@ -671,7 +671,7 @@ git commit -m "feat(M3): functional tests for outline + chapter-outlines + dange
 - revelation_schedule (3): list, add, manage (PUT/DELETE)
 - genre_rules (1), alias_names (1), story_volumes (1), volume_plans (1), project_meta (1)
 
-- [ ] **Step 1: Write test file using a parameterized helper**
+- [x] **Step 1: Write test file using a parameterized helper**
 
 ```python
 """Functional tests for domain CRUD endpoints (7 tables, 30 endpoints).
@@ -731,13 +731,13 @@ class TestReadOnlyListEndpoints:
         assert res.get_json()["success"] is True
 ```
 
-- [ ] **Step 2: Run, expect PASS**
+- [x] **Step 2: Run, expect PASS**
 
 ```bash
 python3 -m pytest tests/functional/test_domain_crud.py -v
 ```
 
-- [ ] **Step 3: Run full suite + commit**
+- [x] **Step 3: Run full suite + commit**
 
 ```bash
 python3 -m pytest tests/ -q
@@ -754,11 +754,11 @@ git commit -m "feat(M3): functional tests for domain CRUD (30 endpoints, 7 table
 
 **Endpoints (2):** `POST /api/context/build`, `GET /api/context/stats/<novel>/<vol>/<ch>`
 
-- [ ] **Step 1: Write test file (4-dim for build, 2-dim for stats)**
+- [x] **Step 1: Write test file (4-dim for build, 2-dim for stats)**
 
 Key assertion: `build` returns 12-entry `layers` array, `stats` returns 12-entry `layers` with `available` bool.
 
-- [ ] **Step 2-3: Run + commit**
+- [x] **Step 2-3: Run + commit**
 
 ```bash
 python3 -m pytest tests/functional/test_context.py -v
@@ -776,7 +776,7 @@ git commit -m "feat(M3): functional tests for context build + stats (2 endpoints
 
 **Endpoints (3):** `POST /api/workflow/preflight/<novel>` (regression for `169cfb1`), `POST /api/workflow/postflight/<novel>`, `POST /api/novels/<n>/enforce-pipeline`
 
-- [ ] **Step 1: Write test file — INCLUDE the 169cfb1 regression test**
+- [x] **Step 1: Write test file — INCLUDE the 169cfb1 regression test**
 
 ```python
 def test_preflight_does_not_nameerror_on_missing_chapter_num(self, client, sample_novel):
@@ -786,7 +786,7 @@ def test_preflight_does_not_nameerror_on_missing_chapter_num(self, client, sampl
     assert res.status_code < 500
 ```
 
-- [ ] **Step 2-3: Run + commit**
+- [x] **Step 2-3: Run + commit**
 
 ```bash
 python3 -m pytest tests/functional/test_workflow.py -v
@@ -804,9 +804,9 @@ git commit -m "feat(M3): functional tests for workflow (3 endpoints, includes 16
 
 **Endpoints (9):** config × 3 (GET, save, test), config-db × 3 (GET, POST, PUT/DELETE), styles, templates, usage/stats
 
-- [ ] **Step 1: Write test file (4-dim for POST/PUT, 2-dim for GET-only)**
+- [x] **Step 1: Write test file (4-dim for POST/PUT, 2-dim for GET-only)**
 
-- [ ] **Step 2-3: Run + commit**
+- [x] **Step 2-3: Run + commit**
 
 ```bash
 git add tests/functional/test_config_api.py
@@ -822,9 +822,9 @@ git commit -m "feat(M3): functional tests for config API (9 endpoints)"
 
 **Endpoints (6):** `POST /api/init/full/<novel>`, `POST /api/novels/<n>/world-building/init`, `POST /api/novels/<n>/plot-arcs/init`, `POST /api/novels/<n>/pacing/init`, `POST /api/novels/<n>/revelation/init`, `POST /api/novels/<n>/cleanup-bak`
 
-- [ ] **Step 1: Write test file (4-dim per endpoint)**
+- [x] **Step 1: Write test file (4-dim per endpoint)**
 
-- [ ] **Step 2-3: Run + commit**
+- [x] **Step 2-3: Run + commit**
 
 ```bash
 git add tests/functional/test_init.py
@@ -842,9 +842,9 @@ git commit -m "feat(M3): functional tests for init (6 endpoints)"
 
 These are slow (AI-backed) — accept any non-5xx with `success` key.
 
-- [ ] **Step 1: Write test file (2-dim each: happy_path + missing_field)**
+- [x] **Step 1: Write test file (2-dim each: happy_path + missing_field)**
 
-- [ ] **Step 2-3: Run + commit**
+- [x] **Step 2-3: Run + commit**
 
 ```bash
 git add tests/functional/test_writing_api.py
@@ -860,7 +860,7 @@ git commit -m "feat(M3): functional tests for writing API (4 endpoints)"
 
 **Endpoints (3):** `POST /api/ai/chat`, `POST /api/ai/stream`, `POST /api/rag/query`
 
-- [ ] **Step 1: Write test file using `unittest.mock.patch` on `httpx.post`**
+- [x] **Step 1: Write test file using `unittest.mock.patch` on `httpx.post`**
 
 ```python
 from unittest.mock import patch, MagicMock
@@ -877,7 +877,7 @@ def test_ai_chat_returns_response(self, client):
 
 For `/api/ai/stream`, mock `httpx.stream` and assert the response is an event-stream.
 
-- [ ] **Step 2-3: Run + commit**
+- [x] **Step 2-3: Run + commit**
 
 ```bash
 git add tests/functional/test_ai_stream.py
@@ -893,9 +893,9 @@ git commit -m "feat(M3): functional tests for AI endpoints (3 endpoints, httpx m
 
 **Endpoints (4):** `GET /api/content/search?q=`, `GET /api/content/stats/<novel>`, `POST /api/content/sync`, `GET /api/content/quality-report/<novel>`
 
-- [ ] **Step 1: Write test file (2-dim each: happy_path + wrong_method)**
+- [x] **Step 1: Write test file (2-dim each: happy_path + wrong_method)**
 
-- [ ] **Step 2-3: Run + commit**
+- [x] **Step 2-3: Run + commit**
 
 ```bash
 git add tests/functional/test_search.py
@@ -910,7 +910,7 @@ git commit -m "feat(M3): functional tests for content search + stats + sync (4 e
 - Create: `scripts/measure_coverage.sh`
 - Modify: `README.md` (add "覆盖率门槛" section)
 
-- [ ] **Step 1: Write the script**
+- [x] **Step 1: Write the script**
 
 ```bash
 #!/usr/bin/env bash
@@ -939,7 +939,7 @@ echo "[coverage] OK: $COVERAGE% ≥ $MIN_COVERAGE%"
 exit 0
 ```
 
-- [ ] **Step 2: Make executable, run, document baseline**
+- [x] **Step 2: Make executable, run, document baseline**
 
 ```bash
 chmod +x scripts/measure_coverage.sh
@@ -948,7 +948,7 @@ bash scripts/measure_coverage.sh
 
 Expected: shows current coverage % (likely 30-60% with M3 test files added). Document the actual number in the commit.
 
-- [ ] **Step 3: Document in README**
+- [x] **Step 3: Document in README**
 
 Add to README under TDD 流程:
 ```markdown
@@ -957,7 +957,7 @@ Add to README under TDD 流程:
 当前 M3 基线: <measured>% (M3.1 follow-up 关闭差距).
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/measure_coverage.sh README.md
@@ -975,7 +975,7 @@ git commit -m "feat(M3): coverage measurement script (CI gate, ≥ 90%)"
 - Modify: `.gitignore` (add `.code-reviews/`)
 - Modify: `README.md` (add "6 维 Agent Code Review" section)
 
-- [ ] **Step 1: Create the hook entry point**
+- [x] **Step 1: Create the hook entry point**
 
 Create `.claude/hooks/post-commit`:
 
@@ -1002,7 +1002,7 @@ fi
 bash agent-system/scripts/post_commit_review.sh "$(git rev-parse HEAD)"
 ```
 
-- [ ] **Step 2: Create the review script (stub mode)**
+- [x] **Step 2: Create the review script (stub mode)**
 
 Create `agent-system/scripts/post_commit_review.sh`:
 
@@ -1065,7 +1065,7 @@ fi
 echo "[agent-CR] stub report written to $REPORT_FILE"
 ```
 
-- [ ] **Step 3: Create install-hooks.sh**
+- [x] **Step 3: Create install-hooks.sh**
 
 ```bash
 #!/usr/bin/env bash
@@ -1085,7 +1085,7 @@ if [ -f .pre-commit-config.yaml ]; then
 fi
 ```
 
-- [ ] **Step 4: Update .gitignore**
+- [x] **Step 4: Update .gitignore**
 
 ```bash
 echo "" >> .gitignore
@@ -1093,7 +1093,7 @@ echo "# M3: agent code review reports" >> .gitignore
 echo ".code-reviews/" >> .gitignore
 ```
 
-- [ ] **Step 5: Smoke test the hook**
+- [x] **Step 5: Smoke test the hook**
 
 ```bash
 chmod +x .claude/hooks/post-commit agent-system/scripts/post_commit_review.sh scripts/install-hooks.sh
@@ -1104,7 +1104,7 @@ cat .code-reviews/$(ls -t .code-reviews/ | head -1) | head -10
 
 Expected: `.code-reviews/<sha>.md` exists with the stub structure.
 
-- [ ] **Step 6: Update README**
+- [x] **Step 6: Update README**
 
 Add to README under TDD 流程:
 ```markdown
@@ -1115,7 +1115,7 @@ M3 = stub mode (placeholder 报告); 完整 agent 接入见 M3.1。
 安装: `bash scripts/install-hooks.sh`
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add .claude/hooks/post-commit agent-system/scripts/post_commit_review.sh scripts/install-hooks.sh .gitignore README.md
@@ -1126,7 +1126,7 @@ git commit -m "feat(M3): 6-dim agent code review hook (stub mode, M3.1 wires ful
 
 ## Task 17: M3 final integration verification
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 ```bash
 python3 -m pytest tests/ -q --tb=short
@@ -1134,7 +1134,7 @@ python3 -m pytest tests/ -q --tb=short
 
 Expected: All previous tests + 12 new functional test files pass. Document final count in commit.
 
-- [ ] **Step 2: Run verify_spec (sanity)**
+- [x] **Step 2: Run verify_spec (sanity)**
 
 ```bash
 python3 scripts/verify_spec.py
@@ -1142,7 +1142,7 @@ python3 scripts/verify_spec.py
 
 Expected: 5/5 OK.
 
-- [ ] **Step 3: Run coverage**
+- [x] **Step 3: Run coverage**
 
 ```bash
 bash scripts/measure_coverage.sh
@@ -1150,7 +1150,7 @@ bash scripts/measure_coverage.sh
 
 Expected: shows current % (likely 30-60% — note in commit, M3.1 will close gap).
 
-- [ ] **Step 4: Run check_tdd_compliance dry-run**
+- [x] **Step 4: Run check_tdd_compliance dry-run**
 
 ```bash
 git diff --cached --name-only | head
@@ -1159,18 +1159,18 @@ HOOK_COMMIT_MSG_FILE=/dev/null bash scripts/check_tdd_compliance.sh
 
 Expected: exit 0.
 
-- [ ] **Step 5: Final cross-file review checklist**
+- [x] **Step 5: Final cross-file review checklist**
 
-- [ ] `tests/functional/` has 13 test files (1 smoke + 12 from Tasks 4-14)
-- [ ] `tests/functional/__init__.py` and `tests/functional/conftest.py` exist
-- [ ] `.pre-commit-config.yaml` is present
-- [ ] `scripts/check_tdd_compliance.sh`, `scripts/measure_coverage.sh`, `scripts/install-hooks.sh` are executable
-- [ ] `.claude/hooks/post-commit`, `agent-system/scripts/post_commit_review.sh` are executable
-- [ ] `requirements.txt` has `pre-commit>=3.5` and `pytest-cov>=4.1`
-- [ ] README has "覆盖率门槛" and "6 维 Agent Code Review" sections
-- [ ] `.gitignore` has `.code-reviews/`
+- [x] `tests/functional/` has 13 test files (1 smoke + 12 from Tasks 4-14)
+- [x] `tests/functional/__init__.py` and `tests/functional/conftest.py` exist
+- [x] `.pre-commit-config.yaml` is present
+- [x] `scripts/check_tdd_compliance.sh`, `scripts/measure_coverage.sh`, `scripts/install-hooks.sh` are executable
+- [x] `.claude/hooks/post-commit`, `agent-system/scripts/post_commit_review.sh` are executable
+- [x] `requirements.txt` has `pre-commit>=3.5` and `pytest-cov>=4.1`
+- [x] README has "覆盖率门槛" and "6 维 Agent Code Review" sections
+- [x] `.gitignore` has `.code-reviews/`
 
-- [ ] **Step 6: Commit the audit report**
+- [x] **Step 6: Commit the audit report**
 
 ```bash
 python3 -m pytest tests/ --collect-only -q > tests/audit/m3_test_list.txt
@@ -1215,3 +1215,17 @@ These are NOT blockers for M3 ship, but are explicit M3.1 follow-ups:
 **2. Inline Execution** — Execute tasks in this session. Better if user wants to interject between tasks.
 
 **Which approach?**
+
+---
+
+## Implementation Pointer
+
+> **Status:** All 17 tasks + 72 checklist items were already implemented across the M3 series (`35dfbf1` … `7f29808`, 2026-06-04) and the M3.1 follow-up series (`1170c4b` … `1c077d5`, 2026-06-04 to 2026-06-06). Endpoint count reference (82 unique routes) still matches: `python3 scripts/verify_spec.py` → 5/5 OK, `app.py=82 vs manifest=82`, `25/25 Manual Notes`.
+>
+> **Verified 2026-06-06:** Plan backfilled (72 `- [ ]` → `- [x]`). No code changes needed; this is a checkbox backfill + plan close-out.
+>
+> **M3 implementation commits (2026-06-04, all 18):** `35dfbf1` (deps), `10b5477` (fixtures), `a429036` (pre-commit gate), `2f881c2` (chapter lifecycle), `5afc875` (novel mgmt), `55a52f0` (outline API), `e8f749e` (domain CRUD), `8448f29` (context), `9a70fbf` (workflow), `35b59dd` (config API), `c2dc880` (init), `5fdec7e` (writing API), `b3ff57d` (AI stream), `536ff7a` (search), `aec0b4c` (coverage script), `6d6c3e8` (agent-CR stub), `7f29808` (test inventory).
+>
+> **M3.1 follow-up commits (closed the 4 "Open Items / Known Gaps"):** `248cf0b` (tests/unit package), `d0935db`–`1e13347` (unit tests for 13 modules closing the coverage gap), `f402e57`/`f49d037`/`1862857` (4-dim upgrade for the 57 non-core endpoints), `5d7a747` (CI workflow), `1c077d5` (full agent-CR wiring). Hotfixes `1170c4b` (api_content_stats null-guard) and `2d45b4e` (ResponseTimeTracker RLock) were inline fixes.
+>
+> **Note:** The plan was implemented roughly as designed — each Task 1-17 landed as its own commit. The M3.1 plan (`feac71d`) was created to explicitly close the 4 known gaps left open by M3 (coverage, full agent-CR, 4-dim for non-core endpoints, CI integration), and all four are now closed. The original 82-endpoint count was preserved through the 2026-06-04 dedupe of two `index()` functions in `portal/app.py` (referenced in the plan's pre-flight as commit `00dac4a`) and still holds today.

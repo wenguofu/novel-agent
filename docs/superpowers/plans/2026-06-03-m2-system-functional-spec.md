@@ -73,7 +73,7 @@
 - Create: `tests/fixtures/mini_app.py`
 - Create: `tests/test_inventory_endpoints.py` (initial)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/fixtures/mini_app.py`:
 ```python
@@ -166,12 +166,12 @@ def test_inventory_real_portal_app_has_83_endpoints():
     assert len(endpoints) == 83, f"expected 83 endpoints, got {len(endpoints)} — portal/app.py changed"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/wgfu/Desktop/novel-agent && python3 -m pytest tests/test_inventory_endpoints.py -v`
 Expected: `ModuleNotFoundError: No module named 'inventory_endpoints'`
 
-- [ ] **Step 3: Implement minimal scanner**
+- [x] **Step 3: Implement minimal scanner**
 
 Create `scripts/inventory_endpoints.py`:
 ```python
@@ -297,7 +297,7 @@ if __name__ == "__main__":
 
 Make it importable from tests by adding `scripts/` to `sys.path` in the test file's conftest — see Step 4.
 
-- [ ] **Step 4: Make scripts/ importable from tests**
+- [x] **Step 4: Make scripts/ importable from tests**
 
 Append to `tests/conftest.py` (create if missing):
 ```python
@@ -310,19 +310,19 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_inventory_endpoints.py -v`
 Expected: 6 passed (5 unit + 1 integration showing 83 real endpoints)
 
-- [ ] **Step 6: Smoke-test the CLI**
+- [x] **Step 6: Smoke-test the CLI**
 
 Run: `python3 scripts/inventory_endpoints.py`
 Expected: `Wrote 83 endpoints to docs/auto-inventory.json`
 Verify: `python3 -c "import json; d=json.load(open('docs/auto-inventory.json')); print(d['endpoint_count'], len(d['endpoints']))"`
 Expected: `83 83`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/inventory_endpoints.py tests/fixtures/mini_app.py tests/test_inventory_endpoints.py tests/conftest.py docs/auto-inventory.json
@@ -337,7 +337,7 @@ git commit -m "feat(M2): AST scanner for Flask routes + first 83-endpoint manife
 - Modify: `scripts/inventory_endpoints.py`
 - Modify: `tests/test_inventory_endpoints.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_inventory_endpoints.py`:
 ```python
@@ -393,12 +393,12 @@ def test_endpoint_with_no_repo_or_db_calls_yields_empty_lists():
     assert root_ep.db_calls == []
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_inventory_endpoints.py -v -k "repo_calls or db_calls or empty_lists"`
 Expected: 3 failures with `AttributeError: 'Endpoint' object has no attribute 'repo_calls'`
 
-- [ ] **Step 3: Extend Endpoint dataclass + scan logic**
+- [x] **Step 3: Extend Endpoint dataclass + scan logic**
 
 Replace the `Endpoint` dataclass in `scripts/inventory_endpoints.py`:
 ```python
@@ -463,18 +463,18 @@ Modify `scan_flask_routes` so the Endpoint construction calls the new helper:
                 ))
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_inventory_endpoints.py -v`
 Expected: 9 passed (6 from Task 1 + 3 new)
 
-- [ ] **Step 5: Regenerate the manifest with new fields**
+- [x] **Step 5: Regenerate the manifest with new fields**
 
 Run: `python3 scripts/inventory_endpoints.py`
 Verify: `python3 -c "import json; d=json.load(open('docs/auto-inventory.json')); e=d['endpoints'][0]; print(list(e.keys()))"`
 Expected: keys include `repo_calls`, `db_calls`, `tables_read`, `tables_written`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/inventory_endpoints.py tests/test_inventory_endpoints.py docs/auto-inventory.json
@@ -490,7 +490,7 @@ git commit -m "feat(M2): extract repo + db call names per endpoint from AST"
 - Modify: `scripts/inventory_endpoints.py`
 - Modify: `tests/test_inventory_endpoints.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/fixtures/mini_repo.py`:
 ```python
@@ -542,12 +542,12 @@ def test_scan_repository_infers_table_from_method_name():
     assert index["upsert_outline"]["tables"] == ["outlines"]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_inventory_endpoints.py -v -k "repository"`
 Expected: 3 failures with `ModuleNotFoundError: No module named 'inventory_endpoints'.scan_repository_methods`
 
-- [ ] **Step 3: Implement repository scanner + table heuristic**
+- [x] **Step 3: Implement repository scanner + table heuristic**
 
 Append to `scripts/inventory_endpoints.py` (after `scan_flask_routes`):
 ```python
@@ -638,18 +638,18 @@ Modify `scan_flask_routes` to return `Endpoint` (with empty `tables_read`) and l
 
 Replace the current `build_manifest` with the version above. Update the call in `main()` if signature changed (it didn't — same kwargs, repo_source has a default).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_inventory_endpoints.py -v`
 Expected: 12 passed (9 from previous tasks + 3 new)
 
-- [ ] **Step 5: Regenerate manifest with real repo**
+- [x] **Step 5: Regenerate manifest with real repo**
 
 Run: `python3 scripts/inventory_endpoints.py`
 Verify: `python3 -c "import json; d=json.load(open('docs/auto-inventory.json')); print('repo methods:', d['repository_index_size']); ep=next(e for e in d['endpoints'] if e['route']=='/api/novels'); print('tables_read:', ep['tables_read'])"`
 Expected: `repo methods: 100+` (real count) and `tables_read: ['novels']` (heuristic worked)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/inventory_endpoints.py tests/fixtures/mini_repo.py tests/test_inventory_endpoints.py docs/auto-inventory.json
@@ -665,7 +665,7 @@ git commit -m "feat(M2): repository method index with table-name heuristic"
 
 This task is template authoring (not TDD-able directly — verified in Task 5 by the renderer test).
 
-- [ ] **Step 1: Create the template with Manual Notes anchors**
+- [x] **Step 1: Create the template with Manual Notes anchors**
 
 Create `docs/system-functional-spec.j2.md`:
 ```jinja2
@@ -746,7 +746,7 @@ See [openspec/specs/context-builder.md](../../openspec/specs/context-builder.md)
 {% endfor %}
 ```
 
-- [ ] **Step 2: Commit the template (renderer will fill it in next task)**
+- [x] **Step 2: Commit the template (renderer will fill it in next task)**
 
 ```bash
 git add docs/system-functional-spec.j2.md
@@ -762,7 +762,7 @@ git commit -m "feat(M2): jinja2 template for system functional spec"
 - Create: `tests/test_render_spec.py`
 - Create: `tests/fixtures/mini_inventory.json`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/fixtures/mini_inventory.json`:
 ```json
@@ -881,12 +881,12 @@ def test_render_preserves_existing_manual_notes(tmp_path):
     assert "Pre-existing prose that must survive regeneration." in out
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_render_spec.py -v`
 Expected: 6 failures (ModuleNotFoundError on `render_spec`)
 
-- [ ] **Step 3: Implement renderer**
+- [x] **Step 3: Implement renderer**
 
 Create `scripts/render_spec.py`:
 ```python
@@ -982,12 +982,12 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_render_spec.py -v`
 Expected: 6 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/render_spec.py tests/test_render_spec.py tests/fixtures/mini_inventory.json
@@ -1001,27 +1001,27 @@ git commit -m "feat(M2): jinja2 renderer with Manual Notes preservation"
 **Files:**
 - (No file creates — runs the pipeline)
 
-- [ ] **Step 1: Generate the inventory**
+- [x] **Step 1: Generate the inventory**
 
 Run: `python3 scripts/inventory_endpoints.py`
 Expected: `Wrote 83 endpoints to docs/auto-inventory.json`
 
-- [ ] **Step 2: Render the spec**
+- [x] **Step 2: Render the spec**
 
 Run: `python3 scripts/render_spec.py`
 Expected: `Rendered docs/system-functional-spec.md (0 manual notes preserved)`
 
-- [ ] **Step 3: Verify the rendered output**
+- [x] **Step 3: Verify the rendered output**
 
 Run: `python3 -c "import re; t=open('docs/system-functional-spec.md').read(); print('endpoint sections:', len(re.findall(r'#### Endpoint: ', t))); print('manual placeholders:', len(re.findall(r'<!-- MANUAL: ', t)))"`
 Expected: `endpoint sections: 83` and `manual placeholders: 83`
 
-- [ ] **Step 4: Spot-check the content**
+- [x] **Step 4: Spot-check the content**
 
 Run: `head -50 docs/system-functional-spec.md`
 Expected: Title, sections 1-5, endpoint table — should look like a real spec doc, not template leftovers.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/system-functional-spec.md
@@ -1036,7 +1036,7 @@ git commit -m "feat(M2): first full render of system functional spec (83 endpoin
 - Create: `scripts/verify_spec.py`
 - Create: `tests/test_verify_spec.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_verify_spec.py`:
 ```python
@@ -1157,12 +1157,12 @@ def test_main_exits_0_on_success(tmp_path, monkeypatch):
     assert rc == 0
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_verify_spec.py -v`
 Expected: 8 failures (ModuleNotFoundError on `verify_spec`)
 
-- [ ] **Step 3: Implement verify script**
+- [x] **Step 3: Implement verify script**
 
 Create `scripts/verify_spec.py`:
 ```python
@@ -1309,17 +1309,17 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_verify_spec.py -v`
 Expected: 9 passed
 
-- [ ] **Step 5: Run the verifier on the real repo — expect Check 5 to fail**
+- [x] **Step 5: Run the verifier on the real repo — expect Check 5 to fail**
 
 Run: `python3 scripts/verify_spec.py`
 Expected: Checks 1-4 OK, Check 5 FAIL (no Manual Notes yet — that's Task 8). Exit 1.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/verify_spec.py tests/test_verify_spec.py
@@ -1335,12 +1335,12 @@ git commit -m "feat(M2): CI verify script — 5 checks, fails on any drift"
 
 This is the only "writing" task in M2. It's prose, not code — not TDD-able. The verifier (Task 7) is the acceptance gate.
 
-- [ ] **Step 1: Read the core-endpoint list**
+- [x] **Step 1: Read the core-endpoint list**
 
 Run: `python3 scripts/verify_spec.py --core-list`
 Expected: 25 endpoint keys printed.
 
-- [ ] **Step 2: For each of the 25 core endpoints, fill in the Manual Notes block**
+- [x] **Step 2: For each of the 25 core endpoints, fill in the Manual Notes block**
 
 For each `<!-- MANUAL: KEY -->` block, replace the placeholder line `<!-- (no manual notes yet ... -->` with 1-3 sentences covering:
 - **What the endpoint does** (in plain English — what the user/dev sees)
@@ -1362,12 +1362,12 @@ Pattern for all 25: read the corresponding `app.py` function (line number is in 
 
 Required Manual Notes (25 keys — see verify_spec.py CORE_ENDPOINTS for the full list).
 
-- [ ] **Step 3: Run the verifier — expect all 5 checks to pass**
+- [x] **Step 3: Run the verifier — expect all 5 checks to pass**
 
 Run: `python3 scripts/verify_spec.py`
 Expected: `All 5 checks passed.` Exit 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/system-functional-spec.md
@@ -1387,7 +1387,7 @@ This task folds in 2 M1 follow-ups flagged during M1 review:
 1. `_build_fallback_state_context` is defined but never called (orphan).
 2. `openspec/specs/context-builder.md` says "Pre-existing test failure: `test_context_stats_structure` ... Unchanged by this optimization" — but M1 fixed it.
 
-- [ ] **Step 1: Decide fate of `_build_fallback_state_context`**
+- [x] **Step 1: Decide fate of `_build_fallback_state_context`**
 
 Read `portal/context_builder.py` lines 746-762 to confirm current state.
 Check the function is still orphan: `grep -nE "_build_fallback_state_context" portal/`.
@@ -1402,7 +1402,7 @@ If you (the implementer) disagree and want to wire it in instead, replace Steps 
 - Implement: call `_build_fallback_state_context` from `build_context` early-return path
 - Run the test
 
-- [ ] **Step 2: Delete the orphan function (default path)**
+- [x] **Step 2: Delete the orphan function (default path)**
 
 Edit `portal/context_builder.py`: remove the `_build_fallback_state_context` function definition (and any imports it made if they become unused — `get_repo` is still used elsewhere).
 
@@ -1410,7 +1410,7 @@ Verify no call sites:
 Run: `grep -rn "_build_fallback_state_context" portal/ tests/`
 Expected: no matches.
 
-- [ ] **Step 3: Update OpenSpec context-builder.md**
+- [x] **Step 3: Update OpenSpec context-builder.md**
 
 Edit `openspec/specs/context-builder.md`:
 - In the "Known Issues" section, REMOVE the line starting with "Pre-existing test failure: `test_context_stats_structure`" (and its continuation "Unchanged by this optimization.").
@@ -1419,7 +1419,7 @@ Edit `openspec/specs/context-builder.md`:
   | 2026-06-03 | (M1 follow-up) | Removed orphan `_build_fallback_state_context`; removed stale "pre-existing test failure" note. |
   ```
 
-- [ ] **Step 4: Run full test suite + spec verifier**
+- [x] **Step 4: Run full test suite + spec verifier**
 
 Run: `python3 -m pytest tests/ -q`
 Expected: 0 failed, 0 errors (baseline maintained from M1).
@@ -1430,7 +1430,7 @@ Expected: `All 5 checks passed.`
 Run: `python3 scripts/inventory_endpoints.py && python3 scripts/render_spec.py`
 Expected: Both succeed, manual notes preserved (no regression).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add openspec/specs/context-builder.md portal/context_builder.py
@@ -1444,7 +1444,7 @@ git commit -m "chore(M2 follow-up): delete orphan _build_fallback_state_context 
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Add a one-line link from README to the new spec doc**
+- [x] **Step 1: Add a one-line link from README to the new spec doc**
 
 In `README.md`, after the line that says `## API 端点 (主要)`, append:
 ```markdown
@@ -1454,12 +1454,12 @@ In `README.md`, after the line that says `## API 端点 (主要)`, append:
 > 数据驱动：跑 `python3 scripts/inventory_endpoints.py && python3 scripts/render_spec.py` 重新生成。
 ```
 
-- [ ] **Step 2: Run final smoke**
+- [x] **Step 2: Run final smoke**
 
 Run: `python3 scripts/verify_spec.py && python3 -m pytest tests/ -q`
 Expected: spec OK, 0 failed, 0 errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md
@@ -1518,3 +1518,30 @@ No type drift.
 **2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints. Faster start, but each task pollutes this session's context.
 
 **Which approach?**
+
+---
+
+## Implementation Pointer
+
+> **Status:** All 10 tasks + 4 self-review subsections were already implemented across 16 commits between 2026-06-03 22:52 and 2026-06-04, exactly as the plan envisioned:
+>
+> - `7ed7aff` — Task 1: AST scanner for Flask routes + first 83-endpoint manifest
+> - `15534e7` — Task 1 follow-up: extend scanner fixture for int converter, 4-method, async def
+> - `e083c01` — Task 2: extract repo + db call names per endpoint from AST
+> - `7bb91a8` — Task 3: repository method index with back-fill for bare function calls
+> - `2fc483b` — Task 4: jinja2 template for system functional spec
+> - `42d0520` — Task 5: jinja2 renderer with Manual Notes preservation
+> - `fe6c9ca` — Task 6: first full render of system functional spec (83 endpoints, 0 manual notes)
+> - `7aa40f0` — Task 7: CI verify script — 5 checks, fails on any drift
+> - `0369778` — Task 8: 25 core endpoints with Manual Notes (verify_spec passes 5/5)
+> - `18a7092` — Task 9: delete orphan `_build_fallback_state_context` + update context-builder spec
+> - `1880c39` — Task 10: README cross-link to system functional spec
+> - `eacfe95` — Task 6 follow-up: document AST limitation + refresh generated manifest/spec
+> - `169cfb1` — Hotfix: `api_workflow_preflight` `chapter_num` NameError
+> - `00dac4a` — Follow-up: dedupe `index()` route (83 → 82 unique routes)
+> - `7230ae4` — Docs: update endpoint count 83 → 82 in README
+> - `e50390a` — Docs: update test count 119 → 152
+>
+> **Verified 2026-06-06:** All 5 verify_spec checks pass (`Check 1: app.py=82 vs manifest=82`, `Check 2: 82 vs 82 sections`, `Check 3: all endpoints have sections`, `Check 4: manifest is valid JSON with 82 endpoints`, `Check 5: 25/25 core endpoints have Manual Notes`). 152/152 tests pass. No code changes needed; this is a checkbox backfill + plan close-out.
+>
+> **Note:** One deviation from the plan's literal text — the endpoint count drifted from 83 → 82 between Task 1 (June 3) and the follow-up cleanup (June 4) when the duplicated `index()` route was deduped (commit `00dac4a`). The plan and design doc both originally said 83, and the spec/manifest/README were updated in commits `eacfe95` + `7230ae4` to reflect 82. The verifier, template, and `verify_spec` core list all adapted automatically. All 25 Manual Notes were filled in as specified in Task 8.

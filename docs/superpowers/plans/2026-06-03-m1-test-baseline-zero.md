@@ -1,6 +1,6 @@
 # M1 — Test Baseline to Zero Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Get `pytest tests/ -q` from 22 failed + 15 errors (37 nodeids total) to 0 failed + 0 errors, with every failure explicitly classified F1-F4 and recorded in `tests/audit/baseline_after.json`.
 
@@ -52,14 +52,14 @@
 - Create: `scripts/audit_test_failures.py`
 - Create: `tests/audit/.gitkeep`
 
-- [ ] **Step 1: Create `tests/audit/` directory placeholder**
+- [x] **Step 1: Create `tests/audit/` directory placeholder**
 
 ```bash
 mkdir -p tests/audit
 touch tests/audit/.gitkeep
 ```
 
-- [ ] **Step 2: Write the audit tool**
+- [x] **Step 2: Write the audit tool**
 
 Create `scripts/audit_test_failures.py`:
 
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 3: Run the audit tool**
+- [x] **Step 3: Run the audit tool**
 
 ```bash
 python3 scripts/audit_test_failures.py
@@ -171,7 +171,7 @@ python3 scripts/audit_test_failures.py
 
 Expected output: `Wrote failures.json (37 rows) + REPORT.md` and `Totals: passed=82 failed=22 error=15`.
 
-- [ ] **Step 4: Verify outputs**
+- [x] **Step 4: Verify outputs**
 
 ```bash
 ls -la tests/audit/
@@ -180,7 +180,7 @@ python3 -c "import json; d=json.load(open('tests/audit/failures.json')); print(l
 
 Expected: 37 rows; first nodeid matches one of the 37 from the baseline.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/audit_test_failures.py tests/audit/.gitkeep tests/audit/failures.json tests/audit/REPORT.md
@@ -194,7 +194,7 @@ git commit -m "feat(M1): audit tool — parse pytest failures to JSON + REPORT"
 **Files:**
 - Create: `tests/audit/baseline_before.json`
 
-- [ ] **Step 1: Generate baseline_before.json from current failures.json**
+- [x] **Step 1: Generate baseline_before.json from current failures.json**
 
 ```bash
 python3 -c "
@@ -209,7 +209,7 @@ print('Wrote', len(baseline), 'nodeids')
 
 Expected: `Wrote 37 nodeids`.
 
-- [ ] **Step 2: Verify baseline_before.json is committed-and-frozen**
+- [x] **Step 2: Verify baseline_before.json is committed-and-frozen**
 
 ```bash
 git add tests/audit/baseline_before.json
@@ -225,7 +225,7 @@ After this commit, `baseline_before.json` is the source of truth. It MUST NOT be
 **Files:**
 - Create: `tests/audit/baseline_after.json`
 
-- [ ] **Step 1: Seed baseline_after.json with 37 placeholder rows**
+- [x] **Step 1: Seed baseline_after.json with 37 placeholder rows**
 
 ```bash
 python3 -c "
@@ -241,7 +241,7 @@ print('Seeded', len(after), 'PENDING rows')
 "
 ```
 
-- [ ] **Step 2: Commit skeleton**
+- [x] **Step 2: Commit skeleton**
 
 ```bash
 git add tests/audit/baseline_after.json
@@ -258,23 +258,23 @@ git commit -m "chore(M1): seed baseline_after.json with 37 PENDING rows"
 
 These 15 failures are all `TestNewTables::*` (table/column existence) + `TestCRUD::*` (CRUD smoke). Root cause: `ensure_unified_schema` is missing some columns. Read each failure, find the missing column, add a `try ADD COLUMN` in `ensure_unified_schema`.
 
-- [ ] **Step 1: Get the precise missing-column list**
+- [x] **Step 1: Get the precise missing-column list**
 
 ```bash
 python3 -m pytest tests/test_schema.py -q --tb=short 2>&1 | grep -E "OperationalError|assert" | head -30
 ```
 
-- [ ] **Step 2: Read `portal/db.py` find `ensure_unified_schema`**
+- [x] **Step 2: Read `portal/db.py` find `ensure_unified_schema`**
 
 ```bash
 grep -n "def ensure_unified_schema" portal/db.py
 ```
 
-- [ ] **Step 3: For each missing column/table, add migration block**
+- [x] **Step 3: For each missing column/table, add migration block**
 
 In `ensure_unified_schema`, after the table creation, add idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` for every missing column. (MySQL note: MySQL 8 doesn't have `IF NOT EXISTS` for `ADD COLUMN` — use `try/except` block.)
 
-- [ ] **Step 4: Run test_schema.py**
+- [x] **Step 4: Run test_schema.py**
 
 ```bash
 python3 -m pytest tests/test_schema.py -q
@@ -282,7 +282,7 @@ python3 -m pytest tests/test_schema.py -q
 
 Expected: 0 failed, 0 errors in test_schema.py.
 
-- [ ] **Step 5: Update baseline_after.json for 15 schema tests (category F1)**
+- [x] **Step 5: Update baseline_after.json for 15 schema tests (category F1)**
 
 ```bash
 python3 -c "
@@ -298,7 +298,7 @@ print('Updated', len(fixed), 'rows')
 "
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add portal/db.py tests/audit/baseline_after.json
@@ -313,23 +313,23 @@ git commit -m "fix(M1): add missing schema columns — 15 test_schema.py tests p
 - Modify: `portal/repository.py` (or `portal/init_unified_db.py`)
 - Test: `tests/test_init.py`
 
-- [ ] **Step 1: Get error details**
+- [x] **Step 1: Get error details**
 
 ```bash
 python3 -m pytest tests/test_init.py -q --tb=short 2>&1 | grep -E "Error|sqlite" | head -20
 ```
 
-- [ ] **Step 2: Run test_init.py to see fresh tracebacks**
+- [x] **Step 2: Run test_init.py to see fresh tracebacks**
 
 ```bash
 python3 -m pytest tests/test_init.py::TestWorldBuildingInit::test_wb_init_creates_entries -x --tb=long 2>&1 | tail -40
 ```
 
-- [ ] **Step 3: Fix the broken init functions one by one**
+- [x] **Step 3: Fix the broken init functions one by one**
 
 For each erroring init test, follow the traceback into the corresponding init function, fix the SQL or column reference. Run the test after each fix.
 
-- [ ] **Step 4: Verify all 8 pass**
+- [x] **Step 4: Verify all 8 pass**
 
 ```bash
 python3 -m pytest tests/test_init.py -q
@@ -337,7 +337,7 @@ python3 -m pytest tests/test_init.py -q
 
 Expected: 0 failed, 0 errors.
 
-- [ ] **Step 5: Update baseline_after.json (8 rows, F1)**
+- [x] **Step 5: Update baseline_after.json (8 rows, F1)**
 
 ```bash
 python3 -c "
@@ -353,7 +353,7 @@ print('Updated', len(fixed), 'rows')
 "
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add portal/repository.py portal/init_unified_db.py tests/audit/baseline_after.json
@@ -368,17 +368,17 @@ git commit -m "fix(M1): fix 8 init function errors (F1)"
 - Modify: `portal/repository.py`
 - Test: `tests/test_incremental.py`
 
-- [ ] **Step 1: Get error details**
+- [x] **Step 1: Get error details**
 
 ```bash
 python3 -m pytest tests/test_incremental.py -q --tb=line 2>&1 | tail -20
 ```
 
-- [ ] **Step 2: Fix each broken update method**
+- [x] **Step 2: Fix each broken update method**
 
 For each erroring test, run individually with `--tb=long`, trace into `repository.py`, fix the SQL.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 python3 -m pytest tests/test_incremental.py -q
@@ -386,7 +386,7 @@ python3 -m pytest tests/test_incremental.py -q
 
 Expected: 0 failed, 0 errors.
 
-- [ ] **Step 4: Update baseline_after.json (5 rows, F1)**
+- [x] **Step 4: Update baseline_after.json (5 rows, F1)**
 
 ```bash
 python3 -c "
@@ -402,7 +402,7 @@ print('Updated', len(fixed), 'rows')
 "
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add portal/repository.py tests/audit/baseline_after.json
@@ -417,17 +417,17 @@ git commit -m "fix(M1): fix 5 incremental update method errors (F1)"
 - Modify: `portal/db.py` (likely add missing `reviews` columns)
 - Test: `tests/test_reviews_schema.py`
 
-- [ ] **Step 1: Get details**
+- [x] **Step 1: Get details**
 
 ```bash
 python3 -m pytest tests/test_reviews_schema.py -q --tb=short 2>&1 | tail -15
 ```
 
-- [ ] **Step 2: Fix**
+- [x] **Step 2: Fix**
 
 Add missing columns to `reviews` table in `ensure_unified_schema`. Re-run.
 
-- [ ] **Step 3: Verify + update baseline_after.json (F1)**
+- [x] **Step 3: Verify + update baseline_after.json (F1)**
 
 ```bash
 python3 -m pytest tests/test_reviews_schema.py -q
@@ -444,7 +444,7 @@ print('Updated', len(fixed), 'rows')
 "
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add portal/db.py tests/audit/baseline_after.json
@@ -459,17 +459,17 @@ git commit -m "fix(M1): add missing reviews schema columns (F1)"
 - Modify: `portal/ctx_v2.py` or `portal/context_builder.py`
 - Test: `tests/test_generate_context.py`
 
-- [ ] **Step 1: Get details**
+- [x] **Step 1: Get details**
 
 ```bash
 python3 -m pytest tests/test_generate_context.py -q --tb=short 2>&1 | tail -20
 ```
 
-- [ ] **Step 2: Fix the build_context fallback / pacing loading**
+- [x] **Step 2: Fix the build_context fallback / pacing loading**
 
 Trace the failure into ctx_v2.py, fix the load order or the key name.
 
-- [ ] **Step 3: Verify + update baseline_after.json (F1)**
+- [x] **Step 3: Verify + update baseline_after.json (F1)**
 
 ```bash
 python3 -m pytest tests/test_generate_context.py -q
@@ -486,7 +486,7 @@ print('Updated', len(fixed), 'rows')
 "
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add portal/ctx_v2.py tests/audit/baseline_after.json
@@ -501,17 +501,17 @@ git commit -m "fix(M1): fix generate_context build_context (F1)"
 - Modify: `portal/app.py` or `portal/repository.py`
 - Test: `tests/test_sidebar.py`
 
-- [ ] **Step 1: Get details**
+- [x] **Step 1: Get details**
 
 ```bash
 python3 -m pytest tests/test_sidebar.py -q --tb=short 2>&1 | tail -15
 ```
 
-- [ ] **Step 2: Fix the API shape**
+- [x] **Step 2: Fix the API shape**
 
 Adjust the endpoint to match the test expectation (or vice versa — verify which side is the spec).
 
-- [ ] **Step 3: Verify + update baseline_after.json (F1 or F2)**
+- [x] **Step 3: Verify + update baseline_after.json (F1 or F2)**
 
 ```bash
 python3 -m pytest tests/test_sidebar.py -q
@@ -528,7 +528,7 @@ print('Updated', len(fixed), 'rows')
 "
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add portal/app.py tests/audit/baseline_after.json
@@ -543,17 +543,17 @@ git commit -m "fix(M1): fix sidebar API shape (F1)"
 - Modify: per-failure (1 each)
 - Test: `tests/test_token_truncation.py` / `tests/test_memory_layer.py` / `tests/test_context_builder.py`
 
-- [ ] **Step 1: Get details for all 3**
+- [x] **Step 1: Get details for all 3**
 
 ```bash
 python3 -m pytest tests/test_token_truncation.py::TestTokenTruncation::test_truncation_respects_budget_with_large_content tests/test_memory_layer.py::TestMemoryIntegration::test_fallback_state_context tests/test_context_builder.py::TestContextStats::test_context_stats_structure -q --tb=short 2>&1 | tail -30
 ```
 
-- [ ] **Step 2: Fix each**
+- [x] **Step 2: Fix each**
 
 For each, follow the traceback and fix. `test_context_stats_structure` is documented in spec as pre-existing — if it's a "novel-not-found returns wrong shape" issue, classify as F1 (fix the endpoint to return the spec's `{"error": ...}` shape consistently) or F2 (fix the test to match actual behavior).
 
-- [ ] **Step 3: Verify all 3 pass + update baseline_after.json (1 each)**
+- [x] **Step 3: Verify all 3 pass + update baseline_after.json (1 each)**
 
 ```bash
 python3 -m pytest tests/test_token_truncation.py::TestTokenTruncation::test_truncation_respects_budget_with_large_content tests/test_memory_layer.py::TestMemoryIntegration::test_fallback_state_context tests/test_context_builder.py::TestContextStats::test_context_stats_structure -v
@@ -576,7 +576,7 @@ print('Updated remaining PENDING rows')
 "
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
@@ -587,7 +587,7 @@ git commit -m "fix(M1): fix last 3 single-test failures (F1)"
 
 ## Task 11: Final verification
 
-- [ ] **Step 1: Run full suite**
+- [x] **Step 1: Run full suite**
 
 ```bash
 python3 -m pytest tests/ -q
@@ -595,7 +595,7 @@ python3 -m pytest tests/ -q
 
 Expected: `0 failed, X passed, 0 errors` where X ≥ 119.
 
-- [ ] **Step 2: Re-run audit tool to confirm**
+- [x] **Step 2: Re-run audit tool to confirm**
 
 ```bash
 python3 scripts/audit_test_failures.py
@@ -604,7 +604,7 @@ cat tests/audit/failures.json | python3 -c "import json,sys; print(len(json.load
 
 Expected: `0 rows (expected 0)`.
 
-- [ ] **Step 3: Verify baseline_after.json — all 37 rows have non-PENDING final_status**
+- [x] **Step 3: Verify baseline_after.json — all 37 rows have non-PENDING final_status**
 
 ```bash
 python3 -c "
@@ -622,7 +622,7 @@ print('By category:', buckets)
 
 Expected: `Pending: 0 of 37` + a bucket breakdown showing F1 / F2 / F3 / F4 distribution.
 
-- [ ] **Step 4: Update README "TDD" section (small)**
+- [x] **Step 4: Update README "TDD" section (small)**
 
 Add a section to README.md after the 12-layer table:
 
@@ -634,7 +634,7 @@ Add a section to README.md after the 12-layer table:
 基线: `pytest tests/ -q` 当前 0 failed / 0 errors (维护自 2026-06-03, 见 `tests/audit/baseline_after.json`)。
 ```
 
-- [ ] **Step 5: Commit final state**
+- [x] **Step 5: Commit final state**
 
 ```bash
 git add tests/audit/baseline_after.json README.md
@@ -675,3 +675,13 @@ Plan complete and saved to `docs/superpowers/plans/2026-06-03-m1-test-baseline-z
 **2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints
 
 Which approach?
+
+---
+
+## Implementation Pointer
+
+> **Status:** All 11 tasks + self-review items were already implemented across commits `fc23bb3`, `5ec6276`, `1acdcfb`, `56931a1`, `1d78d9e`, `12c76d6`, `958c329`, `85de1e9`, and `4878db3` between 2026-06-03 and 2026-06-03 — landing the same day the plan was written.
+>
+> **Verified 2026-06-06:** 1031/1031 tests pass (0 failed, 0 errors). No code changes needed; this is a checkbox backfill + plan close-out.
+>
+> **Note:** The work was executed close to the plan's envisioned sequence: audit tool → freeze baseline → seed baseline_after → schema fix (Task 4) → which transitively fixed 20 more rows (1d78d9e) → final 2 real failures fixed (12c76d6) → small refactor (958c329) → final commit (85de1e9) → audit-trail notes cleanup (4878db3). Test count has since grown from 119 → 1031 across M2/M3 work, but the M1 baseline of 0 failed / 0 errors is preserved.
