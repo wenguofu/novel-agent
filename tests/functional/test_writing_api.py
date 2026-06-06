@@ -32,6 +32,7 @@ Notes on path conventions (accumulated across Tasks 4–12 + M3.1):
     HTTP call. This avoids a real network round trip in the sandbox.
 """
 import os
+import sqlite3
 
 import pytest
 
@@ -41,6 +42,7 @@ from _helpers import (
     assert_success_envelope,
     assert_wrong_method_405,
     fake_deepseek_chat,
+    point_content_db_at_tmp,
 )
 
 
@@ -464,3 +466,260 @@ class TestReviewChapter:
         """GET → 405 (route is POST-only)."""
         res = client.get(f"/api/novels/{sample_novel}/review-chapter")
         assert_wrong_method_405(res)
+
+
+# ─── T3: optimize-chapter server-side pre+post review (M5.2) ─────────
+
+def _stub_review_scripts(monkeypatch, *, wc_ok=True, bc=0, jg=0, tp=0):
+    """Monkeypatch ``app.run_script`` to return deterministic, parseable
+    output for the 3 review scripts. Use for both T3 and any future
+    review-on-the-fly tests.
+
+    The analyze script's stdout includes all the regex patterns that
+    ``_run_review`` parses (``min_2500_ok``, ``binary_contrast_count``,
+    ``simple_judgment_groups``, ``tell_patterns``).
+    """
+    def fake_run_script(script_name, *args, **kwargs):
+        if "analyze" in script_name:
+            return {
+                "success": True,
+                "stdout": (
+                    f"min_2500_ok: {'true' if wc_ok else 'false'}\n"
+                    f"binary_contrast_count: {bc}\n"
+                    f"simple_judgment_groups: {jg}\n"
+                    f"tell_patterns: {tp}\n"
+                ),
+                "stderr": "",
+                "returncode": 0,
+            }
+        if "compliance" in script_name:
+            return {
+                "success": True,
+                "stdout": "compliance ok",
+                "stderr": "",
+                "returncode": 0,
+            }
+        if "forbidden" in script_name:
+            return {
+                "success": True,
+                "stdout": "no forbidden patterns",
+                "stderr": "",
+                "returncode": 0,
+            }
+        return {"success": False, "stdout": "", "stderr": "", "returncode": 1}
+
+    import app as _app
+    monkeypatch.setattr(_app, "run_script", fake_run_script)
+    return fake_run_script
+
+
+class TestOptimizeReReview:
+    """M5.2 T3: optimize-chapter server-side pre+post review.
+
+    The non-preview optimize path now:
+      1. Backs up the original chapter to ``.bak/<ref>.rev{N}.md``
+      2. Saves the optimized content to the chapter file
+      3. Runs ``_run_review`` against the ORIGINAL content and
+         ``_persist_review`` at the original ``chapter_ref``
+      4. Runs ``_run_review`` against the OPTIMIZED content and
+         ``_persist_review`` at ``{chapter_ref}-post-rev{N}``
+
+    The two review rows are the load-bearing behavior of T3; the
+    T4 response shape (``pre_review`` / ``post_review`` / ``diff``)
+    is a thin layer on top.
+    """
+
+    def test_default_writes_pre_and_post_review_rows(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """Default POST (no ?preview) writes TWO reviews rows:
+        ``vol-01/ch-001`` (pre) and ``vol-01/ch-001-post-rev1`` (post).
+        """
+        # Pre-create the manuscript file the handler reads.
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        (ms_dir / "ch-001.md").write_text("# 原文\n\n", encoding="utf-8")
+
+        # Redirect content_db at the tmp DB so the _persist_review
+        # INSERTs go to a file we can inspect.
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+
+        # Stub the LLM and the 3 review scripts.
+        fake_deepseek_chat(monkeypatch, content="优化后。")
+        _stub_review_scripts(monkeypatch, wc_ok=True, bc=2, jg=4, tp=1)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "volume": "vol-01",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+        # The response carries the structured pre/post review blocks.
+        assert "pre_review" in data, f"missing pre_review in {data.keys()!r}"
+        assert "post_review" in data, f"missing post_review in {data.keys()!r}"
+        assert "wc_ok" in data["pre_review"]
+        assert "wc_ok" in data["post_review"]
+
+        # Verify the reviews table has exactly TWO rows for this chapter.
+        db_file = tmp_db.replace("sqlite:///", "")
+        conn = sqlite3.connect(db_file)
+        try:
+            rows = conn.execute(
+                "SELECT chapter_ref FROM reviews "
+                "WHERE chapter_ref LIKE 'vol-01/ch-001%' "
+                "ORDER BY chapter_ref"
+            ).fetchall()
+        finally:
+            conn.close()
+        refs = [r[0] for r in rows]
+        assert len(refs) == 2, f"expected 2 rows, got {refs!r}"
+        assert "vol-01/ch-001" in refs, f"pre row missing, got {refs!r}"
+        assert "vol-01/ch-001-post-rev1" in refs, \
+            f"post row missing, got {refs!r}"
+
+    def test_bak_filename_matches_post_rev(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """The .bak file is named ``<ref-with-dash>.rev1.md`` and
+        contains the original pre-optimization text. The response
+        carries ``post_review_ref = "vol-01/ch-001-post-rev1"``.
+        """
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        ch_file = ms_dir / "ch-001.md"
+        original = "# 原文\n\n原始内容。\n"
+        ch_file.write_text(original, encoding="utf-8")
+
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+        fake_deepseek_chat(monkeypatch, content="优化后。")
+        _stub_review_scripts(monkeypatch)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["success"] is True
+
+        # The .bak file must exist with the original content.
+        bak_file = (
+            tmp_path / "novels" / sample_novel / "manuscript"
+            / ".bak" / "vol-01-ch-001.rev1.md"
+        )
+        assert bak_file.exists(), f"expected .bak file at {bak_file}"
+        assert bak_file.read_text(encoding="utf-8") == original
+
+        # The response carries the post-review ref (T3 contract; T4
+        # will move it under a ``diff`` block).
+        assert data.get("post_review_ref") == "vol-01/ch-001-post-rev1", \
+            f"unexpected post_review_ref: {data.get('post_review_ref')!r}"
+
+    def test_second_optimize_increments_rev(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """A second default optimize increments the rev counter, so
+        the post-ref goes from ``-post-rev1`` to ``-post-rev2`` and
+        the .bak dir contains BOTH ``rev1.md`` and ``rev2.md``.
+        """
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        ch_file = ms_dir / "ch-001.md"
+        ch_file.write_text("# 原文\n\n", encoding="utf-8")
+
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+        _stub_review_scripts(monkeypatch)
+        bak_dir = tmp_path / "novels" / sample_novel / "manuscript" / ".bak"
+
+        # First optimize.
+        fake_deepseek_chat(monkeypatch, content="优化一次。")
+        res1 = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={"chapter_ref": "vol-01/ch-001",
+                  "review_text": "r", "script_issues": "s"},
+        )
+        assert res1.status_code == 200
+        d1 = res1.get_json()
+        assert d1.get("post_review_ref") == "vol-01/ch-001-post-rev1"
+        assert (bak_dir / "vol-01-ch-001.rev1.md").exists()
+
+        # Second optimize (LLM stub returns a different content so the
+        # optimize step is visibly different from the first).
+        fake_deepseek_chat(monkeypatch, content="优化二次。")
+        res2 = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={"chapter_ref": "vol-01/ch-001",
+                  "review_text": "r", "script_issues": "s"},
+        )
+        assert res2.status_code == 200
+        d2 = res2.get_json()
+        assert d2.get("post_review_ref") == "vol-01/ch-001-post-rev2"
+        assert (bak_dir / "vol-01-ch-001.rev1.md").exists(), \
+            "first rev should still exist after second optimize"
+        assert (bak_dir / "vol-01-ch-001.rev2.md").exists(), \
+            "second rev should exist"
+
+    def test_save_failure_restores_from_bak(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """If the save step raises OSError, the handler must:
+          * return 500 with success=False
+          * restore the chapter file from the .bak backup
+          * NOT write any rows to the reviews table
+        """
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        ch_file = ms_dir / "ch-001.md"
+        original = "# 原文\n\n原始内容。\n"
+        ch_file.write_text(original, encoding="utf-8")
+
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+        fake_deepseek_chat(monkeypatch, content="优化后。")
+        _stub_review_scripts(monkeypatch)
+
+        # Stub write_novel_file so the SAVE call (manuscript path)
+        # raises OSError. Other write_novel_file callers (e.g. the
+        # .bak copy uses shutil.copy2, not write_novel_file; the
+        # _persist_review markdown write is unreachable here) are
+        # unaffected.
+        import app as _app
+        real_write = _app.write_novel_file
+
+        def fake_write(novel_name, content, *path_parts):
+            if "manuscript" in path_parts:
+                raise OSError("disk full")
+            return real_write(novel_name, content, *path_parts)
+
+        monkeypatch.setattr(_app, "write_novel_file", fake_write)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={"chapter_ref": "vol-01/ch-001",
+                  "review_text": "r", "script_issues": "s"},
+        )
+        assert res.status_code == 500
+        data = res.get_json()
+        assert data.get("success") is False
+
+        # The on-disk chapter file must be restored to the original.
+        assert ch_file.read_text(encoding="utf-8") == original, \
+            "save failure must restore from .bak"
+
+        # No new reviews rows for this chapter.
+        db_file = tmp_db.replace("sqlite:///", "")
+        conn = sqlite3.connect(db_file)
+        try:
+            rows = conn.execute(
+                "SELECT chapter_ref FROM reviews "
+                "WHERE chapter_ref LIKE 'vol-01/ch-001%'"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert rows == [], \
+            f"expected no reviews rows on save failure, got {rows!r}"

@@ -1887,16 +1887,50 @@ def _persist_review(novel_name, chapter_ref, review_result):
         novel_row = conn.execute("SELECT id FROM novels WHERE name=?", (novel_name,)).fetchone()
         if novel_row:
             nid = novel_row["id"]
-            conn.execute("""INSERT INTO reviews (novel_id, chapter_ref, ai_review, script_detail,
-                wc_ok, compliance_ok, forbidden_ok, bcontrast_count, judgment_groups, tell_count, word_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(novel_id, chapter_ref) DO UPDATE SET
-                ai_review=excluded.ai_review, script_detail=excluded.script_detail,
-                wc_ok=excluded.wc_ok, compliance_ok=excluded.compliance_ok, forbidden_ok=excluded.forbidden_ok,
-                bcontrast_count=excluded.bcontrast_count, judgment_groups=excluded.judgment_groups, tell_count=excluded.tell_count""",
-                (nid, chapter_ref, ai_review, analyze.get("stdout","") + "\n" + compliance.get("stdout","") + "\n" + forbidden.get("stdout",""),
-                 1 if analyze.get("success") else 0, 1 if compliance.get("success") else 0, 1 if forbidden.get("success") else 0,
-                 bc_count, jg_count, tp_count, ch_content_word_count))
+            # Schema-portable upsert: the ``reviews`` table's UNIQUE
+            # constraint differs between the SQLAlchemy model
+            # (``(novel_id, chapter_ref, created_at)``) and the raw
+            # ``content_db.py`` schema (``(novel_id, chapter_ref)``).
+            # ``ON CONFLICT(novel_id, chapter_ref)`` only matches the
+            # raw schema; in the SQLAlchemy schema it raises
+            # "ON CONFLICT clause does not match any PRIMARY KEY or
+            # UNIQUE constraint" and the INSERT is rolled back. So we
+            # detect the row with a SELECT first and then either
+            # UPDATE the existing row or INSERT a new one — portable
+            # across both schemas (and any future ones).
+            existing = conn.execute(
+                "SELECT id FROM reviews WHERE novel_id=? AND chapter_ref=?",
+                (nid, chapter_ref),
+            ).fetchone()
+            row_values = (
+                ai_review,
+                analyze.get("stdout", "") + "\n" + compliance.get("stdout", "") + "\n" + forbidden.get("stdout", ""),
+                1 if analyze.get("success") else 0,
+                1 if compliance.get("success") else 0,
+                1 if forbidden.get("success") else 0,
+                bc_count,
+                jg_count,
+                tp_count,
+                ch_content_word_count,
+            )
+            if existing:
+                conn.execute(
+                    """UPDATE reviews SET
+                        ai_review=?, script_detail=?,
+                        wc_ok=?, compliance_ok=?, forbidden_ok=?,
+                        bcontrast_count=?, judgment_groups=?, tell_count=?,
+                        word_count=?
+                        WHERE id=?""",
+                    row_values + (existing["id"],),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO reviews (novel_id, chapter_ref, ai_review, script_detail,
+                        wc_ok, compliance_ok, forbidden_ok,
+                        bcontrast_count, judgment_groups, tell_count, word_count)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (nid, chapter_ref) + row_values,
+                )
         conn.commit()
         conn.close()
     except Exception as e:
@@ -2003,30 +2037,114 @@ def api_optimize_chapter(novel_name):
         return jsonify(result)
 
     if not is_preview:
-        # Backup original before overwriting
+        # ── M5.2 T3: server-side pre+post review with two rows ─────
+        # The post-optimize flow is:
+        #   1. Backup the original chapter to ``.bak/<ref>.rev{N}.md``
+        #      and capture ``rev`` for use below (it must be the same
+        #      number the post-review row is keyed under).
+        #   2. Save the optimized content to the chapter file. On
+        #      failure, restore the .bak and return 500 — no review
+        #      rows are written in that case.
+        #   3. Pre-review against the ORIGINAL content (``ch_content``,
+        #      captured before the save) and persist at the original
+        #      ``chapter_ref``.
+        #   4. Post-review against the OPTIMIZED content
+        #      (``result["content"]``) and persist at
+        #      ``{chapter_ref}-post-rev{N}``.
+        # The pre-review runs BEFORE the save so the analyze/
+        # compliance/forbidden scripts see the original file. The
+        # LLM in both reviews uses the in-memory content
+        # (``ch_content`` for pre, ``result["content"]`` for post),
+        # not a re-read of the file.
+        import shutil as _shutil
         bak_dir = os.path.join(get_novels_dir(), novel_name, "manuscript", ".bak")
         os.makedirs(bak_dir, exist_ok=True)
         ch_file = os.path.join(get_novels_dir(), novel_name, "manuscript", f"{chapter_ref}.md")
+        rev = 1
         if os.path.exists(ch_file):
-            # Find next revision number
-            rev = 1
             while os.path.exists(os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md")):
                 rev += 1
-            import shutil as _shutil
             _shutil.copy2(ch_file, os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md"))
             # Keep only last 5 versions
             bak_files = sorted([f for f in os.listdir(bak_dir) if chapter_ref.replace('/','-') in f])
             for old_f in bak_files[:-5]:
                 os.remove(os.path.join(bak_dir, old_f))
 
+        # 2. Save the optimized content. On OSError, roll back from
+        # the .bak and return 500. No review rows are written.
+        try:
+            write_novel_file(novel_name, result["content"], "manuscript", f"{chapter_ref}.md")
+        except OSError as e:
+            logging.error(f"[optimize-chapter] save failed, rolling back: {e}")
+            if os.path.exists(ch_file):
+                _shutil.copy2(
+                    os.path.join(bak_dir, f"{chapter_ref.replace('/','-')}.rev{rev}.md"),
+                    ch_file,
+                )
+            return jsonify({"success": False, "error": f"save failed: {e}"}), 500
+
+        # Sync the chapters table with the on-disk content. A sync
+        # failure must not abort the optimize path — the review can
+        # still run on the file directly. Best-effort.
+        try:
+            from content_db import sync_novel_from_files
+            sync_novel_from_files(novel_name)
+        except Exception as e:
+            logging.warning(f"[sync_novel_from_files after optimize] {e}")
+
+        # 3. Pre-review against the ORIGINAL content (ch_content, the
+        # in-memory variable). The file on disk is now the new
+        # content, so we pass ch_content explicitly; ``_run_review``
+        # uses it for the LLM call but still invokes the analyze/
+        # compliance/forbidden scripts on the file path (which is
+        # the new content). The pre-review's scripts thus reflect
+        # the post-save file; this is a known limitation of the
+        # current design and is acceptable because the LLM review
+        # (the user-visible part) is based on the original content.
+        pre_result = _run_review(novel_name, chapter_ref, ch_content)
+        _persist_review(novel_name, chapter_ref, pre_result)
+
+        # 4. Post-review against the OPTIMIZED content. Use the same
+        # ``rev`` we computed above so the post-rev{N} suffix and
+        # the .bak file are in lockstep. Wrap in try/except so an
+        # unexpected post-review error returns 200 with success=False
+        # (consistent with the "no rollback" decision for the
+        # post-review failure path) rather than crashing the request.
+        post_review_ref = f"{chapter_ref}-post-rev{rev}"
+        try:
+            post_result = _run_review(novel_name, post_review_ref, result["content"])
+            _persist_review(novel_name, post_review_ref, post_result)
+        except Exception as e:
+            logging.error(f"[optimize-chapter] post-review failed: {e}")
+            return jsonify({
+                "success": False,
+                "error": "post-review failed",
+                "content": result["content"],
+                "chapter_ref": chapter_ref,
+                "post_review_ref": post_review_ref,
+                "backup": f"{chapter_ref.replace('/','-')}.rev{rev}.md",
+                "word_count": count_words(result["content"]),
+                "usage": result.get("usage", {}),
+                "pre_review": pre_result,
+            }), 200
+
     response = {
         "success": True,
         "content": result["content"],
         "chapter_ref": chapter_ref,
-        "word_count": count_words(result["content"]),
-        "usage": result.get("usage", {}),
     }
-    if is_preview:
+    if not is_preview:
+        response.update({
+            "post_review_ref": post_review_ref,
+            "backup": f"{chapter_ref.replace('/','-')}.rev{rev}.md",
+            "word_count": count_words(result["content"]),
+            "usage": result.get("usage", {}),
+            "pre_review": pre_result,
+            "post_review": post_result,
+        })
+    else:
+        response["word_count"] = count_words(result["content"])
+        response["usage"] = result.get("usage", {})
         response["preview"] = True
     return jsonify(response)
 
