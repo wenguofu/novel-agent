@@ -25,7 +25,7 @@
 **Files:**
 - Modify: `portal/content_db.py:87` (after `outlines` table definition)
 
-- [ ] **Step 1: Add the CREATE TABLE statement**
+- [x] **Step 1: Add the CREATE TABLE statement**
 
 After the existing `outlines` table (line ~95), add:
 
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS chapter_outlines (
 CREATE INDEX IF NOT EXISTS idx_co_novel_vol ON chapter_outlines(novel_id, volume);
 ```
 
-- [ ] **Step 2: Add repository methods**
+- [x] **Step 2: Add repository methods**
 
 Add after the existing `outline` upsert/fetch methods (~line 440). Methods to add:
 
@@ -126,12 +126,12 @@ def _parse_co_row(row):
     }
 ```
 
-- [ ] **Step 3: Verify build**
+- [x] **Step 3: Verify build**
 
 Run: `cd portal && python3 -c "from content_db import get_db; print('OK')"`
 Expected: PASS (no import errors)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ---
 
@@ -140,7 +140,7 @@ Expected: PASS (no import errors)
 **Files:**
 - Modify: `portal/app.py:900` (`api_edit_outline`)
 
-- [ ] **Step 1: After writing outline file in `api_edit_outline`, parse YAML and sync**
+- [x] **Step 1: After writing outline file in `api_edit_outline`, parse YAML and sync**
 
 In `api_edit_outline` (~line 908), after `write_novel_file`, add a call to parse the written YAML file and upsert each chapter. **Save path must be `.yaml` not `.md`:**
 
@@ -180,7 +180,7 @@ def api_edit_outline(novel_name, vol_ref):
     return jsonify({"success": True, "message": "大纲已保存", "vol": vol_ref})
 ```
 
-- [ ] **Step 2: Test the sync end-to-end**
+- [x] **Step 2: Test the sync end-to-end**
 
 Run: `curl -s -X POST "http://localhost:35001/api/novels/大强成神啦/outline/vol-01/edit" -H "Content-Type: application/json" -d '{"content": "# YAML test\nvolume: 1\nchapters:\n  - number: 1\n    title: \"测试章节\"\n    function: [\"开篇\"]\n    core_events: \"测试事件\"\n    foreshadowing: [\"线索1\"]\n    ending_hook: \"悬念结尾\"\n"}'`
 
@@ -188,7 +188,7 @@ Then check: `curl -s "http://localhost:35001/api/novels/大强成神啦/chapter-
 
 Expected: chapter list with one entry for chapter 1
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ---
 
@@ -197,7 +197,7 @@ Expected: chapter list with one entry for chapter 1
 **Files:**
 - Modify: `portal/app.py` (add after `api_edit_outline`, ~line 920)
 
-- [ ] **Step 1: Add GET endpoint for all chapter outlines in a volume**
+- [x] **Step 1: Add GET endpoint for all chapter outlines in a volume**
 
 ```python
 @app.route("/api/novels/<novel_name>/chapter-outlines/<vol_ref>")
@@ -211,7 +211,7 @@ def api_get_chapter_outlines(novel_name, vol_ref):
         return jsonify({"success": False, "error": str(e)}), 500
 ```
 
-- [ ] **Step 2: Add PUT endpoint for a single chapter outline**
+- [x] **Step 2: Add PUT endpoint for a single chapter outline**
 
 ```python
 @app.route("/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>", methods=["PUT"])
@@ -234,19 +234,19 @@ def api_put_chapter_outline(novel_name, vol_ref, ch_num):
         return jsonify({"success": False, "error": str(e)}), 500
 ```
 
-- [ ] **Step 3: Test single chapter update**
+- [x] **Step 3: Test single chapter update**
 
 Run: `curl -s -X PUT "http://localhost:35001/api/novels/大强成神啦/chapter-outlines/vol-01/1" -H "Content-Type: application/json" -d '{"title": "测试更新", "function": ["开篇"], "core_events": "事件", "foreshadowing": [], "ending_hook": "", "is_danger_scene": true, "word_count": 3000}'`
 
 Expected: `{"success": true, "message": "第1章大纲已更新"}`
 
-- [ ] **Step 4: Test get all**
+- [x] **Step 4: Test get all**
 
 Run: `curl -s "http://localhost:35001/api/novels/大强成神啦/chapter-outlines/vol-01" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Got {len(d[\"chapters\"])} chapters')"`
 
 Expected: `Got N chapters`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -255,7 +255,7 @@ Expected: `Got N chapters`
 **Files:**
 - Modify: `portal/app.py` (`api_edit_outline`)
 
-- [ ] **Step 1: Update `api_edit_outline` to save as `.yaml` and sync from it**
+- [x] **Step 1: Update `api_edit_outline` to save as `.yaml` and sync from it**
 
 Change `write_novel_file` path from `{vol_ref}-chapters.md` to `{vol_ref}-chapters.yaml`. Add sync block that reads the `.yaml` file and upserts each chapter (only if `.yaml` exists — MD files are ignored):
 
@@ -295,21 +295,31 @@ def api_edit_outline(novel_name, vol_ref):
     return jsonify({"success": True, "message": "大纲已保存", "vol": vol_ref})
 ```
 
-- [ ] **Step 2: Verify `.md` files are NOT synced**
+- [x] **Step 2: Verify `.md` files are NOT synced**
 
 Confirm that if only a `.md` file exists (no `.yaml`), the sync block does not fire. Write a test: manually call `api_edit_outline` with YAML content, confirm chapters are in DB, then confirm that the old `.md` file path is never touched by the sync logic.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ---
 
 ## Self-Review Checklist
 
-- [ ] `chapter_outlines` table has all fields from YAML schema (`number`, `title`, `function[]`, `core_events`, `foreshadowing[]`, `ending_hook`, `is_danger_scene`, `word_count`)
-- [ ] `upsert_chapter_outline` parses YAML `chapters` array and stores `function`/`foreshadowing` as JSON
-- [ ] `api_edit_outline` saves as `.yaml` (not `.md`) and syncs only when that file exists
-- [ ] GET endpoint returns array sorted by `chapter_num`
-- [ ] PUT endpoint updates single chapter
-- [ ] Unique constraint on `(novel_id, volume, chapter_num)` prevents duplicates
-- [ ] Index on `(novel_id, volume)` for fast volume-scoped queries
-- [ ] Agent system generates `vol-YY-chapters.yaml` format only (not MD)
+- [x] `chapter_outlines` table has all fields from YAML schema (`number`, `title`, `function[]`, `core_events`, `foreshadowing[]`, `ending_hook`, `is_danger_scene`, `word_count`)
+- [x] `upsert_chapter_outline` parses YAML `chapters` array and stores `function`/`foreshadowing` as JSON
+- [x] `api_edit_outline` saves as `.yaml` (not `.md`) and syncs only when that file exists
+- [x] GET endpoint returns array sorted by `chapter_num`
+- [x] PUT endpoint updates single chapter
+- [x] Unique constraint on `(novel_id, volume, chapter_num)` prevents duplicates
+- [x] Index on `(novel_id, volume)` for fast volume-scoped queries
+- [x] Agent system generates `vol-YY-chapters.yaml` format only (not MD)
+
+---
+
+## Implementation Pointer
+
+> **Status:** All 4 tasks + 8 checklist items were already implemented in commit `28b48bc` (2026-05-31 22:23 +0800) — `feat: chapter_outlines table, story_tracking table, ON CONFLICT fixes, 12 functional tests` — predating the M1/M2/M3 plan series.
+>
+> **Verified 2026-06-06:** 1015/1015 tests pass (4 unit tests in `tests/test_chapter_outlines.py` + 16 functional tests in `tests/functional/test_outline_api.py::TestGetChapterOutlines/TestPutChapterOutline/TestReadOutline/TestEditOutline`). No code changes needed; this is a checkbox backfill + plan close-out.
+>
+> **Note:** The original plan was never executed as a 4-task plan — it was implemented as part of a larger commit that also added `story_tracking`, `danger_issues` JSON columns, `ON CONFLICT` fixes, and ORM models (`ChapterOutline`, `DangerIssue`, `StoryTracking`). All atomic work landed in one commit on the day the plan was written.
