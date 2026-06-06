@@ -32,7 +32,21 @@ novels/
 
 # RAG database
 *.db
+*.db-shm
+*.db-wal
+*.db.bak
 chroma_db/
+
+# Portal runtime artifacts
+portal/.encryption_key
+portal/.coverage
 
 # M3: agent code review reports
 .code-reviews/
+
+# Tooling caches (local to each machine)
+.codegraph/
+.understand-anything/
+.understandignore
+.coverage
+.coverage.*
