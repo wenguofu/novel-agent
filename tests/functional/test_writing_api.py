@@ -671,7 +671,12 @@ class TestOptimizeReReview:
         """If the save step raises OSError, the handler must:
           * return 500 with success=False
           * restore the chapter file from the .bak backup
-          * NOT write any rows to the reviews table
+          * write the pre-review row (which ran BEFORE the save
+            and is not rolled back — per the "no rollback on
+            review failure" policy the DB history is kept; the
+            pre-review accurately reflects the original content
+            which is still in the .bak)
+          * NOT write the post-review row (it never ran)
         """
         ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
         ms_dir.mkdir(parents=True, exist_ok=True)
@@ -711,15 +716,137 @@ class TestOptimizeReReview:
         assert ch_file.read_text(encoding="utf-8") == original, \
             "save failure must restore from .bak"
 
-        # No new reviews rows for this chapter.
+        # The pre-review row IS written (it ran before the save and
+        # is not rolled back). The post-review row is NOT written
+        # (it never ran). The on-disk chapter file is restored.
         db_file = tmp_db.replace("sqlite:///", "")
         conn = sqlite3.connect(db_file)
         try:
             rows = conn.execute(
                 "SELECT chapter_ref FROM reviews "
-                "WHERE chapter_ref LIKE 'vol-01/ch-001%'"
+                "WHERE chapter_ref LIKE 'vol-01/ch-001%' "
+                "ORDER BY chapter_ref"
             ).fetchall()
         finally:
             conn.close()
-        assert rows == [], \
-            f"expected no reviews rows on save failure, got {rows!r}"
+        refs = [r[0] for r in rows]
+        assert refs == ["vol-01/ch-001"], (
+            f"expected exactly the pre-review row on save failure, "
+            f"got {refs!r}"
+        )
+
+    def test_pre_review_script_reflects_original_content(
+            self, client, sample_novel, monkeypatch, tmp_path, tmp_db):
+        """M5.2 T3.5 regression guard.
+
+        The pre-review's ``script_results`` (analyze / compliance /
+        forbidden) must reflect the ORIGINAL chapter content, not the
+        post-save optimized content. ``_run_review`` builds a file path
+        from ``chapter_ref`` and passes it to the scripts; if the
+        pre-review runs AFTER the save, the scripts read the new
+        optimized file and the pre-review row is polluted with
+        post-save metrics.
+
+        This test makes the stub ``app.run_script`` actually read the
+        file at call time and return ``min_2500_ok`` based on its
+        length — mimicking the real analyze_chapter.py. The original
+        file is short (< 2500 chars) and the optimized LLM output is
+        long (>= 2500 chars). If the pre-review runs after the save,
+        the scripts see the long new file and report ``wc_ok=True``;
+        the correct behavior (pre-review before save) reports
+        ``wc_ok=False`` because the file at that moment is the
+        original short content.
+        """
+        ms_dir = tmp_path / "novels" / sample_novel / "manuscript" / "vol-01"
+        ms_dir.mkdir(parents=True, exist_ok=True)
+        ch_file = ms_dir / "ch-001.md"
+        # Original content: short (< 2500 chars) → scripts would
+        # report min_2500_ok: false.
+        ch_file.write_text("# 原文\n\n很短的原文内容。\n", encoding="utf-8")
+
+        point_content_db_at_tmp(monkeypatch, tmp_db)
+        # Optimized LLM output: long (>= 2500 chars) → scripts
+        # would report min_2500_ok: true.
+        long_content = "优化后的扩展内容，扩到至少两千五百字以上。\n" * 200
+        assert len(long_content) >= 2500, \
+            f"long_content must be >= 2500 chars for the test to be meaningful, got {len(long_content)}"
+        fake_deepseek_chat(monkeypatch, content=long_content)
+
+        # The post-review's file path is ``vol-01/ch-001-post-rev1.md``
+        # — a virtual ref that only exists in the DB row, not on
+        # disk. Pre-create it with the long content so the stub
+        # ``run_script`` (which reads the actual file) can report
+        # ``wc_ok=True`` for the post-review.
+        (ms_dir / "ch-001-post-rev1.md").write_text(
+            long_content, encoding="utf-8")
+
+        # Stub ``app.run_script`` to read the actual file at call
+        # time so ``wc_ok`` reflects the file's content as it was
+        # at the moment the pre/post review ran.
+        def fake_run_script(script_name, filepath, *args, **kwargs):
+            if "analyze" in script_name:
+                try:
+                    file_content = open(filepath, encoding="utf-8").read()
+                except (FileNotFoundError, OSError):
+                    file_content = ""
+                is_long = len(file_content) >= 2500
+                return {
+                    "success": True,
+                    "stdout": (
+                        f"min_2500_ok: {'true' if is_long else 'false'}\n"
+                        f"binary_contrast_count: 0\n"
+                        f"simple_judgment_groups: 0\n"
+                        f"tell_patterns: 0\n"
+                    ),
+                    "stderr": "",
+                    "returncode": 0,
+                }
+            if "compliance" in script_name:
+                return {
+                    "success": True, "stdout": "compliance ok",
+                    "stderr": "", "returncode": 0,
+                }
+            if "forbidden" in script_name:
+                return {
+                    "success": True, "stdout": "no forbidden patterns",
+                    "stderr": "", "returncode": 0,
+                }
+            return {
+                "success": False, "stdout": "", "stderr": "",
+                "returncode": 1,
+            }
+
+        import app as _app
+        monkeypatch.setattr(_app, "run_script", fake_run_script)
+
+        res = client.post(
+            f"/api/novels/{sample_novel}/optimize-chapter",
+            json={
+                "chapter_ref": "vol-01/ch-001",
+                "review_text": "r",
+                "script_issues": "s",
+            },
+        )
+        assert res.status_code == 200, \
+            f"unexpected status: {res.status_code}: {res.data!r}"
+        data = res.get_json()
+        assert data["success"] is True
+        assert "pre_review" in data, f"missing pre_review in {list(data)!r}"
+        assert "post_review" in data, f"missing post_review in {list(data)!r}"
+
+        # Pre-review's wc_ok must reflect the ORIGINAL (short)
+        # content. If the pre-review runs after the save, the
+        # scripts read the new long file and report wc_ok=True —
+        # which is the bug.
+        pre = data["pre_review"]
+        assert pre["wc_ok"] is False, (
+            f"pre_review.wc_ok should be False (scripts ran on the "
+            f"original short content), got {pre['wc_ok']!r}. This "
+            f"indicates the pre-review ran AFTER the save and the "
+            f"scripts read the new optimized file."
+        )
+        # Post-review's wc_ok must reflect the NEW (long) content.
+        assert data["post_review"]["wc_ok"] is True, (
+            f"post_review.wc_ok should be True (scripts ran on the "
+            f"new long content), got {data['post_review']['wc_ok']!r}"
+        )

@@ -2037,23 +2037,25 @@ def api_optimize_chapter(novel_name):
         return jsonify(result)
 
     if not is_preview:
-        # ── M5.2 T3: server-side pre+post review with two rows ─────
+        # ── M5.2 T3.5: server-side pre+post review with two rows ────
         # The post-optimize flow is:
         #   1. Backup the original chapter to ``.bak/<ref>.rev{N}.md``
         #      and capture ``rev`` for use below (it must be the same
         #      number the post-review row is keyed under).
-        #   2. Save the optimized content to the chapter file. On
-        #      failure, restore the .bak and return 500 — no review
-        #      rows are written in that case.
-        #   3. Pre-review against the ORIGINAL content (``ch_content``,
-        #      captured before the save) and persist at the original
-        #      ``chapter_ref``.
+        #   2. Pre-review against the ORIGINAL content. Runs BEFORE
+        #      the save so the analyze/compliance/forbidden scripts
+        #      (which read a file path built from ``chapter_ref``)
+        #      see the un-optimized on-disk file. Persists at the
+        #      original ``chapter_ref``.
+        #   3. Save the optimized content. On OSError, restore from
+        #      the .bak and return 500. The pre-review row from
+        #      step 2 stays in the DB (no rollback) — the .bak
+        #      still holds the original on disk, so the pre-review
+        #      accurately reflects it.
         #   4. Post-review against the OPTIMIZED content
         #      (``result["content"]``) and persist at
         #      ``{chapter_ref}-post-rev{N}``.
-        # The pre-review runs BEFORE the save so the analyze/
-        # compliance/forbidden scripts see the original file. The
-        # LLM in both reviews uses the in-memory content
+        # The LLM in both reviews uses the in-memory content
         # (``ch_content`` for pre, ``result["content"]`` for post),
         # not a re-read of the file.
         import shutil as _shutil
@@ -2070,8 +2072,18 @@ def api_optimize_chapter(novel_name):
             for old_f in bak_files[:-5]:
                 os.remove(os.path.join(bak_dir, old_f))
 
-        # 2. Save the optimized content. On OSError, roll back from
-        # the .bak and return 500. No review rows are written.
+        # 2. Pre-review against the ORIGINAL content. Runs BEFORE the
+        # save so the analyze/compliance/forbidden scripts read the
+        # un-optimized on-disk file (which is the original). The LLM
+        # uses ``ch_content`` (the in-memory original).
+        pre_result = _run_review(novel_name, chapter_ref, ch_content)
+        _persist_review(novel_name, chapter_ref, pre_result)
+
+        # 3. Save the optimized content. On OSError, roll back from
+        # the .bak and return 500. The pre-review row from step 2 is
+        # NOT rolled back — it accurately reflects the original
+        # (which is still on disk in the .bak), and per the "no
+        # rollback on review failure" policy the DB history is kept.
         try:
             write_novel_file(novel_name, result["content"], "manuscript", f"{chapter_ref}.md")
         except OSError as e:
@@ -2091,18 +2103,6 @@ def api_optimize_chapter(novel_name):
             sync_novel_from_files(novel_name)
         except Exception as e:
             logging.warning(f"[sync_novel_from_files after optimize] {e}")
-
-        # 3. Pre-review against the ORIGINAL content (ch_content, the
-        # in-memory variable). The file on disk is now the new
-        # content, so we pass ch_content explicitly; ``_run_review``
-        # uses it for the LLM call but still invokes the analyze/
-        # compliance/forbidden scripts on the file path (which is
-        # the new content). The pre-review's scripts thus reflect
-        # the post-save file; this is a known limitation of the
-        # current design and is acceptable because the LLM review
-        # (the user-visible part) is based on the original content.
-        pre_result = _run_review(novel_name, chapter_ref, ch_content)
-        _persist_review(novel_name, chapter_ref, pre_result)
 
         # 4. Post-review against the OPTIMIZED content. Use the same
         # ``rev`` we computed above so the post-rev{N} suffix and
