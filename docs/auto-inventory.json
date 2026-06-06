@@ -1,12 +1,12 @@
 {
-  "endpoint_count": 83,
+  "endpoint_count": 84,
   "endpoints": [
     {
       "db_calls": [],
       "docstring": "Aggregate health snapshot: DB, response time, circuit breaker.",
       "func_name": "health_endpoint",
       "key": "GET_/health",
-      "line_no": 138,
+      "line_no": 120,
       "methods": [
         "GET"
       ],
@@ -20,7 +20,7 @@
       "docstring": "",
       "func_name": "index",
       "key": "GET_/",
-      "line_no": 580,
+      "line_no": 552,
       "methods": [
         "GET"
       ],
@@ -34,7 +34,7 @@
       "docstring": "",
       "func_name": "api_list_novels",
       "key": "GET_/api/novels",
-      "line_no": 587,
+      "line_no": 559,
       "methods": [
         "GET"
       ],
@@ -52,7 +52,7 @@
       "docstring": "",
       "func_name": "api_novel_detail",
       "key": "GET_/api/novels/<novel_name>",
-      "line_no": 598,
+      "line_no": 570,
       "methods": [
         "GET"
       ],
@@ -66,7 +66,7 @@
       "docstring": "",
       "func_name": "api_read_file",
       "key": "GET_/api/novels/<novel_name>/file",
-      "line_no": 617,
+      "line_no": 589,
       "methods": [
         "GET"
       ],
@@ -80,7 +80,7 @@
       "docstring": "",
       "func_name": "api_read_chapter",
       "key": "GET_/api/novels/<novel_name>/chapters/<path:ch_ref>",
-      "line_no": 629,
+      "line_no": 601,
       "methods": [
         "GET"
       ],
@@ -94,7 +94,7 @@
       "docstring": "Save edited chapter content",
       "func_name": "api_edit_chapter",
       "key": "POST_/api/novels/<novel_name>/chapters/<path:ch_ref>/edit",
-      "line_no": 651,
+      "line_no": 623,
       "methods": [
         "POST"
       ],
@@ -108,7 +108,7 @@
       "docstring": "Delete a chapter with state rollback. Only the latest chapter can be deleted.",
       "func_name": "api_delete_chapter",
       "key": "DELETE_/api/novels/<novel_name>/chapters/<path:ch_ref>",
-      "line_no": 691,
+      "line_no": 663,
       "methods": [
         "DELETE"
       ],
@@ -132,7 +132,7 @@
       "docstring": "",
       "func_name": "api_read_review",
       "key": "GET_/api/novels/<novel_name>/reviews/<ch_ref>",
-      "line_no": 917,
+      "line_no": 889,
       "methods": [
         "GET"
       ],
@@ -146,7 +146,7 @@
       "docstring": "",
       "func_name": "api_novel_status",
       "key": "GET_/api/novels/<novel_name>/status",
-      "line_no": 927,
+      "line_no": 899,
       "methods": [
         "GET"
       ],
@@ -160,7 +160,7 @@
       "docstring": "Return stage gate progress with auto-detection.",
       "func_name": "api_gate_status",
       "key": "GET_/api/novels/<novel_name>/gate-status",
-      "line_no": 935,
+      "line_no": 907,
       "methods": [
         "GET"
       ],
@@ -174,7 +174,7 @@
       "docstring": "",
       "func_name": "api_read_outline",
       "key": "GET_/api/novels/<novel_name>/outline/<vol_ref>",
-      "line_no": 1020,
+      "line_no": 992,
       "methods": [
         "GET"
       ],
@@ -188,7 +188,7 @@
       "docstring": "Save edited outline",
       "func_name": "api_edit_outline",
       "key": "POST_/api/novels/<novel_name>/outline/<vol_ref>/edit",
-      "line_no": 1030,
+      "line_no": 1002,
       "methods": [
         "POST"
       ],
@@ -202,7 +202,7 @@
       "docstring": "Return all chapter outlines for a volume.",
       "func_name": "api_get_chapter_outlines",
       "key": "GET_/api/novels/<novel_name>/chapter-outlines/<vol_ref>",
-      "line_no": 1066,
+      "line_no": 1038,
       "methods": [
         "GET"
       ],
@@ -216,7 +216,7 @@
       "docstring": "Update a single chapter outline.",
       "func_name": "api_put_chapter_outline",
       "key": "PUT_/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>",
-      "line_no": 1077,
+      "line_no": 1049,
       "methods": [
         "PUT"
       ],
@@ -230,7 +230,7 @@
       "docstring": "",
       "func_name": "api_read_danger_issue",
       "key": "GET_/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>",
-      "line_no": 1097,
+      "line_no": 1069,
       "methods": [
         "GET"
       ],
@@ -244,7 +244,7 @@
       "docstring": "Export all chapters of a novel in the requested format.",
       "func_name": "api_export_novel",
       "key": "GET_/api/novels/<novel_name>/export",
-      "line_no": 1447,
+      "line_no": 1419,
       "methods": [
         "GET"
       ],
@@ -258,7 +258,7 @@
       "docstring": "Direct AI chat",
       "func_name": "api_ai_chat",
       "key": "POST_/api/ai/chat",
-      "line_no": 1500,
+      "line_no": 1472,
       "methods": [
         "POST"
       ],
@@ -272,7 +272,7 @@
       "docstring": "SSE streaming AI chat (supports both Anthropic and OpenAI formats)",
       "func_name": "api_ai_stream",
       "key": "POST_/api/ai/stream",
-      "line_no": 1518,
+      "line_no": 1490,
       "methods": [
         "POST"
       ],
@@ -286,7 +286,7 @@
       "docstring": "",
       "func_name": "api_create_novel",
       "key": "POST_/api/novels/create",
-      "line_no": 1658,
+      "line_no": 1630,
       "methods": [
         "POST"
       ],
@@ -300,7 +300,7 @@
       "docstring": "",
       "func_name": "api_generate_chapter",
       "key": "POST_/api/novels/<novel_name>/generate-chapter",
-      "line_no": 1798,
+      "line_no": 1770,
       "methods": [
         "POST"
       ],
@@ -314,7 +314,7 @@
       "docstring": "",
       "func_name": "api_review_chapter",
       "key": "POST_/api/novels/<novel_name>/review-chapter",
-      "line_no": 2176,
+      "line_no": 2148,
       "methods": [
         "POST"
       ],
@@ -328,7 +328,7 @@
       "docstring": "One-click optimize: fix issues found during review",
       "func_name": "api_optimize_chapter",
       "key": "POST_/api/novels/<novel_name>/optimize-chapter",
-      "line_no": 2223,
+      "line_no": 2194,
       "methods": [
         "POST"
       ],
@@ -342,7 +342,7 @@
       "docstring": "",
       "func_name": "api_run_script",
       "key": "POST_/api/novels/<novel_name>/run-script",
-      "line_no": 2438,
+      "line_no": 2409,
       "methods": [
         "POST"
       ],
@@ -356,7 +356,7 @@
       "docstring": "Write/update any file in a novel's directory",
       "func_name": "api_write_novel_file",
       "key": "POST_/api/novels/<novel_name>/file/write",
-      "line_no": 2452,
+      "line_no": 2423,
       "methods": [
         "POST"
       ],
@@ -370,7 +370,7 @@
       "docstring": "",
       "func_name": "api_update_status",
       "key": "POST_/api/novels/<novel_name>/update-status",
-      "line_no": 2469,
+      "line_no": 2440,
       "methods": [
         "POST"
       ],
@@ -384,7 +384,7 @@
       "docstring": "",
       "func_name": "api_get_config",
       "key": "GET_/api/config",
-      "line_no": 2483,
+      "line_no": 2454,
       "methods": [
         "GET"
       ],
@@ -398,7 +398,7 @@
       "docstring": "",
       "func_name": "api_save_config",
       "key": "POST_/api/config/save",
-      "line_no": 2504,
+      "line_no": 2475,
       "methods": [
         "POST"
       ],
@@ -412,7 +412,7 @@
       "docstring": "",
       "func_name": "api_test_config",
       "key": "POST_/api/config/test",
-      "line_no": 2538,
+      "line_no": 2509,
       "methods": [
         "POST"
       ],
@@ -426,7 +426,7 @@
       "docstring": "Return available writing styles from DB presets + distilled JSON fingerprints.",
       "func_name": "api_styles",
       "key": "GET_/api/styles",
-      "line_no": 2737,
+      "line_no": 2708,
       "methods": [
         "GET"
       ],
@@ -444,7 +444,7 @@
       "docstring": "",
       "func_name": "api_wizard_step",
       "key": "POST_/api/wizard/step",
-      "line_no": 2781,
+      "line_no": 2752,
       "methods": [
         "POST"
       ],
@@ -458,7 +458,7 @@
       "docstring": "",
       "func_name": "api_config_list",
       "key": "GET_/api/config-db/<table>",
-      "line_no": 2953,
+      "line_no": 2924,
       "methods": [
         "GET"
       ],
@@ -472,7 +472,7 @@
       "docstring": "",
       "func_name": "api_config_add",
       "key": "POST_/api/config-db/<table>",
-      "line_no": 2972,
+      "line_no": 2943,
       "methods": [
         "POST"
       ],
@@ -486,7 +486,7 @@
       "docstring": "",
       "func_name": "api_config_manage",
       "key": "PUT,DELETE_/api/config-db/<table>/<int:row_id>",
-      "line_no": 2998,
+      "line_no": 2969,
       "methods": [
         "PUT",
         "DELETE"
@@ -501,7 +501,7 @@
       "docstring": "",
       "func_name": "api_quality_report",
       "key": "GET_/api/content/quality-report/<novel_name>",
-      "line_no": 3033,
+      "line_no": 3004,
       "methods": [
         "GET"
       ],
@@ -512,10 +512,24 @@
     },
     {
       "db_calls": [],
+      "docstring": "Aggregate dashboard metrics across all novels.",
+      "func_name": "api_dashboard_stats",
+      "key": "GET_/api/dashboard/stats",
+      "line_no": 3094,
+      "methods": [
+        "GET"
+      ],
+      "repo_calls": [],
+      "route": "/api/dashboard/stats",
+      "tables_read": [],
+      "tables_written": []
+    },
+    {
+      "db_calls": [],
       "docstring": "Run all pre-generation enforcement scripts. Returns pass/fail for each.",
       "func_name": "api_workflow_preflight",
       "key": "POST_/api/workflow/preflight/<novel_name>",
-      "line_no": 3120,
+      "line_no": 3178,
       "methods": [
         "POST"
       ],
@@ -531,7 +545,7 @@
       "docstring": "Run all post-generation enforcement scripts.",
       "func_name": "api_workflow_postflight",
       "key": "POST_/api/workflow/postflight/<novel_name>",
-      "line_no": 3165,
+      "line_no": 3223,
       "methods": [
         "POST"
       ],
@@ -547,7 +561,7 @@
       "docstring": "Run the complete enforcement pipeline for a chapter.",
       "func_name": "api_enforce_pipeline",
       "key": "POST_/api/novels/<novel_name>/enforce-pipeline",
-      "line_no": 3212,
+      "line_no": 3270,
       "methods": [
         "POST"
       ],
@@ -561,7 +575,7 @@
       "docstring": "",
       "func_name": "api_context_build",
       "key": "POST_/api/context/build",
-      "line_no": 3331,
+      "line_no": 3389,
       "methods": [
         "POST"
       ],
@@ -575,7 +589,7 @@
       "docstring": "",
       "func_name": "api_context_stats",
       "key": "GET_/api/context/stats/<novel_name>/<int:volume>/<int:chapter>",
-      "line_no": 3354,
+      "line_no": 3412,
       "methods": [
         "GET"
       ],
@@ -589,7 +603,7 @@
       "docstring": "",
       "func_name": "api_rag_query",
       "key": "POST_/api/rag/query",
-      "line_no": 3366,
+      "line_no": 3424,
       "methods": [
         "POST"
       ],
@@ -603,7 +617,7 @@
       "docstring": "",
       "func_name": "api_init_full",
       "key": "POST_/api/init/full/<novel_name>",
-      "line_no": 3384,
+      "line_no": 3442,
       "methods": [
         "POST"
       ],
@@ -617,7 +631,7 @@
       "docstring": "",
       "func_name": "api_init_world_building",
       "key": "POST_/api/novels/<novel_name>/world-building/init",
-      "line_no": 3394,
+      "line_no": 3452,
       "methods": [
         "POST"
       ],
@@ -631,7 +645,7 @@
       "docstring": "",
       "func_name": "api_init_plot_arcs",
       "key": "POST_/api/novels/<novel_name>/plot-arcs/init",
-      "line_no": 3404,
+      "line_no": 3462,
       "methods": [
         "POST"
       ],
@@ -645,7 +659,7 @@
       "docstring": "",
       "func_name": "api_init_pacing",
       "key": "POST_/api/novels/<novel_name>/pacing/init",
-      "line_no": 3414,
+      "line_no": 3472,
       "methods": [
         "POST"
       ],
@@ -659,7 +673,7 @@
       "docstring": "",
       "func_name": "api_init_revelation",
       "key": "POST_/api/novels/<novel_name>/revelation/init",
-      "line_no": 3424,
+      "line_no": 3482,
       "methods": [
         "POST"
       ],
@@ -673,7 +687,7 @@
       "docstring": "",
       "func_name": "api_genre_rules_list",
       "key": "GET_/api/genre_rules/<novel_name>",
-      "line_no": 3436,
+      "line_no": 3494,
       "methods": [
         "GET"
       ],
@@ -687,7 +701,7 @@
       "docstring": "",
       "func_name": "api_story_volumes_list",
       "key": "GET_/api/story_volumes/<novel_name>",
-      "line_no": 3450,
+      "line_no": 3508,
       "methods": [
         "GET"
       ],
@@ -701,7 +715,7 @@
       "docstring": "",
       "func_name": "api_volume_plans_list",
       "key": "GET_/api/volume_plans/<novel_name>",
-      "line_no": 3464,
+      "line_no": 3522,
       "methods": [
         "GET"
       ],
@@ -715,7 +729,7 @@
       "docstring": "",
       "func_name": "api_alias_names_list",
       "key": "GET_/api/alias_names/<novel_name>",
-      "line_no": 3478,
+      "line_no": 3536,
       "methods": [
         "GET"
       ],
@@ -729,7 +743,7 @@
       "docstring": "",
       "func_name": "api_project_meta_list",
       "key": "GET_/api/project_meta/<novel_name>",
-      "line_no": 3492,
+      "line_no": 3550,
       "methods": [
         "GET"
       ],
@@ -743,7 +757,7 @@
       "docstring": "",
       "func_name": "api_characters_list",
       "key": "GET_/api/characters/<novel_name>",
-      "line_no": 3508,
+      "line_no": 3566,
       "methods": [
         "GET"
       ],
@@ -757,7 +771,7 @@
       "docstring": "",
       "func_name": "api_character_get",
       "key": "GET_/api/characters/<novel_name>/<int:cid>",
-      "line_no": 3517,
+      "line_no": 3575,
       "methods": [
         "GET"
       ],
@@ -775,7 +789,7 @@
       "docstring": "",
       "func_name": "api_character_add",
       "key": "POST_/api/characters/<novel_name>",
-      "line_no": 3529,
+      "line_no": 3587,
       "methods": [
         "POST"
       ],
@@ -793,7 +807,7 @@
       "docstring": "",
       "func_name": "api_character_manage",
       "key": "PUT,DELETE_/api/characters/<novel_name>/<int:cid>",
-      "line_no": 3547,
+      "line_no": 3605,
       "methods": [
         "PUT",
         "DELETE"
@@ -813,7 +827,7 @@
       "docstring": "",
       "func_name": "api_character_event",
       "key": "POST_/api/characters/<novel_name>/<int:cid>/event",
-      "line_no": 3568,
+      "line_no": 3626,
       "methods": [
         "POST"
       ],
@@ -831,7 +845,7 @@
       "docstring": "",
       "func_name": "api_characters_init",
       "key": "POST_/api/characters/<novel_name>/init",
-      "line_no": 3583,
+      "line_no": 3641,
       "methods": [
         "POST"
       ],
@@ -845,7 +859,7 @@
       "docstring": "",
       "func_name": "api_foreshadowing_list",
       "key": "GET_/api/foreshadowing/<novel_name>",
-      "line_no": 3595,
+      "line_no": 3653,
       "methods": [
         "GET"
       ],
@@ -859,7 +873,7 @@
       "docstring": "",
       "func_name": "api_foreshadowing_unresolved",
       "key": "GET_/api/foreshadowing/<novel_name>/unresolved",
-      "line_no": 3606,
+      "line_no": 3664,
       "methods": [
         "GET"
       ],
@@ -877,7 +891,7 @@
       "docstring": "",
       "func_name": "api_foreshadowing_add",
       "key": "POST_/api/foreshadowing/<novel_name>",
-      "line_no": 3617,
+      "line_no": 3675,
       "methods": [
         "POST"
       ],
@@ -895,7 +909,7 @@
       "docstring": "",
       "func_name": "api_foreshadowing_manage",
       "key": "PUT,DELETE_/api/foreshadowing/<novel_name>/<int:fid>",
-      "line_no": 3637,
+      "line_no": 3695,
       "methods": [
         "PUT",
         "DELETE"
@@ -915,7 +929,7 @@
       "docstring": "",
       "func_name": "api_foreshadowing_resolve",
       "key": "POST_/api/foreshadowing/<novel_name>/resolve/<int:fid>",
-      "line_no": 3654,
+      "line_no": 3712,
       "methods": [
         "POST"
       ],
@@ -933,7 +947,7 @@
       "docstring": "",
       "func_name": "api_foreshadowing_init",
       "key": "POST_/api/foreshadowing/<novel_name>/init",
-      "line_no": 3665,
+      "line_no": 3723,
       "methods": [
         "POST"
       ],
@@ -947,7 +961,7 @@
       "docstring": "",
       "func_name": "api_world_building_list",
       "key": "GET_/api/world_building/<novel_name>",
-      "line_no": 3677,
+      "line_no": 3735,
       "methods": [
         "GET"
       ],
@@ -961,7 +975,7 @@
       "docstring": "",
       "func_name": "api_world_building_add",
       "key": "POST_/api/world_building/<novel_name>",
-      "line_no": 3700,
+      "line_no": 3758,
       "methods": [
         "POST"
       ],
@@ -975,7 +989,7 @@
       "docstring": "",
       "func_name": "api_world_building_manage",
       "key": "PUT,DELETE_/api/world_building/<novel_name>/<int:row_id>",
-      "line_no": 3727,
+      "line_no": 3785,
       "methods": [
         "PUT",
         "DELETE"
@@ -990,7 +1004,7 @@
       "docstring": "",
       "func_name": "api_plot_arcs_list",
       "key": "GET_/api/plot_arcs/<novel_name>",
-      "line_no": 3755,
+      "line_no": 3813,
       "methods": [
         "GET"
       ],
@@ -1004,7 +1018,7 @@
       "docstring": "",
       "func_name": "api_plot_arcs_add",
       "key": "POST_/api/plot_arcs/<novel_name>",
-      "line_no": 3778,
+      "line_no": 3836,
       "methods": [
         "POST"
       ],
@@ -1018,7 +1032,7 @@
       "docstring": "",
       "func_name": "api_plot_arcs_manage",
       "key": "PUT,DELETE_/api/plot_arcs/<novel_name>/<int:row_id>",
-      "line_no": 3812,
+      "line_no": 3870,
       "methods": [
         "PUT",
         "DELETE"
@@ -1033,7 +1047,7 @@
       "docstring": "",
       "func_name": "api_pacing_control_list",
       "key": "GET_/api/pacing_control/<novel_name>",
-      "line_no": 3843,
+      "line_no": 3901,
       "methods": [
         "GET"
       ],
@@ -1047,7 +1061,7 @@
       "docstring": "",
       "func_name": "api_pacing_control_add",
       "key": "POST_/api/pacing_control/<novel_name>",
-      "line_no": 3866,
+      "line_no": 3924,
       "methods": [
         "POST"
       ],
@@ -1061,7 +1075,7 @@
       "docstring": "",
       "func_name": "api_pacing_control_manage",
       "key": "PUT,DELETE_/api/pacing_control/<novel_name>/<int:row_id>",
-      "line_no": 3897,
+      "line_no": 3955,
       "methods": [
         "PUT",
         "DELETE"
@@ -1076,7 +1090,7 @@
       "docstring": "",
       "func_name": "api_revelation_schedule_list",
       "key": "GET_/api/revelation_schedule/<novel_name>",
-      "line_no": 3925,
+      "line_no": 3983,
       "methods": [
         "GET"
       ],
@@ -1090,7 +1104,7 @@
       "docstring": "",
       "func_name": "api_revelation_schedule_add",
       "key": "POST_/api/revelation_schedule/<novel_name>",
-      "line_no": 3948,
+      "line_no": 4006,
       "methods": [
         "POST"
       ],
@@ -1104,7 +1118,7 @@
       "docstring": "",
       "func_name": "api_revelation_schedule_manage",
       "key": "PUT,DELETE_/api/revelation_schedule/<novel_name>/<int:row_id>",
-      "line_no": 3978,
+      "line_no": 4036,
       "methods": [
         "PUT",
         "DELETE"
@@ -1119,7 +1133,7 @@
       "docstring": "Delete all .bak backup files for a novel",
       "func_name": "api_cleanup_bak",
       "key": "POST_/api/novels/<novel_name>/cleanup-bak",
-      "line_no": 4007,
+      "line_no": 4065,
       "methods": [
         "POST"
       ],
@@ -1133,7 +1147,7 @@
       "docstring": "",
       "func_name": "api_content_search",
       "key": "GET_/api/content/search",
-      "line_no": 4027,
+      "line_no": 4085,
       "methods": [
         "GET"
       ],
@@ -1151,7 +1165,7 @@
       "docstring": "",
       "func_name": "api_content_stats",
       "key": "GET_/api/content/stats/<novel_name>",
-      "line_no": 4037,
+      "line_no": 4095,
       "methods": [
         "GET"
       ],
@@ -1169,7 +1183,7 @@
       "docstring": "",
       "func_name": "api_content_sync",
       "key": "POST_/api/content/sync",
-      "line_no": 4044,
+      "line_no": 4102,
       "methods": [
         "POST"
       ],
@@ -1183,7 +1197,7 @@
       "docstring": "",
       "func_name": "api_list_templates",
       "key": "GET_/api/templates",
-      "line_no": 4061,
+      "line_no": 4119,
       "methods": [
         "GET"
       ],
@@ -1197,7 +1211,7 @@
       "docstring": "Return token usage statistics.",
       "func_name": "api_usage_stats",
       "key": "GET_/api/usage/stats",
-      "line_no": 4076,
+      "line_no": 4134,
       "methods": [
         "GET"
       ],
@@ -1211,7 +1225,7 @@
       "docstring": "",
       "func_name": "api_ai_character_profile",
       "key": "POST_/api/characters/<novel_name>/<int:cid>/ai-profile",
-      "line_no": 4174,
+      "line_no": 4232,
       "methods": [
         "POST"
       ],
@@ -1229,7 +1243,7 @@
       "docstring": "",
       "func_name": "serve_react_assets",
       "key": "GET_/assets/<path:filename>",
-      "line_no": 565,
+      "line_no": 537,
       "methods": [
         "GET"
       ],
@@ -1239,7 +1253,7 @@
       "tables_written": []
     }
   ],
-  "generated_at": "2026-06-06T14:57:22Z",
+  "generated_at": "2026-06-06T16:47:02Z",
   "repository_index": {
     "add_alias_name": {
       "defaults": [

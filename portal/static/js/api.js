@@ -96,4 +96,8 @@ const API = {
     // ── Wizard ──
     wizardStep(data) { return this.request('POST', '/api/wizard/step', data); },
     getTemplates() { return this.request('GET', '/api/templates'); },
+
+    // ── Dashboard aggregate stats (待审 / 待优化 / 本周新增字数) ──
+    // 架构计划 4.1：单一端点，跨全部项目聚合 3 个核心指标，避免 N 次 list_chapters 往返。
+    dashboardStats() { return this.request('GET', '/api/dashboard/stats'); },
 };

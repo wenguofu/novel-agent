@@ -52,7 +52,8 @@ def test_inventory_real_portal_app_has_82_endpoints():
     # in mutually exclusive if/else branches (React build vs Jinja template);
     # refactored into a single conditional index() — see commit history.
     # Updated 2026-06-06 (harness item [9]): added /health endpoint, now 83.
-    assert len(endpoints) == 83, f"expected 83 endpoints, got {len(endpoints)} — portal/app.py changed"
+    # Updated 2026-06-07 (arch 4.1): added /api/dashboard/stats, now 84.
+    assert len(endpoints) == 84, f"expected 84 endpoints, got {len(endpoints)} — portal/app.py changed"
 
 
 def test_scan_handles_int_converter_in_route():

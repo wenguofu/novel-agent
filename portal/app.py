@@ -3086,6 +3086,93 @@ def api_quality_report(novel_name):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ─── Portal 首页 Dashboard 聚合指标 ─────────────────────────────────────────
+# M5.2 / 架构计划 4.1
+# 返回 3 个跨全部项目的核心指标：待审章节数、待优化章节数、本周新增字数。
+# 单一端点避免 Portal 一次性拉取 listNovels × N + list_chapters × N。
+
+@app.route("/api/dashboard/stats")
+def api_dashboard_stats():
+    """Aggregate dashboard metrics across all novels.
+
+    Response shape::
+
+        {
+          "success": true,
+          "stats": {
+            "pending_review":   int,   # chapters with no review row
+            "pending_optimize": int,   # chapters whose latest review failed any check
+            "words_this_week":  int,   # sum of word_count for chapters created in last 7 days
+            "total_chapters":   int,   # denormalized for context
+            "total_words":      int
+          }
+        }
+
+    Definitions (mirrored in ``_renderDashboard`` cards):
+      - pending_review   = chapters WHERE NOT EXISTS (SELECT 1 FROM reviews
+                          WHERE reviews.novel_id = chapters.novel_id
+                          AND reviews.chapter_ref = chapters.chapter_ref)
+      - pending_optimize = chapters whose latest review had wc_ok=0 OR
+                          compliance_ok=0 OR forbidden_ok=0
+      - words_this_week  = SUM(word_count) WHERE created_at >= datetime('now', '-7 days')
+    """
+    try:
+        from content_db import get_db as _ddb
+        conn = _ddb()
+
+        # 待审章节数：完全没有 reviews 行的章节
+        pending_review = conn.execute("""
+            SELECT COUNT(*) AS c
+            FROM chapters c
+            WHERE NOT EXISTS (
+                SELECT 1 FROM reviews r
+                WHERE r.novel_id = c.novel_id
+                AND r.chapter_ref = c.chapter_ref
+            )
+        """).fetchone()["c"]
+
+        # 待优化章节数：存在 reviews 行，但最新一次审稿 wc_ok / compliance_ok /
+        # forbidden_ok 任意一项不通过
+        pending_optimize = conn.execute("""
+            SELECT COUNT(*) AS c
+            FROM (
+                SELECT c.id, c.novel_id, c.chapter_ref,
+                       (SELECT wc_ok          FROM reviews r WHERE r.novel_id=c.novel_id AND r.chapter_ref=c.chapter_ref ORDER BY r.created_at DESC LIMIT 1) AS wc_ok,
+                       (SELECT compliance_ok  FROM reviews r WHERE r.novel_id=c.novel_id AND r.chapter_ref=c.chapter_ref ORDER BY r.created_at DESC LIMIT 1) AS comp_ok,
+                       (SELECT forbidden_ok   FROM reviews r WHERE r.novel_id=c.novel_id AND r.chapter_ref=c.chapter_ref ORDER BY r.created_at DESC LIMIT 1) AS forb_ok
+                FROM chapters c
+            )
+            WHERE wc_ok = 0 OR comp_ok = 0 OR forb_ok = 0
+        """).fetchone()["c"]
+
+        # 本周新增字数：created_at 在最近 7 天内的章节字数合计
+        words_this_week = conn.execute("""
+            SELECT COALESCE(SUM(word_count), 0) AS w
+            FROM chapters
+            WHERE created_at >= datetime('now', '-7 days')
+        """).fetchone()["w"]
+
+        # 顺手返回 2 个现有 dashboard 已经在算的聚合，方便前端一次性消费
+        total_chapters = conn.execute(
+            "SELECT COALESCE(SUM(total_chapters), 0) AS c FROM novels"
+        ).fetchone()["c"]
+        total_words = conn.execute(
+            "SELECT COALESCE(SUM(total_words), 0) AS w FROM novels"
+        ).fetchone()["w"]
+
+        conn.close()
+
+        return jsonify({"success": True, "stats": {
+            "pending_review": int(pending_review or 0),
+            "pending_optimize": int(pending_optimize or 0),
+            "words_this_week": int(words_this_week or 0),
+            "total_chapters": int(total_chapters or 0),
+            "total_words": int(total_words or 0),
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ─── Workflow Enforcement ────────────────────────────────────────────────────
 
 @app.route("/api/workflow/preflight/<novel_name>", methods=["POST"])

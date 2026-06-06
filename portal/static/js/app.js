@@ -263,6 +263,19 @@ const App = {
         const novels = novelsResp.success ? novelsResp.novels : [];
         this.novels = novels;
 
+        // ── Fetch the 3 new aggregate metrics in parallel ──
+        // 架构计划 4.1：待审章节数 / 待优化章节数 / 本周新增字数
+        // 与 listNovels 并行，失败时降级为 0（不阻塞主面板）。
+        let pendingReview = 0, pendingOptimize = 0, wordsThisWeek = 0;
+        try {
+            const statsResp = await API.dashboardStats();
+            if (statsResp.success && statsResp.stats) {
+                pendingReview = statsResp.stats.pending_review || 0;
+                pendingOptimize = statsResp.stats.pending_optimize || 0;
+                wordsThisWeek = statsResp.stats.words_this_week || 0;
+            }
+        } catch (e) { /* graceful degradation */ }
+
         // ── If a novel is selected, show its dedicated dashboard ──
         if (this.currentNovel) {
             const nResp = await API.getNovel(this.currentNovel);
@@ -368,6 +381,9 @@ const App = {
                 <div class="stat-card"><div class="stat-value">${novels.length}</div><div class="stat-label">项目</div></div>
                 <div class="stat-card"><div class="stat-value">${totalCh}</div><div class="stat-label">总章节</div></div>
                 <div class="stat-card"><div class="stat-value">${(totalW / 10000).toFixed(1)}万</div><div class="stat-label">总字数</div></div>
+                <div class="stat-card"><div class="stat-value" style="color:${pendingReview > 0 ? 'var(--color-warning,#f59e0b)' : 'inherit'}">${pendingReview}</div><div class="stat-label">待审章节</div></div>
+                <div class="stat-card"><div class="stat-value" style="color:${pendingOptimize > 0 ? 'var(--color-warning,#f59e0b)' : 'inherit'}">${pendingOptimize}</div><div class="stat-label">待优化</div></div>
+                <div class="stat-card"><div class="stat-value">${(wordsThisWeek / 10000).toFixed(1)}万</div><div class="stat-label">本周新增</div></div>
                 <div class="stat-card"><div class="stat-value">${this.config.deepseek_configured ? '✅' : '❌'}</div><div class="stat-label">AI状态</div></div>
             </div>
             ${novels.length > 0 ? `<div class="card mt-12 novel-picker-bar">
