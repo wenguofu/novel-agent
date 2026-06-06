@@ -1374,7 +1374,7 @@ const App = {
                 '<td style="padding:2px 8px;text-align:center">' + arrow(pre, post) + '</td>' +
                 '<td style="padding:2px 8px;text-align:center">' + render(post) + '</td></tr>';
         };
-        var num = function(v) { return (v === null || v === undefined) ? '—' : String(v); };
+        var num = function(v) { return typeof v === 'number' ? String(v) : '—'; };
         return '<details class="mt-8" open><summary style="cursor:pointer;color:var(--accent);font-size:12px">📊 复审对比 (pre → post)</summary>' +
             '<table class="mt-4" style="font-size:12px;border-collapse:collapse"><thead><tr style="color:var(--text-muted)">' +
             '<th style="padding:2px 8px;text-align:left">项</th><th style="padding:2px 8px">pre</th><th></th><th style="padding:2px 8px">post</th></tr></thead><tbody>' +
