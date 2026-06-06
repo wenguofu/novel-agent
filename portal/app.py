@@ -54,6 +54,13 @@ from errors import (
     safe_io_call,
 )
 
+# Structured logging + perf tracking (harness plan items [6] and [9]).
+# _app_log is the module-level logger used by route handlers; the
+# with_logging decorator wraps Flask routes with request_id + timing;
+# health_tracker records per-request response time for the /health
+# endpoint and slow-call detection.
+from logging_config import StructuredLogger, with_logging, health_tracker  # noqa: E402
+
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
 
@@ -62,6 +69,65 @@ CORS(app)
 # overrides the 404 from this call so React client routes still
 # resolve to index.html.
 register_error_handlers(app)
+
+# Module-level structured logger (named "novel-agent.app" so caplog
+# records can be filtered). Existing stdlib `logging.warning(...)` call
+# sites continue to work; new call sites can use `_app_log.warning(...)`.
+_app_log = StructuredLogger("novel-agent.app")
+
+
+# ─── Response-time + request-id middleware (harness [9]) ────────────────
+# Every non-/health request gets an X-Request-ID (UUID short) and an
+# X-Response-Time (ms, integer) header. The /health endpoint is excluded
+# to avoid skewing the avg response time and recursion in the tracker.
+
+@app.before_request
+def _before_request_set_start():
+    from flask import g
+    import uuid
+    g._start_time = time.time()
+    g._request_id = uuid.uuid4().hex[:8]
+
+
+@app.after_request
+def _after_request_set_timing(response):
+    from flask import g
+    if request.path == "/health":
+        return response
+    start = getattr(g, "_start_time", None)
+    if start is not None:
+        elapsed_ms = int(round((time.time() - start) * 1000))
+        response.headers["X-Response-Time"] = str(elapsed_ms)
+        try:
+            health_tracker.record_request(elapsed_ms / 1000.0, is_error=response.status_code >= 500)
+        except Exception:
+            pass
+    rid = getattr(g, "_request_id", None)
+    if rid:
+        response.headers["X-Request-ID"] = rid
+    return response
+
+
+# ─── /health endpoint (harness [9]) ────────────────────────────────────
+
+@app.route("/health")
+def health_endpoint():
+    """Aggregate health snapshot: DB, response time, circuit breaker."""
+    from db import check_db_health
+    from resilience import deepseek_circuit
+    db_health = check_db_health()
+    db_status = "ok" if db_health.get("status") == "healthy" else "error"
+    health = {
+        "db": db_status,
+        "response_time_avg_ms": round(health_tracker.avg_response_time * 1000, 1)
+            if health_tracker.request_count > 0 else 0,
+        "circuit_breaker_state": deepseek_circuit._state,
+        "uptime_seconds": round(health_tracker.uptime_seconds, 1),
+        "total_requests": health_tracker.request_count,
+        "error_rate": round(health_tracker.error_rate, 4),
+    }
+    status_code = 200 if db_status == "ok" else 503
+    return jsonify({"success": db_status == "ok", "health": health}), status_code
 
 # ─── Load Hermes env vars at startup ─────────────────────────────────────
 _HERMES_ENV = os.path.expanduser("~/.hermes/.env")

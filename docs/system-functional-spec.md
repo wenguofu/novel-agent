@@ -1,7 +1,7 @@
 # Novel Agent — System Functional Spec
 
 > Machine-generated + manual supplements. Source of truth: `portal/app.py` AST.
-> Auto-generated: 2026-06-03T16:01:22Z. Inventory: 82 endpoints.
+> Auto-generated: 2026-06-06T14:57:22Z. Inventory: 83 endpoints.
 >
 > Regenerate: `python3 scripts/inventory_endpoints.py && python3 scripts/render_spec.py`
 > Verify: `python3 scripts/verify_spec.py` (5 checks).
@@ -44,7 +44,7 @@ For high-value endpoints not detected automatically, see the Manual Notes.
 
 ---
 
-## 2. Data Model (82 tables)
+## 2. Data Model (83 tables)
 
 See [`portal/models_orm.py`](../../portal/models_orm.py) for canonical
 definitions. Brief grouping:
@@ -128,7 +128,7 @@ parameter list, defaults, docstring, and inferred table name.
 - `repo.list_chapters(self, novel_name, volume)` → reads/writes `chapters` — 
 - `repo.list_character_events(self, cid, limit)` → reads/writes `character_events` — 
 - `repo.list_characters(self, novel_name, role)` → reads/writes `characters` — 
-- `repo.list_characters_active_in_volume(self, novel_name, volume)` → reads/writes `characters_active_in_volumes` — Characters whose current_vol is within ±1 of the given volume.
+- `repo.list_characters_active_in_volume(self, novel_name, volume)` → reads/writes `characters_active_in_volumes` — Characters active at or before the given volume (current_vol <= volume).
 - `repo.list_compliance_rules(self)` → reads/writes `compliance_rules` — 
 - `repo.list_foreshadowing(self, novel_name, status, volume, limit)` → reads/writes `foreshadowings` — 
 - `repo.list_genre_rules(self, novel_name)` → reads/writes `genre_rules` — Return all genre_rules for a novel. Empty list if novel has none.
@@ -176,21 +176,32 @@ The 12 layers and their token budgets are documented there.
 
 ---
 
-## 5. API Endpoints (82)
+## 5. API Endpoints (83)
 
+### 5.0 health
+#### Endpoint: GET /health
+
+- **Function**: `health_endpoint` (line 138)
+- **Description**: Aggregate health snapshot: DB, response time, circuit breaker.
+- **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
+<!-- MANUAL: GET_/health -->
+<!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
+<!-- /MANUAL -->
+
+### 5.1 
 #### Endpoint: GET /
 
-- **Function**: `index` (line 448)
+- **Function**: `index` (line 580)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/ -->
 <!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
 <!-- /MANUAL -->
 
-### 5.1 api
+### 5.2 api
 #### Endpoint: GET /api/novels
 
-- **Function**: `api_list_novels` (line 455)
+- **Function**: `api_list_novels` (line 587)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `list_novels`- **DB calls**: none detected- **Tables read**: `novels`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels -->
@@ -199,7 +210,7 @@ The 12 layers and their token budgets are documented there.
 
 #### Endpoint: GET /api/novels/<novel_name>
 
-- **Function**: `api_novel_detail` (line 466)
+- **Function**: `api_novel_detail` (line 598)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name> -->
@@ -208,7 +219,7 @@ The 12 layers and their token budgets are documented there.
 
 #### Endpoint: GET /api/novels/<novel_name>/file
 
-- **Function**: `api_read_file` (line 485)
+- **Function**: `api_read_file` (line 617)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/file -->
@@ -217,7 +228,7 @@ The 12 layers and their token budgets are documented there.
 
 #### Endpoint: GET /api/novels/<novel_name>/chapters/<path:ch_ref>
 
-- **Function**: `api_read_chapter` (line 497)
+- **Function**: `api_read_chapter` (line 629)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/chapters/<path:ch_ref> -->
@@ -226,7 +237,7 @@ Read a chapter by ref. If `ch_ref` contains a slash (e.g. `vol-01/ch-001`) it's 
 
 #### Endpoint: POST /api/novels/<novel_name>/chapters/<path:ch_ref>/edit
 
-- **Function**: `api_edit_chapter` (line 519)
+- **Function**: `api_edit_chapter` (line 651)
 - **Description**: Save edited chapter content
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/chapters/<path:ch_ref>/edit -->
@@ -235,7 +246,7 @@ Save edited chapter content from the React editor. Writes `manuscript/<ch_ref>.m
 
 #### Endpoint: DELETE /api/novels/<novel_name>/chapters/<path:ch_ref>
 
-- **Function**: `api_delete_chapter` (line 559)
+- **Function**: `api_delete_chapter` (line 691)
 - **Description**: Delete a chapter with state rollback. Only the latest chapter can be deleted.
 - **Repository calls**: `upsert_chapter`, `list_foreshadowing`, `list_characters`, `update_foreshadowing`, `update_character`- **DB calls**: none detected- **Tables read**: `chapters`, `foreshadowings`, `characters`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: DELETE_/api/novels/<novel_name>/chapters/<path:ch_ref> -->
@@ -244,7 +255,7 @@ Delete a chapter with state rollback. Only the *latest* chapter (highest vol + c
 
 #### Endpoint: GET /api/novels/<novel_name>/reviews/<ch_ref>
 
-- **Function**: `api_read_review` (line 785)
+- **Function**: `api_read_review` (line 917)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/reviews/<ch_ref> -->
@@ -253,7 +264,7 @@ Read a previously-generated review markdown. Tries `reviews/<ch_ref>-review.md` 
 
 #### Endpoint: GET /api/novels/<novel_name>/status
 
-- **Function**: `api_novel_status` (line 795)
+- **Function**: `api_novel_status` (line 927)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/status -->
@@ -262,7 +273,7 @@ Read a previously-generated review markdown. Tries `reviews/<ch_ref>-review.md` 
 
 #### Endpoint: GET /api/novels/<novel_name>/gate-status
 
-- **Function**: `api_gate_status` (line 803)
+- **Function**: `api_gate_status` (line 935)
 - **Description**: Return stage gate progress with auto-detection.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/gate-status -->
@@ -271,7 +282,7 @@ Read a previously-generated review markdown. Tries `reviews/<ch_ref>-review.md` 
 
 #### Endpoint: GET /api/novels/<novel_name>/outline/<vol_ref>
 
-- **Function**: `api_read_outline` (line 888)
+- **Function**: `api_read_outline` (line 1020)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/outline/<vol_ref> -->
@@ -280,7 +291,7 @@ Read a previously-generated review markdown. Tries `reviews/<ch_ref>-review.md` 
 
 #### Endpoint: POST /api/novels/<novel_name>/outline/<vol_ref>/edit
 
-- **Function**: `api_edit_outline` (line 898)
+- **Function**: `api_edit_outline` (line 1030)
 - **Description**: Save edited outline
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/outline/<vol_ref>/edit -->
@@ -289,7 +300,7 @@ Save edited volume outline. The body's `content` is written to `outline/<vol_ref
 
 #### Endpoint: GET /api/novels/<novel_name>/chapter-outlines/<vol_ref>
 
-- **Function**: `api_get_chapter_outlines` (line 934)
+- **Function**: `api_get_chapter_outlines` (line 1066)
 - **Description**: Return all chapter outlines for a volume.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/chapter-outlines/<vol_ref> -->
@@ -298,7 +309,7 @@ Save edited volume outline. The body's `content` is written to `outline/<vol_ref
 
 #### Endpoint: PUT /api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num>
 
-- **Function**: `api_put_chapter_outline` (line 945)
+- **Function**: `api_put_chapter_outline` (line 1077)
 - **Description**: Update a single chapter outline.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT_/api/novels/<novel_name>/chapter-outlines/<vol_ref>/<int:ch_num> -->
@@ -307,7 +318,7 @@ Save edited volume outline. The body's `content` is written to `outline/<vol_ref
 
 #### Endpoint: GET /api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num>
 
-- **Function**: `api_read_danger_issue` (line 965)
+- **Function**: `api_read_danger_issue` (line 1097)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/danger-issue/<vol_ref>/<ch_num> -->
@@ -316,7 +327,7 @@ Save edited volume outline. The body's `content` is written to `outline/<vol_ref
 
 #### Endpoint: GET /api/novels/<novel_name>/export
 
-- **Function**: `api_export_novel` (line 1315)
+- **Function**: `api_export_novel` (line 1447)
 - **Description**: Export all chapters of a novel in the requested format.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/novels/<novel_name>/export -->
@@ -325,7 +336,7 @@ Save edited volume outline. The body's `content` is written to `outline/<vol_ref
 
 #### Endpoint: POST /api/ai/chat
 
-- **Function**: `api_ai_chat` (line 1368)
+- **Function**: `api_ai_chat` (line 1500)
 - **Description**: Direct AI chat
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/ai/chat -->
@@ -334,7 +345,7 @@ Non-streaming direct AI call — sends `messages` + `system` to the configured D
 
 #### Endpoint: POST /api/ai/stream
 
-- **Function**: `api_ai_stream` (line 1386)
+- **Function**: `api_ai_stream` (line 1518)
 - **Description**: SSE streaming AI chat (supports both Anthropic and OpenAI formats)
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/ai/stream -->
@@ -343,7 +354,7 @@ SSE streaming wrapper around the active DeepSeek/Anthropic chat model. Accepts e
 
 #### Endpoint: POST /api/novels/create
 
-- **Function**: `api_create_novel` (line 1526)
+- **Function**: `api_create_novel` (line 1658)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/create -->
@@ -352,7 +363,7 @@ Create a new novel from a high-level prompt. Body collects `name`, `genre`, `pro
 
 #### Endpoint: POST /api/novels/<novel_name>/generate-chapter
 
-- **Function**: `api_generate_chapter` (line 1666)
+- **Function**: `api_generate_chapter` (line 1798)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/generate-chapter -->
@@ -361,7 +372,7 @@ Primary chapter-writing endpoint. Builds the layered prompt via `context_builder
 
 #### Endpoint: POST /api/novels/<novel_name>/review-chapter
 
-- **Function**: `api_review_chapter` (line 1734)
+- **Function**: `api_review_chapter` (line 2176)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/review-chapter -->
@@ -370,7 +381,7 @@ AI editor pass over an existing chapter. Runs three scripts in parallel (`analyz
 
 #### Endpoint: POST /api/novels/<novel_name>/optimize-chapter
 
-- **Function**: `api_optimize_chapter` (line 1883)
+- **Function**: `api_optimize_chapter` (line 2223)
 - **Description**: One-click optimize: fix issues found during review
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/optimize-chapter -->
@@ -379,7 +390,7 @@ One-click chapter rewrite that consumes a prior review. Body needs `chapter_ref`
 
 #### Endpoint: POST /api/novels/<novel_name>/run-script
 
-- **Function**: `api_run_script` (line 1943)
+- **Function**: `api_run_script` (line 2438)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/run-script -->
@@ -388,7 +399,7 @@ Run an arbitrary enforcement script (one of the allow-listed names in `agent-sys
 
 #### Endpoint: POST /api/novels/<novel_name>/file/write
 
-- **Function**: `api_write_novel_file` (line 1957)
+- **Function**: `api_write_novel_file` (line 2452)
 - **Description**: Write/update any file in a novel's directory
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/file/write -->
@@ -397,7 +408,7 @@ Generic file-write inside a novel's directory. Body needs `path` (relative, no `
 
 #### Endpoint: POST /api/novels/<novel_name>/update-status
 
-- **Function**: `api_update_status` (line 1974)
+- **Function**: `api_update_status` (line 2469)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/update-status -->
@@ -406,7 +417,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: GET /api/config
 
-- **Function**: `api_get_config` (line 1988)
+- **Function**: `api_get_config` (line 2483)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/config -->
@@ -415,7 +426,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: POST /api/config/save
 
-- **Function**: `api_save_config` (line 2009)
+- **Function**: `api_save_config` (line 2504)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/config/save -->
@@ -424,7 +435,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: POST /api/config/test
 
-- **Function**: `api_test_config` (line 2043)
+- **Function**: `api_test_config` (line 2538)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/config/test -->
@@ -433,7 +444,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: GET /api/styles
 
-- **Function**: `api_styles` (line 2242)
+- **Function**: `api_styles` (line 2737)
 - **Description**: Return available writing styles from DB presets + distilled JSON fingerprints.
 - **Repository calls**: `list_style_presets`- **DB calls**: none detected- **Tables read**: `style_presets`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/styles -->
@@ -442,7 +453,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: POST /api/wizard/step
 
-- **Function**: `api_wizard_step` (line 2284)
+- **Function**: `api_wizard_step` (line 2781)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/wizard/step -->
@@ -451,7 +462,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: GET /api/config-db/<table>
 
-- **Function**: `api_config_list` (line 2456)
+- **Function**: `api_config_list` (line 2953)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/config-db/<table> -->
@@ -460,7 +471,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: POST /api/config-db/<table>
 
-- **Function**: `api_config_add` (line 2475)
+- **Function**: `api_config_add` (line 2972)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/config-db/<table> -->
@@ -469,7 +480,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: PUT /api/config-db/<table>/<int:row_id>
 
-- **Function**: `api_config_manage` (line 2501)
+- **Function**: `api_config_manage` (line 2998)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT,DELETE_/api/config-db/<table>/<int:row_id> -->
@@ -478,7 +489,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: GET /api/content/quality-report/<novel_name>
 
-- **Function**: `api_quality_report` (line 2536)
+- **Function**: `api_quality_report` (line 3033)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/content/quality-report/<novel_name> -->
@@ -487,7 +498,7 @@ Overwrite `state/current_status.md` with the supplied `content`. No validation b
 
 #### Endpoint: POST /api/workflow/preflight/<novel_name>
 
-- **Function**: `api_workflow_preflight` (line 2623)
+- **Function**: `api_workflow_preflight` (line 3120)
 - **Description**: Run all pre-generation enforcement scripts. Returns pass/fail for each.
 - **Repository calls**: `get`- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/workflow/preflight/<novel_name> -->
@@ -496,7 +507,7 @@ Pre-generation gate. Runs five checks in sequence — stage_gate, outline existe
 
 #### Endpoint: POST /api/workflow/postflight/<novel_name>
 
-- **Function**: `api_workflow_postflight` (line 2668)
+- **Function**: `api_workflow_postflight` (line 3165)
 - **Description**: Run all post-generation enforcement scripts.
 - **Repository calls**: `get`- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/workflow/postflight/<novel_name> -->
@@ -505,7 +516,7 @@ Post-generation gate. Runs five checks — review validation, continuity, rhythm
 
 #### Endpoint: POST /api/novels/<novel_name>/enforce-pipeline
 
-- **Function**: `api_enforce_pipeline` (line 2715)
+- **Function**: `api_enforce_pipeline` (line 3212)
 - **Description**: Run the complete enforcement pipeline for a chapter.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/enforce-pipeline -->
@@ -514,7 +525,7 @@ Full Steps 0-10 enforcement chain — the scripted version of `workflow-new-chap
 
 #### Endpoint: POST /api/context/build
 
-- **Function**: `api_context_build` (line 2834)
+- **Function**: `api_context_build` (line 3331)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/context/build -->
@@ -523,7 +534,7 @@ Builds the multi-layer system prompt for chapter writing via `context_builder.bu
 
 #### Endpoint: GET /api/context/stats/<novel_name>/<int:volume>/<int:chapter>
 
-- **Function**: `api_context_stats` (line 2857)
+- **Function**: `api_context_stats` (line 3354)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/context/stats/<novel_name>/<int:volume>/<int:chapter> -->
@@ -532,7 +543,7 @@ Read-only diagnostic — returns per-layer token counts and source-file metadata
 
 #### Endpoint: POST /api/rag/query
 
-- **Function**: `api_rag_query` (line 2869)
+- **Function**: `api_rag_query` (line 3366)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/rag/query -->
@@ -541,7 +552,7 @@ Multi-category RAG retrieval over the novel's vector index. Body must include `n
 
 #### Endpoint: POST /api/init/full/<novel_name>
 
-- **Function**: `api_init_full` (line 2887)
+- **Function**: `api_init_full` (line 3384)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/init/full/<novel_name> -->
@@ -550,7 +561,7 @@ One-shot domain-DB initializer — calls `content_db.init_all_from_files` to par
 
 #### Endpoint: POST /api/novels/<novel_name>/world-building/init
 
-- **Function**: `api_init_world_building` (line 2897)
+- **Function**: `api_init_world_building` (line 3394)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/world-building/init -->
@@ -559,7 +570,7 @@ Parses `world_bible.md` and upserts entries into the `world_building` table via 
 
 #### Endpoint: POST /api/novels/<novel_name>/plot-arcs/init
 
-- **Function**: `api_init_plot_arcs` (line 2907)
+- **Function**: `api_init_plot_arcs` (line 3404)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/plot-arcs/init -->
@@ -568,7 +579,7 @@ Parses the plot-arcs source file and upserts into the `plot_arcs` table via `con
 
 #### Endpoint: POST /api/novels/<novel_name>/pacing/init
 
-- **Function**: `api_init_pacing` (line 2917)
+- **Function**: `api_init_pacing` (line 3414)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/pacing/init -->
@@ -577,7 +588,7 @@ Re-derives pacing markers from the volume outlines (`outline/vol-NN-chapters.yam
 
 #### Endpoint: POST /api/novels/<novel_name>/revelation/init
 
-- **Function**: `api_init_revelation` (line 2927)
+- **Function**: `api_init_revelation` (line 3424)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/revelation/init -->
@@ -586,7 +597,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/genre_rules/<novel_name>
 
-- **Function**: `api_genre_rules_list` (line 2939)
+- **Function**: `api_genre_rules_list` (line 3436)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/genre_rules/<novel_name> -->
@@ -595,7 +606,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/story_volumes/<novel_name>
 
-- **Function**: `api_story_volumes_list` (line 2953)
+- **Function**: `api_story_volumes_list` (line 3450)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/story_volumes/<novel_name> -->
@@ -604,7 +615,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/volume_plans/<novel_name>
 
-- **Function**: `api_volume_plans_list` (line 2967)
+- **Function**: `api_volume_plans_list` (line 3464)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/volume_plans/<novel_name> -->
@@ -613,7 +624,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/alias_names/<novel_name>
 
-- **Function**: `api_alias_names_list` (line 2981)
+- **Function**: `api_alias_names_list` (line 3478)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/alias_names/<novel_name> -->
@@ -622,7 +633,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/project_meta/<novel_name>
 
-- **Function**: `api_project_meta_list` (line 2995)
+- **Function**: `api_project_meta_list` (line 3492)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/project_meta/<novel_name> -->
@@ -631,7 +642,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/characters/<novel_name>
 
-- **Function**: `api_characters_list` (line 3011)
+- **Function**: `api_characters_list` (line 3508)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/characters/<novel_name> -->
@@ -640,7 +651,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/characters/<novel_name>/<int:cid>
 
-- **Function**: `api_character_get` (line 3020)
+- **Function**: `api_character_get` (line 3517)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `get_character`- **DB calls**: none detected- **Tables read**: `characters`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/characters/<novel_name>/<int:cid> -->
@@ -649,7 +660,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/characters/<novel_name>
 
-- **Function**: `api_character_add` (line 3032)
+- **Function**: `api_character_add` (line 3529)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `add_character`- **DB calls**: none detected- **Tables read**: `characters`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/characters/<novel_name> -->
@@ -658,7 +669,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: PUT /api/characters/<novel_name>/<int:cid>
 
-- **Function**: `api_character_manage` (line 3050)
+- **Function**: `api_character_manage` (line 3547)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `delete_character`, `update_character`- **DB calls**: none detected- **Tables read**: `characters`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT,DELETE_/api/characters/<novel_name>/<int:cid> -->
@@ -667,7 +678,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/characters/<novel_name>/<int:cid>/event
 
-- **Function**: `api_character_event` (line 3071)
+- **Function**: `api_character_event` (line 3568)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `add_character_event`- **DB calls**: none detected- **Tables read**: `character_events`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/characters/<novel_name>/<int:cid>/event -->
@@ -676,7 +687,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/characters/<novel_name>/init
 
-- **Function**: `api_characters_init` (line 3086)
+- **Function**: `api_characters_init` (line 3583)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/characters/<novel_name>/init -->
@@ -685,7 +696,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/foreshadowing/<novel_name>
 
-- **Function**: `api_foreshadowing_list` (line 3098)
+- **Function**: `api_foreshadowing_list` (line 3595)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/foreshadowing/<novel_name> -->
@@ -694,7 +705,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/foreshadowing/<novel_name>/unresolved
 
-- **Function**: `api_foreshadowing_unresolved` (line 3109)
+- **Function**: `api_foreshadowing_unresolved` (line 3606)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `get_unresolved_foreshadowing`- **DB calls**: none detected- **Tables read**: `unresolved_foreshadowings`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/foreshadowing/<novel_name>/unresolved -->
@@ -703,7 +714,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/foreshadowing/<novel_name>
 
-- **Function**: `api_foreshadowing_add` (line 3120)
+- **Function**: `api_foreshadowing_add` (line 3617)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `add_foreshadowing`- **DB calls**: none detected- **Tables read**: `foreshadowings`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/foreshadowing/<novel_name> -->
@@ -712,7 +723,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: PUT /api/foreshadowing/<novel_name>/<int:fid>
 
-- **Function**: `api_foreshadowing_manage` (line 3140)
+- **Function**: `api_foreshadowing_manage` (line 3637)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `delete_foreshadowing`, `update_foreshadowing`- **DB calls**: none detected- **Tables read**: `foreshadowings`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT,DELETE_/api/foreshadowing/<novel_name>/<int:fid> -->
@@ -721,7 +732,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/foreshadowing/<novel_name>/resolve/<int:fid>
 
-- **Function**: `api_foreshadowing_resolve` (line 3157)
+- **Function**: `api_foreshadowing_resolve` (line 3654)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `resolve_foreshadowing`- **DB calls**: none detected- **Tables read**: `resolve_foreshadowings`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/foreshadowing/<novel_name>/resolve/<int:fid> -->
@@ -730,7 +741,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/foreshadowing/<novel_name>/init
 
-- **Function**: `api_foreshadowing_init` (line 3168)
+- **Function**: `api_foreshadowing_init` (line 3665)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/foreshadowing/<novel_name>/init -->
@@ -739,7 +750,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/world_building/<novel_name>
 
-- **Function**: `api_world_building_list` (line 3180)
+- **Function**: `api_world_building_list` (line 3677)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/world_building/<novel_name> -->
@@ -748,7 +759,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/world_building/<novel_name>
 
-- **Function**: `api_world_building_add` (line 3203)
+- **Function**: `api_world_building_add` (line 3700)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/world_building/<novel_name> -->
@@ -757,7 +768,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: PUT /api/world_building/<novel_name>/<int:row_id>
 
-- **Function**: `api_world_building_manage` (line 3230)
+- **Function**: `api_world_building_manage` (line 3727)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT,DELETE_/api/world_building/<novel_name>/<int:row_id> -->
@@ -766,7 +777,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/plot_arcs/<novel_name>
 
-- **Function**: `api_plot_arcs_list` (line 3258)
+- **Function**: `api_plot_arcs_list` (line 3755)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/plot_arcs/<novel_name> -->
@@ -775,7 +786,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/plot_arcs/<novel_name>
 
-- **Function**: `api_plot_arcs_add` (line 3281)
+- **Function**: `api_plot_arcs_add` (line 3778)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/plot_arcs/<novel_name> -->
@@ -784,7 +795,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: PUT /api/plot_arcs/<novel_name>/<int:row_id>
 
-- **Function**: `api_plot_arcs_manage` (line 3315)
+- **Function**: `api_plot_arcs_manage` (line 3812)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT,DELETE_/api/plot_arcs/<novel_name>/<int:row_id> -->
@@ -793,7 +804,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/pacing_control/<novel_name>
 
-- **Function**: `api_pacing_control_list` (line 3346)
+- **Function**: `api_pacing_control_list` (line 3843)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/pacing_control/<novel_name> -->
@@ -802,7 +813,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/pacing_control/<novel_name>
 
-- **Function**: `api_pacing_control_add` (line 3369)
+- **Function**: `api_pacing_control_add` (line 3866)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/pacing_control/<novel_name> -->
@@ -811,7 +822,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: PUT /api/pacing_control/<novel_name>/<int:row_id>
 
-- **Function**: `api_pacing_control_manage` (line 3400)
+- **Function**: `api_pacing_control_manage` (line 3897)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT,DELETE_/api/pacing_control/<novel_name>/<int:row_id> -->
@@ -820,7 +831,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/revelation_schedule/<novel_name>
 
-- **Function**: `api_revelation_schedule_list` (line 3428)
+- **Function**: `api_revelation_schedule_list` (line 3925)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/revelation_schedule/<novel_name> -->
@@ -829,7 +840,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/revelation_schedule/<novel_name>
 
-- **Function**: `api_revelation_schedule_add` (line 3451)
+- **Function**: `api_revelation_schedule_add` (line 3948)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/revelation_schedule/<novel_name> -->
@@ -838,7 +849,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: PUT /api/revelation_schedule/<novel_name>/<int:row_id>
 
-- **Function**: `api_revelation_schedule_manage` (line 3481)
+- **Function**: `api_revelation_schedule_manage` (line 3978)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: PUT,DELETE_/api/revelation_schedule/<novel_name>/<int:row_id> -->
@@ -847,7 +858,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/novels/<novel_name>/cleanup-bak
 
-- **Function**: `api_cleanup_bak` (line 3510)
+- **Function**: `api_cleanup_bak` (line 4007)
 - **Description**: Delete all .bak backup files for a novel
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/novels/<novel_name>/cleanup-bak -->
@@ -856,7 +867,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/content/search
 
-- **Function**: `api_content_search` (line 3530)
+- **Function**: `api_content_search` (line 4027)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `search_all`- **DB calls**: none detected- **Tables read**: `searchs`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/content/search -->
@@ -865,7 +876,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/content/stats/<novel_name>
 
-- **Function**: `api_content_stats` (line 3540)
+- **Function**: `api_content_stats` (line 4037)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `get_novel_stats`- **DB calls**: none detected- **Tables read**: `novel_stats`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/content/stats/<novel_name> -->
@@ -874,7 +885,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/content/sync
 
-- **Function**: `api_content_sync` (line 3547)
+- **Function**: `api_content_sync` (line 4044)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/content/sync -->
@@ -883,7 +894,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/templates
 
-- **Function**: `api_list_templates` (line 3564)
+- **Function**: `api_list_templates` (line 4061)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/templates -->
@@ -892,7 +903,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: GET /api/usage/stats
 
-- **Function**: `api_usage_stats` (line 3579)
+- **Function**: `api_usage_stats` (line 4076)
 - **Description**: Return token usage statistics.
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/api/usage/stats -->
@@ -901,17 +912,17 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 #### Endpoint: POST /api/characters/<novel_name>/<int:cid>/ai-profile
 
-- **Function**: `api_ai_character_profile` (line 3677)
+- **Function**: `api_ai_character_profile` (line 4174)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: `get_character`- **DB calls**: none detected- **Tables read**: `characters`- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: POST_/api/characters/<novel_name>/<int:cid>/ai-profile -->
 <!-- (no manual notes yet — empty placeholder; renderer will preserve on re-render) -->
 <!-- /MANUAL -->
 
-### 5.81 assets
+### 5.82 assets
 #### Endpoint: GET /assets/<path:filename>
 
-- **Function**: `serve_react_assets` (line 437)
+- **Function**: `serve_react_assets` (line 565)
 - **Description**: _No docstring yet — add one in `portal/app.py`._
 - **Repository calls**: none detected- **DB calls**: none detected- **Tables read**: _inferred from repo calls (none detected)_- **Side effects**: read-only (per AST scan)
 <!-- MANUAL: GET_/assets/<path:filename> -->
@@ -925,6 +936,7 @@ Re-derives revelation/foreshadowing markers from the volume outlines into the `r
 
 | Method | Route | Function |
 |--------|-------|----------|
+| `GET` | `/health` | `health_endpoint` |
 | `GET` | `/` | `index` |
 | `GET` | `/api/novels` | `api_list_novels` |
 | `GET` | `/api/novels/<novel_name>` | `api_novel_detail` |

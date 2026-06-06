@@ -51,7 +51,8 @@ def test_inventory_real_portal_app_has_82_endpoints():
     # The 83 came from two `@app.route("/")` decorators on the `index` function
     # in mutually exclusive if/else branches (React build vs Jinja template);
     # refactored into a single conditional index() — see commit history.
-    assert len(endpoints) == 82, f"expected 82 endpoints, got {len(endpoints)} — portal/app.py changed"
+    # Updated 2026-06-06 (harness item [9]): added /health endpoint, now 83.
+    assert len(endpoints) == 83, f"expected 83 endpoints, got {len(endpoints)} — portal/app.py changed"
 
 
 def test_scan_handles_int_converter_in_route():
