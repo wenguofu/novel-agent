@@ -932,46 +932,87 @@ def api_novel_status(novel_name):
 def api_gate_status(novel_name):
     """Return stage gate progress with auto-detection.
 
-    Checks file existence to determine which phases are complete.
+    Each phase declares a list of "content" requirements (file paths or
+    directory+glob pairs). A phase is ``completed`` only if at least one
+    requirement matches a real, non-empty file. Subdirectories and hidden
+    entries (``.bak``) do NOT count — this was the source of the prior bug
+    where phase3/5/7 falsely reported "completed" because the dir had
+    hidden subdirs but no actual content.
+
     Writing page uses this to show prerequisites and block generation.
     """
+    import glob as _glob
+
     novel_path = os.path.join(get_novels_dir(), novel_name)
     if not os.path.isdir(novel_path):
         return jsonify({"initialized": False, "error": "小说目录不存在"}), 404
 
+    # (phase_key, label, [requirement_pattern, ...])
+    # Patterns are either an exact file path (relative to novel root) or
+    # a glob like "outline/vol-*-chapters.{md,yaml}". First match wins.
     PHASES = [
         ("phase1_opening", "开书设定", ["project.md"]),
         ("phase2_arc", "长线剧情", ["full_story_arc.md"]),
-        ("phase3_volume_outline", "卷级章纲", ["outline"]),
-        ("phase4_chapter_planning", "章节规划", ["volume_plan.md", "volume_plan"]),
-        ("phase5_writing", "正文写作", ["manuscript"]),
-        ("phase6_review", "编辑审稿", ["reviews"]),
+        ("phase3_volume_outline", "卷级章纲", [
+            "outline/vol-*-chapters.md", "outline/vol-*-chapters.yaml",
+        ]),
+        ("phase4_chapter_planning", "章节规划", [
+            "volume_plan.md", "volume_plan/vol-*.md",
+        ]),
+        ("phase5_writing", "正文写作", [
+            "manuscript/vol-*/ch-*.md",
+        ]),
+        ("phase6_review", "编辑审稿", [
+            "reviews/vol-*-*-review.md", "reviews/vol-*-*-reviews.md",
+        ]),
         ("phase7_status_update", "状态更新", ["state/current_status.md"]),
     ]
 
     WRITING_PREREQS = ["phase1_opening", "phase3_volume_outline"]
 
+    def _has_real_content(rel_pattern: str) -> tuple[bool, str]:
+        """Return (matched, detail). Walks glob; picks the smallest
+        non-empty file to count. Hidden entries (starting with '.') and
+        directories that only contain subdirectories are excluded."""
+        if any(c in rel_pattern for c in "*?["):
+            # Glob pattern — scan
+            matches = _glob.glob(os.path.join(novel_path, rel_pattern))
+            real = [m for m in matches if os.path.isfile(m) and os.path.getsize(m) > 0]
+            if real:
+                rel = sorted(real)[0]
+                return True, f"{rel_pattern} (1+ files, e.g. {os.path.relpath(rel, novel_path)})"
+            return False, ""
+        # Exact path
+        p = os.path.join(novel_path, rel_pattern)
+        if not os.path.exists(p):
+            return False, ""
+        if os.path.isdir(p):
+            # Recursively check for at least one non-empty content file
+            for root, dirs, files in os.walk(p):
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                for f in files:
+                    if f.startswith("."):
+                        continue
+                    fp = os.path.join(root, f)
+                    if os.path.getsize(fp) > 0:
+                        return True, f"{rel_pattern}/ (1+ content files)"
+            return False, ""
+        if os.path.getsize(p) > 0:
+            return True, rel_pattern
+        return False, ""
+
     phases = {}
-    for phase_key, label, indicators in PHASES:
+    for phase_key, label, requirements in PHASES:
         completed = False
         detail = ""
-        for ind in indicators:
-            ind_path = os.path.join(novel_path, ind)
-            if os.path.exists(ind_path):
-                # For directories, check they're non-empty
-                if os.path.isdir(ind_path):
-                    contents = os.listdir(ind_path)
-                    contents = [c for c in contents if not c.startswith('.')]
-                    if contents:
-                        completed = True
-                        detail = f"{ind}/ ({len(contents)} 个文件)"
-                        break
-                else:
-                    completed = True
-                    detail = ind
-                    break
+        for req in requirements:
+            ok, d = _has_real_content(req)
+            if ok:
+                completed = True
+                detail = d
+                break
         if not completed:
-            detail = f"缺少: {indicators[0]}"
+            detail = f"缺少: {requirements[0]}"
 
         phases[phase_key] = {
             "status": "completed" if completed else "pending",
@@ -980,20 +1021,18 @@ def api_gate_status(novel_name):
             "is_writing_prereq": phase_key in WRITING_PREREQS,
         }
 
-    # Try to load stage_gate.json for additional metadata
+    # current_volume / current_chapter come from stage_gate.json but the
+    # status fields are NO LONGER trusted from that file — the file
+    # presence/content check above is the only source of truth.
     gate_file = os.path.join(novel_path, "state", "stage_gate.json")
     current_volume = 0
     current_chapter = 0
     if os.path.exists(gate_file):
         try:
-            import json
-            gate_data = json.loads(open(gate_file).read())
+            import json as _json
+            gate_data = _json.loads(open(gate_file).read())
             current_volume = gate_data.get("current_volume", 0)
             current_chapter = gate_data.get("current_chapter", 0)
-            # Merge gate file status overrides
-            for pkey, pval in gate_data.get("stages", {}).items():
-                if pkey in phases and pval == "completed":
-                    phases[pkey]["status"] = pval
         except Exception as e:
             logging.warning(f"[stage-status] failed to parse {gate_file}: {e}")
 
