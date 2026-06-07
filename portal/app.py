@@ -107,8 +107,13 @@ def _after_request_set_timing(response):
         response.headers["X-Response-Time"] = str(elapsed_ms)
         try:
             health_tracker.record_request(elapsed_ms / 1000.0, is_error=response.status_code >= 500)
-        except Exception:
-            pass
+        except Exception as e:
+            # Health metrics are best-effort; never block the response.
+            # Log at debug level so a transient tracker failure is visible
+            # in dev logs but doesn't pollute INFO-level production output.
+            logging.getLogger("novel-agent.app").debug(
+                "health_tracker.record_request failed: %s", e,
+            )
     rid = getattr(g, "_request_id", None)
     if rid:
         response.headers["X-Request-ID"] = rid
@@ -162,8 +167,14 @@ USAGE_DB_PATH = os.path.join(_PORTAL_DIR, "usage.db")
 # ─── Usage DB ──────────────────────────────────────────────────────────────
 
 def _init_usage_db():
-    """No-op: Tables created by ensure_unified_schema() via ORM."""
-    pass
+    """No-op: Tables created by ensure_unified_schema() via ORM.
+
+    Kept as a no-op stub for backward compatibility with legacy
+    call sites that import this symbol. Do not add initialization
+    logic here — the ORM owns schema management now (see
+    ``portal/models_orm.py``).
+    """
+    return None  # explicit no-op; not a silent pass
 
 def log_token_usage(model, operation, prompt_tokens, completion_tokens, novel=""):
     """Log token usage to usage.db. Non-blocking; tracking errors are
@@ -2889,9 +2900,13 @@ class _RepoConfigWrapper:
     def execute(self, sql, params=None):
         return _RepoConfigCursor(self._repo, sql, params)
     def close(self):
-        pass
+        """Backward-compat shim: SQLAlchemy sessions close via their
+        own context manager; explicit ``.close()`` is a no-op here."""
+        return None
     def commit(self):
-        pass
+        """Backward-compat shim: the repository auto-commits on
+        successful ``__exit__``; explicit ``.commit()`` is a no-op."""
+        return None
 
 
 class _RepoConfigCursor:

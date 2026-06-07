@@ -78,3 +78,98 @@ class TestMiddleware:
                 f"X-Response-Time missing on {path}: {dict(res.headers)!r}"
             assert "X-Request-ID" in res.headers, \
                 f"X-Request-ID missing on {path}: {dict(res.headers)!r}"
+
+
+# ─── Resilience: after_request hook must not break the response ──────
+
+class TestAfterRequestResilience:
+    """The ``_after_request_set_timing`` middleware calls
+    ``health_tracker.record_request``. If that call raises (corrupt
+    in-memory state, type error from a future refactor, etc.) the
+    middleware must:
+
+    1. NOT turn the request into a 500.
+    2. Still set ``X-Response-Time`` and ``X-Request-ID``.
+    3. Log the failure at DEBUG level so it's visible in dev logs.
+
+    This is the regression test for harness plan item [5] (the
+    last silent ``except Exception: pass`` in ``portal/app.py``).
+    """
+
+    def test_record_request_failure_does_not_500(self, client, monkeypatch, caplog):
+        """If ``health_tracker.record_request`` raises, the response
+        must still come back 200/200-ish with the timing header."""
+        import logging
+        import app as _app_mod
+        from logging_config import health_tracker
+
+        def boom(*a, **kw):
+            raise RuntimeError("simulated tracker failure")
+        monkeypatch.setattr(health_tracker, "record_request", boom)
+
+        with caplog.at_level(logging.DEBUG, logger="novel-agent.app"):
+            res = client.get("/api/novels")
+
+        # Response must not be 500
+        assert res.status_code < 500, (
+            f"middleware raised, got {res.status_code}: {res.data!r}"
+        )
+        # X-Response-Time must still be set (the except block must not
+        # have skipped the rest of the response setup)
+        assert "X-Response-Time" in res.headers, (
+            "X-Response-Time missing after tracker failure; "
+            "the except block must not skip header assignment"
+        )
+        # X-Request-ID must still be set
+        assert "X-Request-ID" in res.headers, (
+            "X-Request-ID missing after tracker failure"
+        )
+
+    def test_record_request_failure_emits_debug_log(self, client, monkeypatch, caplog):
+        """A failed ``record_request`` must produce a DEBUG record on
+        the ``novel-agent.app`` logger — this is the contract that
+        replaces the silent ``pass`` removed in this commit."""
+        import logging
+        from logging_config import health_tracker
+
+        def boom(*a, **kw):
+            raise RuntimeError("simulated tracker failure for logging test")
+        monkeypatch.setattr(health_tracker, "record_request", boom)
+
+        with caplog.at_level(logging.DEBUG, logger="novel-agent.app"):
+            client.get("/api/novels")
+
+        # Look for our specific message
+        matching = [
+            r for r in caplog.records
+            if r.name == "novel-agent.app"
+            and "health_tracker.record_request failed" in r.getMessage()
+        ]
+        assert matching, (
+            f"no DEBUG log emitted for record_request failure; "
+            f"got: {[r.getMessage() for r in caplog.records if r.name == 'novel-agent.app']}"
+        )
+        assert matching[0].levelno == logging.DEBUG
+
+    def test_no_silent_pass_in_after_request(self):
+        """Static guard: the after_request hook in portal/app.py must
+        not contain ``except Exception:`` followed by a bare ``pass``.
+        If this test fails, someone re-introduced a silent exception
+        swallow in the timing middleware."""
+        from pathlib import Path
+        import re
+        portal_dir = Path(__file__).resolve().parent.parent.parent / "portal"
+        app_path = portal_dir / "app.py"
+        text = app_path.read_text(encoding="utf-8")
+        # Find every "except Exception:" and look at the next 3 lines
+        # for a bare "pass". The fix in this commit changed the body
+        # to "logging.getLogger(...).debug(...)".
+        pattern = re.compile(
+            r"except\s+Exception(?:\s+as\s+\w+)?\s*:\s*\n\s*pass\s*\n",
+            re.MULTILINE,
+        )
+        matches = pattern.findall(text)
+        assert not matches, (
+            f"Found {len(matches)} silent except-pass patterns in "
+            f"portal/app.py — see harness plan item [5]"
+        )
