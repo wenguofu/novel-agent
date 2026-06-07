@@ -1763,7 +1763,7 @@ def api_create_novel():
         messages=[{"role": "user", "content": requirements}],
         system_prompt=system_prompt,
         temperature=0.7,
-        max_tokens=8192,
+        max_tokens=65536,
         operation="generate-chapter",
     )
 
@@ -1867,7 +1867,7 @@ def api_generate_chapter(novel_name):
         messages=[{"role": "user", "content": f"请创作 {volume} 第 {chapter_num} 章"}],
         system_prompt=system_prompt,
         temperature=temperature if temperature is not None else 0.8,
-        max_tokens=max_tokens if max_tokens is not None else 8192,
+        max_tokens=max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS,
         operation="generate-chapter",
         novel=novel_name,
     )
@@ -2291,7 +2291,7 @@ def api_optimize_chapter(novel_name):
         messages=[{"role": "user", "content": "请优化以下章节：\n\n" + ch_content[:8000]}],
         system_prompt=system_prompt,
         temperature=0.4,
-        max_tokens=8192,
+        max_tokens=DEFAULT_MAX_TOKENS,
         operation="optimize-chapter",
         novel=novel_name,
     )

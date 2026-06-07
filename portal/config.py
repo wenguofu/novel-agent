@@ -17,7 +17,7 @@ DEEPSEEK_MODEL = MINIMAX_MODEL
 
 # Default generation params (overridden by portal settings)
 DEFAULT_TEMPERATURE = float(os.environ.get("MINIMAX_TEMPERATURE", os.environ.get("DEEPSEEK_TEMPERATURE", "0.7")))
-DEFAULT_MAX_TOKENS = int(os.environ.get("MINIMAX_MAX_TOKENS", os.environ.get("DEEPSEEK_MAX_TOKENS", "8192")))
+DEFAULT_MAX_TOKENS = int(os.environ.get("MINIMAX_MAX_TOKENS", os.environ.get("DEEPSEEK_MAX_TOKENS", "65536")))
 DEFAULT_TOP_P = float(os.environ.get("MINIMAX_TOP_P", os.environ.get("DEEPSEEK_TOP_P", "0.9")))
 
 # Portal settings
