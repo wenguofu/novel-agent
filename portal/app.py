@@ -11,7 +11,7 @@ from functools import wraps
 import logging
 
 import httpx
-from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
+from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context, g
 from flask_cors import CORS
 
 try:
@@ -60,6 +60,20 @@ from errors import (
 # health_tracker records per-request response time for the /health
 # endpoint and slow-call detection.
 from logging_config import StructuredLogger, with_logging, health_tracker  # noqa: E402
+
+# Pydantic request validation (harness plan item [3]).
+# The validate_json_request decorator wraps routes so request.json
+# is parsed and validated against the supplied Pydantic model before
+# the handler body runs; on failure the decorator short-circuits
+# with a 400 + structured validation_errors list. The validated
+# model instance is then attached to flask.g.validated_request.
+from models import (  # noqa: E402
+    ChatRequest, StreamRequest, GenerateStreamRequest,
+    CreateNovelRequest, GenerateChapterRequest,
+    EditChapterRequest, EditOutlineRequest,
+    DeepSeekConfigRequest, ReviewChapterRequest, SearchRequest,
+    validate_json_request,
+)
 
 # API resilience — circuit breaker + retry + response tracking (harness [7]).
 # `api_resilient("op")` wraps a function with the global `deepseek_circuit`
@@ -632,12 +646,11 @@ def api_read_chapter(novel_name, ch_ref):
 
 
 @app.route("/api/novels/<novel_name>/chapters/<path:ch_ref>/edit", methods=["POST"])
+@validate_json_request(EditChapterRequest)
 def api_edit_chapter(novel_name, ch_ref):
     """Save edited chapter content"""
-    data = request.json
-    content = data.get("content", "")
-    if not content:
-        return jsonify({"success": False, "error": "内容不能为空"}), 400
+    req: EditChapterRequest = g.validated_request
+    content = req.content
 
     file_path = os.path.join(get_novels_dir(), novel_name, "manuscript", f"{ch_ref}.md")
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -1011,12 +1024,11 @@ def api_read_outline(novel_name, vol_ref):
 
 
 @app.route("/api/novels/<novel_name>/outline/<vol_ref>/edit", methods=["POST"])
+@validate_json_request(EditOutlineRequest)
 def api_edit_outline(novel_name, vol_ref):
     """Save edited outline"""
-    data = request.json
-    content = data.get("content", "")
-    if not content:
-        return jsonify({"success": False, "error": "内容不能为空"}), 400
+    req: EditOutlineRequest = g.validated_request
+    content = req.content
 
     # Save as YAML (not MD)
     write_novel_file(novel_name, content, "outline", f"{vol_ref}-chapters.yaml")
@@ -1481,38 +1493,35 @@ def api_export_novel(novel_name):
 
 
 @app.route("/api/ai/chat", methods=["POST"])
+@validate_json_request(ChatRequest)
 def api_ai_chat():
     """Direct AI chat"""
-    data = request.json
-    messages = data.get("messages", [])
-    system = data.get("system", "")
-    temperature = data.get("temperature")
-    max_tokens = data.get("max_tokens")
-    top_p = data.get("top_p")
-
+    req: ChatRequest = g.validated_request
+    messages = [{"role": m.role, "content": m.content} for m in req.messages]
     result = deepseek_chat(
-        messages=messages, system_prompt=system,
-        temperature=temperature, max_tokens=max_tokens, top_p=top_p,
-        operation="ai-chat",
+        messages=messages, system_prompt=req.system,
+        temperature=req.temperature, max_tokens=req.max_tokens, top_p=req.top_p,
+        operation=req.operation or "ai-chat",
     )
     return jsonify(result)
 
 
 @app.route("/api/ai/stream", methods=["POST"])
+@validate_json_request(StreamRequest)
 def api_ai_stream():
     """SSE streaming AI chat (supports both Anthropic and OpenAI formats)"""
-    data = request.json
-    messages = data.get("messages", [])
-    system = data.get("system", "")
-    user = data.get("user", "")
+    req: StreamRequest = g.validated_request
+    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    system = req.system
+    user = req.user
     # Support {system, user} format from useSSEStream
     if not messages and (system or user):
         messages = [{"role": "user", "content": user}] if user else []
-    temperature = data.get("temperature")
-    max_tokens = data.get("max_tokens")
-    top_p = data.get("top_p")
-    operation = data.get("operation", "stream-generate")
-    novel = data.get("novel", "")
+    temperature = req.temperature
+    max_tokens = req.max_tokens
+    top_p = req.top_p
+    operation = req.operation or "stream-generate"
+    novel = req.novel
 
     cfg = get_active_deepseek_config()
     api_key = cfg["api_key"]
@@ -1639,9 +1648,10 @@ def api_ai_stream():
 
 
 @app.route("/api/novels/create", methods=["POST"])
+@validate_json_request(CreateNovelRequest)
 def api_create_novel():
-    data = request.json
-    novel_name = data.get("name", "").strip()
+    req: CreateNovelRequest = g.validated_request
+    novel_name = req.name.strip()
     if not novel_name:
         return jsonify({"success": False, "error": "请填写书名"}), 400
 
@@ -1649,12 +1659,12 @@ def api_create_novel():
     if os.path.exists(novel_path):
         return jsonify({"success": False, "error": "该书已存在"}), 400
 
-    genre = data.get("genre", "")
-    protagonist = data.get("protagonist", "")
-    selling_point = data.get("selling_point", "")
-    word_goal = data.get("word_goal", "100万")
-    perspective = data.get("perspective", "第三人称")
-    references = data.get("references", "")
+    genre = req.genre
+    protagonist = req.protagonist
+    selling_point = req.selling_point
+    word_goal = req.word_goal
+    perspective = req.perspective
+    references = req.references
 
     requirements = f"""题材: {genre}
 主角设定: {protagonist}

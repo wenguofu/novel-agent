@@ -192,3 +192,32 @@ def validate_request(model_cls, data: dict) -> tuple:
             "error": "请求参数验证失败",
             "validation_errors": errors,
         }
+
+
+def validate_json_request(model_cls):
+    """Decorator factory: validates ``request.json`` against a Pydantic
+    model before the wrapped route handler runs. On validation failure
+    the decorator short-circuits with a 400 response and a structured
+    ``validation_errors`` list — the route body never sees bad input.
+
+    Usage:
+        @app.route("/api/ai/chat", methods=["POST"])
+        @validate_json_request(ChatRequest)
+        def api_ai_chat():
+            req: ChatRequest = g.validated_request
+            # ... use req.messages, req.system, etc.
+    """
+    from functools import wraps
+    from flask import g, request, jsonify
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            data = request.get_json(silent=True) or {}
+            instance, err = validate_request(model_cls, data)
+            if err is not None:
+                return jsonify(err), 400
+            g.validated_request = instance
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
