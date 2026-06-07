@@ -1355,27 +1355,38 @@ def upsert_chapter_outline(novel_name, volume, chapter_num, data):
     """
     import json
     conn = get_db()
-    nid = _get_novel_id(conn, novel_name)
-    if nid is None:
-        raise ValueError(f"Novel not found: {novel_name}")
-    conn.execute("""
-        INSERT INTO chapter_outlines (novel_id, volume, chapter_num, title, function,
-            core_events, foreshadowing, ending_hook, is_danger_scene, word_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(novel_id, volume, chapter_num) DO UPDATE SET
-            title=excluded.title, function=excluded.function,
-            core_events=excluded.core_events, foreshadowing=excluded.foreshadowing,
-            ending_hook=excluded.ending_hook, is_danger_scene=excluded.is_danger_scene,
-            word_count=excluded.word_count, updated_at=datetime('now')
-    """, (nid, volume, chapter_num, data.get('title',''),
-          json.dumps(data.get('function',[])),
-          data.get('core_events',''),
-          json.dumps(data.get('foreshadowing',[])),
-          data.get('ending_hook',''),
-          1 if data.get('is_danger_scene') else 0,
-          data.get('word_count', 0)))
-    conn.commit()
-    conn.close()
+    try:
+        nid = _get_novel_id(conn, novel_name)
+        if nid is None:
+            raise ValueError(f"Novel not found: {novel_name}")
+        # Atomic write: sqlite3.Connection.__enter__ commits on
+        # successful block exit and rolls back on exception. The
+        # explicit conn.commit() that lived here previously had the
+        # same effect on the happy path, but did NOT guarantee
+        # rollback if conn.execute() raised mid-statement (e.g. a
+        # constraint violation) — the writer would have already
+        # inserted a partial row, and the connection would be
+        # closed with a half-applied mutation visible to the next
+        # reader. ``with conn:`` closes that gap.
+        with conn:
+            conn.execute("""
+                INSERT INTO chapter_outlines (novel_id, volume, chapter_num, title, function,
+                    core_events, foreshadowing, ending_hook, is_danger_scene, word_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(novel_id, volume, chapter_num) DO UPDATE SET
+                    title=excluded.title, function=excluded.function,
+                    core_events=excluded.core_events, foreshadowing=excluded.foreshadowing,
+                    ending_hook=excluded.ending_hook, is_danger_scene=excluded.is_danger_scene,
+                    word_count=excluded.word_count, updated_at=datetime('now')
+            """, (nid, volume, chapter_num, data.get('title',''),
+                  json.dumps(data.get('function',[])),
+                  data.get('core_events',''),
+                  json.dumps(data.get('foreshadowing',[])),
+                  data.get('ending_hook',''),
+                  1 if data.get('is_danger_scene') else 0,
+                  data.get('word_count', 0)))
+    finally:
+        conn.close()
 
 def get_chapter_outlines(novel_name, volume):
     """Return list of chapter outlines for a volume, ordered by chapter_num."""
@@ -1431,25 +1442,28 @@ def upsert_danger_issue(novel_name, volume, chapter_num, data):
     """
     import json
     conn = get_db()
-    nid = _get_novel_id(conn, novel_name)
-    if nid is None:
-        raise ValueError(f"Novel not found: {novel_name}")
-    conn.execute("""
-        INSERT INTO danger_issues (novel_id, volume, chapter_num, danger_level,
-            core_danger, content, rhythm_data, foreshadowing_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(novel_id, volume, chapter_num) DO UPDATE SET
-            danger_level=excluded.danger_level, core_danger=excluded.core_danger,
-            content=excluded.content, rhythm_data=excluded.rhythm_data,
-            foreshadowing_data=excluded.foreshadowing_data
-    """, (nid, volume, chapter_num,
-          data.get('danger_level', 'low'),
-          data.get('core_danger', ''),
-          data.get('content', ''),
-          json.dumps(data.get('rhythm_data', {})),
-          json.dumps(data.get('foreshadowing_data', []))))
-    conn.commit()
-    conn.close()
+    try:
+        nid = _get_novel_id(conn, novel_name)
+        if nid is None:
+            raise ValueError(f"Novel not found: {novel_name}")
+        # Atomic write — see upsert_chapter_outline for rationale.
+        with conn:
+            conn.execute("""
+                INSERT INTO danger_issues (novel_id, volume, chapter_num, danger_level,
+                    core_danger, content, rhythm_data, foreshadowing_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(novel_id, volume, chapter_num) DO UPDATE SET
+                    danger_level=excluded.danger_level, core_danger=excluded.core_danger,
+                    content=excluded.content, rhythm_data=excluded.rhythm_data,
+                    foreshadowing_data=excluded.foreshadowing_data
+            """, (nid, volume, chapter_num,
+                  data.get('danger_level', 'low'),
+                  data.get('core_danger', ''),
+                  data.get('content', ''),
+                  json.dumps(data.get('rhythm_data', {})),
+                  json.dumps(data.get('foreshadowing_data', []))))
+    finally:
+        conn.close()
 
 
 def get_danger_issues(novel_name, volume):
@@ -1486,17 +1500,20 @@ def _parse_di_row(row):
 def upsert_story_tracking(novel_name, record_type, record_key, record_value):
     """Upsert a single story tracking record."""
     conn = get_db()
-    nid = _get_novel_id(conn, novel_name)
-    if nid is None:
-        raise ValueError(f"Novel not found: {novel_name}")
-    conn.execute("""
-        INSERT INTO story_tracking (novel_id, record_type, record_key, record_value, updated_at)
-        VALUES (?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(novel_id, record_type, record_key) DO UPDATE SET
-            record_value=excluded.record_value, updated_at=datetime('now')
-    """, (nid, record_type, record_key, record_value))
-    conn.commit()
-    conn.close()
+    try:
+        nid = _get_novel_id(conn, novel_name)
+        if nid is None:
+            raise ValueError(f"Novel not found: {novel_name}")
+        # Atomic write — see upsert_chapter_outline for rationale.
+        with conn:
+            conn.execute("""
+                INSERT INTO story_tracking (novel_id, record_type, record_key, record_value, updated_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(novel_id, record_type, record_key) DO UPDATE SET
+                    record_value=excluded.record_value, updated_at=datetime('now')
+            """, (nid, record_type, record_key, record_value))
+    finally:
+        conn.close()
 
 
 def get_story_tracking(novel_name, record_type=None):
