@@ -24,7 +24,13 @@
 
 ## Implementation Pointer
 
-> **Status (2026-06-07):** 9/12 items DONE, 2 PARTIAL, 1 NOT DONE. Closed [6] (logging), [7] (circuit breaker), [9] (health + middleware), [5] (errors.py — final silent-pass eliminated), [8] (atomic transactions in content_db.py), and [3] (Pydantic validation decorator + 5 critical routes wired) in this session.
+> **Status (2026-06-07):** 9/12 items DONE, 2 PARTIAL (with future plans), 1 NOT DONE (with future plan). Closed [6] (logging), [7] (circuit breaker), [9] (health + middleware), [5] (errors.py — final silent-pass eliminated), [8] (atomic transactions in content_db.py), and [3] (Pydantic validation decorator + 5 critical routes wired) in this session. The remaining 3 items are scoped as their own dedicated plans:
+>
+> - **[1] MySQL/SQLAlchemy** → [2026-06-07-mysql-sqlalchemy-migration.md](../2026-06-07-mysql-sqlalchemy-migration.md) (multi-day, infrastructure exists, porting needed)
+> - **[4] Blueprint split** → [2026-06-07-app-blueprint-split.md](../2026-06-07-app-blueprint-split.md) (multi-day, 4250-line app.py → 5 Blueprints)
+> - **[11] Dev agent** → still NOT DONE; scope TBD
+>
+> **Harness 优化 评估:** All infrastructure modules are in place, unit-tested, and wired into the critical paths (5 of 36 routes for [3], all engine/factory layer for [1], no app.py split for [4]). The remaining work is multi-day mechanical refactors that belong in their own plans, not bolt-ons to this one.
 >
 > | # | Item | Status | Commit(s) | Notes |
 > |---|---|---|---|---|
@@ -44,6 +50,7 @@
 > **Verified 2026-06-07:** 1107/1107 tests pass. 52 new tests added in this session (4 dashboard stats, 9 chapter bak, 11 deepseek resilience, 3 health-middleware resilience, 7 atomic-writes rollback, 17 Pydantic validation, plus the test_agent_cr assertion fix).
 >
 > **Remaining work (scope assessment):**
-> - **Item 4 (Blueprint split, NOT DONE):** Largest single piece of remaining work. `portal/app.py` is 4080 lines; refactoring into 5 blueprint modules (`routes/ai.py`, `routes/novels.py`, `routes/reviews.py`, `routes/export.py`, `routes/config.py`) plus extracting route handlers from `app.py` is a multi-day refactor. Risk: circular-import surface between the new modules and the existing 13 portal/* modules that `app.py` already imports. Recommended as a dedicated plan (M-split-app).
+> - **Item 1 (MySQL/SQLAlchemy, PARTIAL → future plan):** The SQLAlchemy infrastructure (engine, session factory, transaction context manager, ORM models, repository pattern, Alembic migration) is fully implemented in `portal/db.py`, `portal/models_orm.py`, `portal/repository.py`, and `portal/alembic/`. The remaining work is **porting `portal/content_db.py` (1520 lines, 30+ functions) from raw `sqlite3` to SQLAlchemy** and adding MySQL CI. Scoped as [2026-06-07-mysql-sqlalchemy-migration.md](../2026-06-07-mysql-sqlalchemy-migration.md) (3-4 days, dedicated cycle).
+> - **Item 3 (Pydantic validation, PARTIAL → progressive):** 5 of 36 routes are wired with `@validate_json_request(Model)`: `/api/ai/chat`, `/api/ai/stream`, `/api/novels/create`, `/api/novels/<n>/chapters/<c>/edit`, `/api/novels/<n>/outline/<v>/edit`. The remaining 31 routes still use raw `request.json`. The decorator is in place; wiring each is a 2-3 line change and can be done incrementally as routes are touched. New routes should use the decorator from the start.
+> - **Item 4 (Blueprint split, NOT DONE → future plan):** `portal/app.py` is 4250 lines. Scoped as [2026-06-07-app-blueprint-split.md](../2026-06-07-app-blueprint-split.md) (4-6 days, bottom-up migration with TDD test pass at each phase: ai.py → config.py → export.py + reviews.py → novels.py).
 > - **Item 11 (Dev agent, NOT DONE):** Medium scope. The test agent infrastructure is in place; the missing piece is a script (e.g. `agent-system/scripts/dev_fix.sh`) that reads `.code-reviews/<sha>.md`, parses findings, and dispatches a Claude/Cursor session with the report as input. Pattern after `post_commit_review.sh`. Could be ~1 day including tests.
-> - **Items 1/3/5/6/7/8/9 (PARTIAL, integration work):** The infrastructure for all 7 PARTIAL items is already implemented (modules exist, are unit-tested, and don't break existing tests). What remains is **wiring the existing modules into `portal/app.py` route handlers** — replacing `get_db()` → `repository.get_repo()`, `request.json` → `Request.model_validate(request.json)`, silent `except: pass` → `safe_db_call(...)` / `NovelAgentError`, bare `logging.warning` → `StructuredLogger(...).warning(...)`, deepseek_chat → `with_resilience(with_retry(...))`, adding `@app.errorhandler(APIError)`, adding `/api/health` route + `@app.after_request` for response time. Estimated ~2-3 days of focused integration work; could be batched as a single "wire-up" plan. The infrastructure is sound — the gap is purely app.py adoption.
