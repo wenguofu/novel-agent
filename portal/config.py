@@ -4,11 +4,11 @@ import os
 # Project root
 NOVEL_AGENT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# MiniMax V3 API (Anthropic-compatible endpoint)
+# MiniMax M3 API (Anthropic-compatible endpoint)
 # Also reads legacy DEEPSEEK_* env vars as fallback
 MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY", os.environ.get("DEEPSEEK_API_KEY", ""))
 MINIMAX_API_BASE = os.environ.get("MINIMAX_API_BASE", os.environ.get("DEEPSEEK_API_BASE", "https://api.minimaxi.com/anthropic"))
-MINIMAX_MODEL = os.environ.get("MINIMAX_MODEL", os.environ.get("DEEPSEEK_MODEL", "minimaxV3"))
+MINIMAX_MODEL = os.environ.get("MINIMAX_MODEL", os.environ.get("DEEPSEEK_MODEL", "MiniMax-M3"))
 
 # Legacy aliases for backward compatibility with code that uses DEEPSEEK_* names
 DEEPSEEK_API_KEY = MINIMAX_API_KEY

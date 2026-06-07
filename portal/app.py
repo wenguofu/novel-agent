@@ -207,14 +207,14 @@ def log_token_usage(model, operation, prompt_tokens, completion_tokens, novel=""
 
 def _estimate_cost(model, prompt_tokens, completion_tokens):
     """Estimate cost in USD based on model pricing.
-    Supports MiniMax V3, DeepSeek V3/R1 pricing tiers.
+    Supports MiniMax M3, DeepSeek V3/R1 pricing tiers.
     """
     model_lower = model.lower()
     if "reasoner" in model_lower or "r1" in model_lower:
         input_price = 0.14 / 1_000_000
         output_price = 0.28 / 1_000_000
-    elif "minimax" in model_lower or "v3" in model_lower:
-        # MiniMax V3 pricing (adjust if needed)
+    elif "minimax" in model_lower or "m3" in model_lower:
+        # MiniMax M3 pricing (adjust if needed)
         input_price = 0.27 / 1_000_000
         output_price = 1.10 / 1_000_000
     else:
