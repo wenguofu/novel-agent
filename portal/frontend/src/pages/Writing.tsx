@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useNovelStore } from '../stores/novelStore'
+import { useConfigStore } from '../stores/configStore'
 import { useSSEStream } from '../hooks/useSSEStream'
 import { buildContext, saveChapter } from '../api/chapters'
 import ReactMarkdown from 'react-markdown'
@@ -99,7 +100,7 @@ export const Writing: React.FC = () => {
       setDebugPrompt(fullSystem)
       setDebugTotalTokens(fullSystem.length)
 
-      await startStream(fullSystem, userMsg, 'MiniMax-M2.7', {
+      await startStream(fullSystem, userMsg, useConfigStore.getState().deepseekConfig?.deepseek_model || '', {
         onDone: async (fullText) => {
           setProgressPercent(100)
           setStatusMsg(`✅ 优化完成 · ${fullText.replace(/\s/g, '').length}字`)
@@ -238,7 +239,7 @@ export const Writing: React.FC = () => {
 
       const userMsg = `请撰写第${vol}卷第${ch}章的内容。`
       console.log('[Writing] calling startStream...')
-      await startStream(systemPrompt, userMsg, 'MiniMax-M2.7', {
+      await startStream(systemPrompt, userMsg, useConfigStore.getState().deepseekConfig?.deepseek_model || '', {
         onDone: async (fullText) => {
           setProgressPercent(100)
           setStatusMsg(`✅ 完成 · ${fullText.replace(/\s/g, '').length}字`)

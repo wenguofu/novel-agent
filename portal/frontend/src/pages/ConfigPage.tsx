@@ -4,7 +4,7 @@ import { SaveOutlined, CheckCircleOutlined, KeyOutlined, ApiOutlined, RobotOutli
 import { useConfigStore } from '../stores/configStore'
 
 const MODEL_OPTIONS = [
-  { value: 'MiniMax-M2.7', label: 'MiniMax M2.7', desc: '旗舰级写作模型，最强创作能力' },
+  { value: 'MiniMax-M3', label: 'MiniMax V3', desc: '旗舰级写作模型，最强创作能力' },
   { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', desc: '旗舰模型，最强性能' },
   { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', desc: '快速响应，高性价比' },
 ]
@@ -18,7 +18,7 @@ export const ConfigPage: React.FC = () => {
 
   const [form, setForm] = useState({
     api_key: '', api_base: 'https://api.minimaxi.com/anthropic',
-    model: 'MiniMax-M2.7', temperature: 0.7, max_tokens: 8192, top_p: 0.9,
+    model: 'MiniMax-M3', temperature: 0.7, max_tokens: 65536, top_p: 0.9,
   })
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -133,7 +133,7 @@ export const ConfigPage: React.FC = () => {
               onChange={v => setForm({ ...form, api_base: v })}
               style={{ width: '100%' }}
               options={[
-                { value: 'https://api.minimaxi.com/anthropic', label: 'MiniMax M2.7 (Anthropic兼容)' },
+                { value: 'https://api.minimaxi.com/anthropic', label: 'MiniMax V3 (Anthropic兼容)' },
                 { value: 'https://api.deepseek.com', label: 'DeepSeek 官方 (api.deepseek.com)' },
               ]}
             />

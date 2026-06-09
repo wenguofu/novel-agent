@@ -14,3 +14,12 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: () => false,
   }),
 })
+
+// Polyfill ResizeObserver for antd Select / Dropdown components in jsdom
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(globalThis as any).ResizeObserver = (globalThis as any).ResizeObserver || MockResizeObserver
+;(window as any).ResizeObserver = (window as any).ResizeObserver || MockResizeObserver

@@ -3,6 +3,7 @@ import { Card, Button, Space, Tabs, Alert, message, Table, Statistic, Row, Col }
 import { RobotOutlined, SaveOutlined, LeftOutlined, RightOutlined, UnorderedListOutlined, EditOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons'
 import { Tag } from 'antd'
 import { useNovelStore } from '../stores/novelStore'
+import { useConfigStore } from '../stores/configStore'
 import ReactMarkdown from 'react-markdown'
 
 interface ChapterEntry {
@@ -216,7 +217,7 @@ chapters:
 - function必须是以下之一: 开篇/悬念/爽点/哭点/危机/对决/暧昧/温暖/笑点/过渡/反转/大反转
 - 每章结尾牵引不能为空`,
           messages: [{ role: 'user', content: `直接输出第${volume}卷YAML大纲，不要开场白。` }],
-          model: 'MiniMax-M2.7',
+          model: useConfigStore.getState().deepseekConfig?.deepseek_model || '',
         }),
       })
       const data = await resp.json()
