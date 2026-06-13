@@ -52,6 +52,11 @@ chroma_db/
 # Portal runtime artifacts
 portal/.encryption_key
 portal/.coverage
+# Local coverage config override (tracked version lives in
+# .coveragerc; this gitignore entry keeps local tweaks from being
+# staged. Use `git update-index --skip-worktree .coveragerc` to
+# silence the modification.)
+.coveragerc
 
 # M3: agent code review reports
 .code-reviews/
