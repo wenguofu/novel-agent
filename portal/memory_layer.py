@@ -313,7 +313,12 @@ class MemoryLayer:
 
     def _fallback_db_retrieval(self, novel_name: str,
                                categories: List[dict]) -> dict:
-        """Fallback retrieval using SQLite FTS5 when ChromaDB is unavailable."""
+        """Fallback retrieval via repository LIKE search.
+
+        Used when ChromaDB is unavailable. The fallback goes through
+        ``content_db.search_all`` → ``repository.get_repo().search_*``
+        which uses LIKE-based substring matching against MySQL.
+        """
         import content_db as db
 
         results = []

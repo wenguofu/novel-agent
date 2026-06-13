@@ -17,7 +17,7 @@ from flask_cors import CORS
 try:
     import sqlite3 as _sqlite3
 except ImportError:
-    _sqlite3 = None  # MySQL mode — not available
+    _sqlite3 = None  # not used in MySQL-only mode
 
 from content_db import (
     get_db as get_content_db, init_db as init_content_db,
@@ -785,18 +785,9 @@ def api_delete_chapter(novel_name, ch_ref):
                 repo.upsert_chapter(novel_name, ch_ref, volume=vol_str,
                     chapter_num=target_ch_num, content="__DELETED__",
                     title="", word_count=0, content_hash="")
-                # Actually remove the record
-                import sqlite3 as _sq
-                conn = _sq.connect(os.path.join(_PORTAL_DIR, "content.db"))
-                conn.execute("DELETE FROM chapters WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
-                           (novel_name, f"%{ch_ref}%"))
-                # Also clean up partial refs
-                conn.execute("DELETE FROM chapters WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
-                           (novel_name, f"{vol_str}/ch-{target_ch_num:03d}%"))
-                conn.execute("DELETE FROM chapters WHERE novel_id=(SELECT id FROM novels WHERE name=?) AND chapter_ref LIKE ?",
-                           (novel_name, f"{vol_str}/ch-{target_ch_num:04d}%"))
-                conn.commit()
-                conn.close()
+                # Actually remove the record via the repository
+                repo.delete_chapter_by_ref(novel_name, ch_ref, vol_str,
+                                           target_ch_num)
                 rollback_log.append("已从数据库删除章节记录")
             except Exception as e:
                 rollback_log.append(f"数据库删除异常: {e}")
@@ -922,10 +913,49 @@ def api_read_review(novel_name, ch_ref):
 
 @app.route("/api/novels/<novel_name>/status")
 def api_novel_status(novel_name):
-    content = read_novel_file(novel_name, "state", "current_status.md")
+    # v2: read from current_status DB table (authoritative). Falls back to
+    # the .md.migrated file (kept for audit) only if the DB row is absent.
+    from repository import get_repo
+    row = get_repo().get_current_status(novel_name)
+    if row:
+        # Return the same shape the file-based endpoint used: a `content`
+        # field. If raw_md is populated, prefer that (it's the human
+        # readable form); otherwise synthesize a short summary from the
+        # structured fields so the UI always has something to show.
+        if (row.get("raw_md") or "").strip():
+            content = row["raw_md"]
+        else:
+            content = (
+                f"# 《{novel_name}》状态\n\n"
+                f"- 当前卷: {row.get('current_volume') or 1}\n"
+                f"- 当前章: {row.get('current_chapter') or 1}\n"
+                f"- 总字数: {row.get('total_word_count') or 0}\n"
+            )
+            if row.get("target_volume") and (
+                row.get("target_volume") != row.get("current_volume")
+                or row.get("target_chapter") != row.get("current_chapter")
+            ):
+                content += (
+                    f"- 本次任务: 第{row['target_volume']}卷 "
+                    f"第{row['target_chapter']}章 (重写)\n"
+                )
+        return jsonify({
+            "success": True,
+            "content": content,
+            "source": "db",
+            "current_volume": row.get("current_volume"),
+            "current_chapter": row.get("current_chapter"),
+            "target_volume": row.get("target_volume"),
+            "target_chapter": row.get("target_chapter"),
+            "total_word_count": row.get("total_word_count"),
+        })
+    # Fallback: legacy .md.migrated file (kept for audit)
+    content = read_novel_file(novel_name, "state", "current_status.md.migrated")
+    if content is None:
+        content = read_novel_file(novel_name, "state", "current_status.md")
     if content is None:
         return jsonify({"success": False, "error": "状态文件不存在"}), 404
-    return jsonify({"success": True, "content": content})
+    return jsonify({"success": True, "content": content, "source": "file"})
 
 
 @app.route("/api/novels/<novel_name>/gate-status")
@@ -1859,8 +1889,26 @@ def api_generate_chapter(novel_name):
         "max_tokens": 10000,
     })
     system_prompt = ctx["system_prompt"]
-    # Append chapter-exists hint (context_builder doesn't know this)
+    # v2: when the chapter already exists, prepend its content (capped at
+    # 4000 tok) so the LLM can actually "续写/重写" rather than guess.
+    # Previously the hint was added but no actual content was given, so the
+    # LLM had no payload to work from.
     if chapter_exists:
+        try:
+            with open(ch_file_path, "r", encoding="utf-8") as f:
+                existing_text = f.read()
+            # Cap the existing-chapter payload at 4000 estimated tok to keep
+            # the system prompt bounded. Roughly 2666 Chinese chars.
+            from context_builder import _truncate_to_tokens
+            existing_block = _truncate_to_tokens(existing_text, 4000)
+            system_prompt = (
+                "## 上一版本正文（仅供续写/重写参考，不要原样复制）\n"
+                + existing_block
+                + "\n\n"
+                + system_prompt
+            )
+        except OSError as e:
+            logging.warning(f"[api_generate_chapter_v2] failed to read existing chapter: {e}")
         system_prompt += "\n\n⚠️ 注意：该章节已存在，请基于已有内容续写或重写，保持一致性。"
 
     result = deepseek_chat(
@@ -4387,73 +4435,48 @@ def api_list_templates():
 
 @app.route("/api/usage/stats")
 def api_usage_stats():
-    """Return token usage statistics."""
+    """Return token usage statistics (repository-backed; MySQL only)."""
     novel_filter = request.args.get("novel", "")
     days = int(request.args.get("days", 30))
 
     try:
-        conn = _sqlite3.connect(USAGE_DB_PATH)
-        conn.row_factory = _sqlite3.Row
+        from repository import get_repo, repo_session
+        from sqlalchemy import func
+        from models_orm import UsageRecord
+        repo = get_repo()
+        breakdown = repo.get_usage_breakdown(days=days)
+        daily = repo.get_usage_stats(days=days)
 
-        # Total tokens and cost
-        total = conn.execute(
-            "SELECT COALESCE(SUM(total_tokens), 0) AS total_tokens, "
-            "COALESCE(SUM(cost_estimate), 0) AS total_cost FROM usage"
-        ).fetchone()
-
-        # Breakdown by operation
-        by_operation = {}
-        op_rows = conn.execute(
-            "SELECT operation, COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens, "
-            "COALESCE(SUM(cost_estimate), 0) AS cost "
-            "FROM usage GROUP BY operation ORDER BY tokens DESC"
-        ).fetchall()
-        for row in op_rows:
-            by_operation[row["operation"]] = {
-                "calls": row["calls"],
-                "tokens": row["tokens"],
-                "cost": round(row["cost"], 6),
+        # by_novel aggregation (not in get_usage_breakdown)
+        with repo_session() as s:
+            novel_rows = s.query(
+                UsageRecord.novel,
+                func.count(UsageRecord.id).label("calls"),
+                func.coalesce(func.sum(UsageRecord.total_tokens), 0).label("tokens"),
+                func.coalesce(func.sum(UsageRecord.cost_estimate), 0).label("cost"),
+            ).filter(UsageRecord.novel != "").group_by(UsageRecord.novel).all()
+            by_novel = {
+                r[0]: {"calls": r[1], "tokens": r[2] or 0,
+                       "cost": round(r[3] or 0.0, 6)}
+                for r in novel_rows
             }
 
-        # Breakdown by novel
-        by_novel = {}
-        novel_rows = conn.execute(
-            "SELECT novel, COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens, "
-            "COALESCE(SUM(cost_estimate), 0) AS cost "
-            "FROM usage WHERE novel != '' GROUP BY novel ORDER BY tokens DESC"
-        ).fetchall()
-        for row in novel_rows:
-            by_novel[row["novel"]] = {
-                "calls": row["calls"],
-                "tokens": row["tokens"],
-                "cost": round(row["cost"], 6),
+            op_rows = s.query(
+                UsageRecord.operation,
+                func.count(UsageRecord.id).label("calls"),
+                func.coalesce(func.sum(UsageRecord.total_tokens), 0).label("tokens"),
+                func.coalesce(func.sum(UsageRecord.cost_estimate), 0).label("cost"),
+            ).group_by(UsageRecord.operation).all()
+            by_operation = {
+                r[0]: {"calls": r[1], "tokens": r[2] or 0,
+                       "cost": round(r[3] or 0.0, 6)}
+                for r in op_rows
             }
-
-        # Daily usage for last N days
-        daily = []
-        daily_rows = conn.execute(
-            "SELECT date(created_at) AS day, COUNT(*) AS calls, "
-            "COALESCE(SUM(total_tokens), 0) AS tokens, "
-            "COALESCE(SUM(cost_estimate), 0) AS cost "
-            "FROM usage "
-            "WHERE created_at >= datetime('now', ?) "
-            "GROUP BY day ORDER BY day ASC",
-            (f"-{days} days",)
-        ).fetchall()
-        for row in daily_rows:
-            daily.append({
-                "day": row["day"],
-                "calls": row["calls"],
-                "tokens": row["tokens"],
-                "cost": round(row["cost"], 6),
-            })
-
-        conn.close()
 
         return jsonify({
             "success": True,
-            "total_tokens": total["total_tokens"],
-            "total_cost": round(total["total_cost"], 6),
+            "total_tokens": breakdown.get("total", {}).get("total_tokens", 0),
+            "total_cost": breakdown.get("total", {}).get("total_cost", 0.0),
             "by_operation": by_operation,
             "by_novel": by_novel,
             "daily": daily,

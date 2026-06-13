@@ -1,10 +1,14 @@
 """
 Content Database — unified access layer for novel content.
-Uses repository.py (SQLAlchemy) under the hood; supports SQLite and MySQL
-via DATABASE_URL environment variable.
+Uses repository.py (SQLAlchemy) under the hood; production runtime is
+MySQL only (see portal/db.py for the engine).
 
-All public functions are maintained for backward compatibility.
-Internal DB access goes through repository.get_repo().
+This module is a backward-compat shim. New code should use
+``repository.get_repo()`` directly. A handful of legacy helpers
+(``upsert_chapter_outline``, ``get_chapter_outline``, etc.) still use
+the ``get_db()`` raw-SQL path because they pre-date the repository
+refactor; that path is exercised only by the test suite
+(``SQLite-via-:memory:``) and is slated for removal in a follow-up.
 """
 
 import hashlib
@@ -13,6 +17,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+# Default test path; tests override this module-level constant. The
+# runtime uses MySQL via ``DATABASE_URL`` and never reads ``DB_PATH``.
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "content.db")
 NOVELS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "novels")
 
@@ -29,17 +35,25 @@ def _get_repo():
 def get_db():
     """Return a raw DB connection for backward compatibility.
 
-    For SQLite mode: returns a sqlite3 connection with Row factory.
-    For MySQL mode: logs a deprecation warning and returns a session wrapper.
+    Production code MUST NOT use this. It is kept only for the legacy
+    helpers below (``upsert_chapter_outline`` etc.) that pre-date the
+    repository refactor. Those helpers are exercised by the test suite
+    only; the runtime always goes through ``repository.get_repo()``.
 
-    New code should use repository.get_repo() instead.
+    Under ``TESTING=1`` the path is SQLite-via-``DB_PATH`` so the
+    legacy helpers keep working. Under production (MySQL) the function
+    emits a deprecation warning and returns a session wrapper that
+    raises ``NotImplementedError`` on direct SQL — forcing callers to
+    migrate to the repository.
     """
     import os as _os
     db_url = _os.environ.get("DATABASE_URL", "")
     if db_url.startswith("mysql"):
         import warnings
-        warnings.warn("get_db() is deprecated with MySQL; use repository.get_repo()", DeprecationWarning)
-        # Return a thin session wrapper for backward compat
+        warnings.warn(
+            "get_db() is deprecated; use repository.get_repo()",
+            DeprecationWarning,
+        )
         return _RepoSessionWrapper()
 
     import sqlite3
@@ -51,312 +65,29 @@ def get_db():
 
 
 class _RepoSessionWrapper:
-    """Minimal wrapper that provides sqlite3.Row-like interface over repo methods.
-    Only used for backward compatibility in MySQL mode."""
+    """Session-wrapper stub for MySQL mode. Raises on direct SQL.
+
+    Returns ``None`` on ``close()`` and raises ``NotImplementedError``
+    on ``execute()`` — the legacy helpers in this module need to be
+    refactored to the repository before this wrapper can be removed.
+    """
 
     def execute(self, sql, params=None):
-        """Parse common SQL patterns and delegate to repo methods."""
-        sql_upper = sql.strip().upper()
-        # This is a best-effort compatibility layer; complex queries should use repo directly
         raise NotImplementedError(
-            "Direct SQL execution is not supported in MySQL mode. "
+            "Direct SQL execution is not supported with MySQL. "
             "Use repository.get_repo() methods instead."
         )
 
     def close(self):
-        pass
+        return None
 
-# ═══════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════
 # Schema
-# ═══════════════════════════════════════════════════════════════════════
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS novels (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
-    title TEXT DEFAULT '',
-    genre TEXT DEFAULT '',
-    subgenre TEXT DEFAULT '',
-    word_goal TEXT DEFAULT '',
-    total_chapters INTEGER DEFAULT 0,
-    total_words INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS outlines (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    volume TEXT NOT NULL,
-    content TEXT NOT NULL,
-    word_count INTEGER DEFAULT 0,
-    updated_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, volume)
-);
-
-CREATE TABLE IF NOT EXISTS chapter_outlines (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    volume TEXT NOT NULL,
-    chapter_num INTEGER NOT NULL,
-    title TEXT DEFAULT '',
-    function TEXT DEFAULT '[]',
-    core_events TEXT DEFAULT '',
-    foreshadowing TEXT DEFAULT '[]',
-    ending_hook TEXT DEFAULT '',
-    is_danger_scene INTEGER DEFAULT 0,
-    word_count INTEGER DEFAULT 0,
-    updated_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, volume, chapter_num)
-);
-CREATE INDEX IF NOT EXISTS idx_co_novel_vol ON chapter_outlines(novel_id, volume);
-
-CREATE TABLE IF NOT EXISTS chapters (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    volume TEXT NOT NULL,
-    chapter_num INTEGER NOT NULL,
-    chapter_ref TEXT NOT NULL,
-    content TEXT NOT NULL,
-    title TEXT DEFAULT '',
-    word_count INTEGER DEFAULT 0,
-    content_hash TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, chapter_ref)
-);
-
-CREATE TABLE IF NOT EXISTS reviews (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    chapter_ref TEXT NOT NULL,
-    chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL,
-    ai_review TEXT DEFAULT '',
-    script_analyze_ok INTEGER DEFAULT 0,
-    script_compliance_ok INTEGER DEFAULT 0,
-    script_forbidden_ok INTEGER DEFAULT 0,
-    script_detail TEXT DEFAULT '',
-    word_count INTEGER DEFAULT 0,
-    wc_ok INTEGER DEFAULT 0,
-    compliance_ok INTEGER DEFAULT 0,
-    forbidden_ok INTEGER DEFAULT 0,
-    bcontrast_count INTEGER DEFAULT 0,
-    tell_count INTEGER DEFAULT 0,
-    judgment_groups INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, chapter_ref)
-);
-
-CREATE TABLE IF NOT EXISTS danger_issues (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    volume TEXT NOT NULL,
-    chapter_num INTEGER,
-    danger_level TEXT DEFAULT 'low',
-    core_danger TEXT DEFAULT '',
-    content TEXT NOT NULL,
-    rhythm_data TEXT DEFAULT '{}',
-    foreshadowing_data TEXT DEFAULT '[]',
-    created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, volume, chapter_num)
-);
-
-CREATE TABLE IF NOT EXISTS story_tracking (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    record_type TEXT NOT NULL,
-    record_key TEXT NOT NULL,
-    record_value TEXT NOT NULL,
-    updated_at TEXT,
-    UNIQUE(novel_id, record_type, record_key)
-);
-CREATE INDEX IF NOT EXISTS idx_st_novel_type ON story_tracking(novel_id, record_type);
-
-CREATE TABLE IF NOT EXISTS foreshadowing (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    description TEXT DEFAULT '',
-    category TEXT DEFAULT '剧情',
-    status TEXT DEFAULT 'pending',
-    introduced_vol INTEGER DEFAULT 0,
-    introduced_ch INTEGER DEFAULT 0,
-    target_vol INTEGER DEFAULT 0,
-    target_ch INTEGER DEFAULT 0,
-    resolved_vol INTEGER DEFAULT 0,
-    resolved_ch INTEGER DEFAULT 0,
-    resolution_note TEXT DEFAULT '',
-    priority TEXT DEFAULT 'normal',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS characters (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    role TEXT DEFAULT '配角',
-    gender TEXT DEFAULT '',
-    age TEXT DEFAULT '',
-    identity TEXT DEFAULT '',
-    personality TEXT DEFAULT '',
-    appearance TEXT DEFAULT '',
-    background TEXT DEFAULT '',
-    current_status TEXT DEFAULT '',
-    current_vol INTEGER DEFAULT 0,
-    current_ch INTEGER DEFAULT 0,
-    lifeline TEXT DEFAULT '',
-    arc TEXT DEFAULT '',
-    ending TEXT DEFAULT '',
-    notes TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, name)
-);
-
-CREATE TABLE IF NOT EXISTS character_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
-    event_type TEXT DEFAULT '状态变更',
-    description TEXT NOT NULL,
-    vol INTEGER DEFAULT 0,
-    ch INTEGER DEFAULT 0,
-    chapter_ref TEXT DEFAULT '',
-    source TEXT DEFAULT 'manual',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_chars_novel ON characters(novel_id);
-CREATE INDEX IF NOT EXISTS idx_chevents_char ON character_events(character_id);
-CREATE TABLE IF NOT EXISTS world_building (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    domain TEXT NOT NULL DEFAULT '',
-    name TEXT NOT NULL DEFAULT '',
-    content TEXT NOT NULL DEFAULT '',
-    related_vol INTEGER DEFAULT 0,
-    related_ch INTEGER DEFAULT 0,
-    tags TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS plot_arcs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    name TEXT NOT NULL DEFAULT '',
-    type TEXT DEFAULT '主线',
-    volume_start INTEGER DEFAULT 0,
-    chapter_start INTEGER DEFAULT 0,
-    volume_end INTEGER DEFAULT 0,
-    chapter_end INTEGER DEFAULT 0,
-    summary TEXT DEFAULT '',
-    milestones TEXT DEFAULT '[]',
-    status TEXT DEFAULT 'active',
-    priority TEXT DEFAULT 'normal',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS pacing_control (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    volume INTEGER DEFAULT 0,
-    chapter_start INTEGER DEFAULT 0,
-    chapter_end INTEGER DEFAULT 0,
-    pace_type TEXT DEFAULT '过渡',
-    intensity INTEGER DEFAULT 5,
-    emotion_target TEXT DEFAULT '',
-    word_budget_min INTEGER DEFAULT 2500,
-    word_budget_max INTEGER DEFAULT 3500,
-    notes TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS revelation_schedule (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    name TEXT NOT NULL DEFAULT '',
-    info_type TEXT DEFAULT '世界观',
-    reveal_volume INTEGER DEFAULT 0,
-    reveal_chapter INTEGER DEFAULT 0,
-    content TEXT DEFAULT '',
-    audience_knows INTEGER DEFAULT 0,
-    protagonist_knows INTEGER DEFAULT 0,
-    priority TEXT DEFAULT 'normal',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_wb_novel ON world_building(novel_id);
-CREATE INDEX IF NOT EXISTS idx_wb_domain ON world_building(domain);
-CREATE INDEX IF NOT EXISTS idx_pa_novel ON plot_arcs(novel_id);
-CREATE INDEX IF NOT EXISTS idx_pc_novel ON pacing_control(novel_id);
-CREATE INDEX IF NOT EXISTS idx_rs_novel ON revelation_schedule(novel_id);
-
-
--- ═══ New Domain Tables ═══
-
-CREATE TABLE IF NOT EXISTS genre_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    rule_category TEXT NOT NULL DEFAULT '',
-    rule_content TEXT NOT NULL DEFAULT '',
-    is_required INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_gr_novel ON genre_rules(novel_id);
-
-CREATE TABLE IF NOT EXISTS story_volumes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    vol_num INTEGER NOT NULL DEFAULT 0,
-    vol_name TEXT DEFAULT '',
-    word_range TEXT DEFAULT '',
-    goal TEXT DEFAULT '',
-    conflict TEXT DEFAULT '',
-    payoff TEXT DEFAULT '',
-    foreshadowing TEXT DEFAULT '',
-    status TEXT DEFAULT '待规划',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_sv_novel ON story_volumes(novel_id);
-
-CREATE TABLE IF NOT EXISTS volume_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    vol_num INTEGER NOT NULL DEFAULT 0,
-    title TEXT DEFAULT '',
-    plan_content TEXT NOT NULL DEFAULT '',
-    word_count INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, vol_num)
-);
-CREATE INDEX IF NOT EXISTS idx_vp_novel ON volume_plans(novel_id);
-
-CREATE TABLE IF NOT EXISTS alias_names (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    category TEXT DEFAULT '',
-    alias_name TEXT NOT NULL DEFAULT '',
-    description TEXT DEFAULT '',
-    scope TEXT DEFAULT '全书',
-    first_chapter TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_an_novel ON alias_names(novel_id);
-
-CREATE TABLE IF NOT EXISTS project_meta (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    novel_id INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
-    meta_key TEXT NOT NULL,
-    meta_value TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(novel_id, meta_key)
-);
-CREATE INDEX IF NOT EXISTS idx_pm_novel ON project_meta(novel_id);
-"""
+# ═════════════════════════════════════════════════════════════════════
+# The SQLAlchemy ORM (``models_orm.py``) is the source of truth for the
+# schema. The previous hand-written ``SCHEMA`` literal was removed in
+# the MySQL-only refactor; ``init_db()`` below calls
+# ``db.ensure_unified_schema()`` to create all tables via the ORM.
 
 def migrate_v3():
     """No-op: v3 columns are already present in ORM schema via models_orm.py."""
@@ -364,38 +95,39 @@ def migrate_v3():
 
 
 def init_db():
-    """Create tables via SQLAlchemy ORM (supports SQLite and MySQL).
+    """Create tables via SQLAlchemy ORM.
 
-    Honors ``DB_PATH`` override (used by tests via the ``fresh_db`` fixture).
-    When the SQLAlchemy engine singleton is already bound to a different
-    database (e.g. the production ``content.db``), this resets it so the
-    override path actually receives the freshly created tables.
+    Honors ``DB_PATH`` override (used by tests via the ``fresh_db``
+    fixture) by re-pointing ``DATABASE_URL`` at the test file and
+    resetting the engine so the next ``ensure_unified_schema()`` call
+    creates tables there. The runtime never calls ``init_db()``; it is
+    exercised by the test suite only.
     """
     import os as _os
-    from db import DATABASE_URL, reset_engine
+    from db import reset_engine, ensure_unified_schema
 
-    # If DB_PATH is overridden, re-point the SQLAlchemy engine at it.
-    # Default DATABASE_URL is sqlite:///<portal_dir>/content.db; if our
-    # DB_PATH differs, swap engines.
     global _repo
-    if DATABASE_URL.startswith("sqlite"):
-        current_path = DATABASE_URL.replace("sqlite:///", "")
-        if _os.path.abspath(current_path) != _os.path.abspath(DB_PATH):
-            reset_engine(f"sqlite:///{DB_PATH}")
-            # Engine swap invalidates the cached Repository singleton in
-            # repository.py and our own _repo handle — clear both so the
-            # next get_repo() rebuilds against the new engine.
-            import repository as _repository_mod
-            _repository_mod._repo = None
-            _repo = None
+    # Re-point the engine at DB_PATH. Under ``TESTING=1`` the URL is
+    # SQLite-via-DB_PATH; under production this is a no-op (DB_PATH
+    # isn't used by the runtime).
+    db_url = f"sqlite:///{DB_PATH}"
+    current_url = _os.environ.get("DATABASE_URL", "")
+    if current_url != db_url:
+        _os.environ["DATABASE_URL"] = db_url
+        reset_engine(db_url)
+        # Engine swap invalidates the cached Repository singleton in
+        # repository.py and our own _repo handle — clear both so the
+        # next get_repo() rebuilds against the new engine.
+        import repository as _repository_mod
+        _repository_mod._repo = None
+        _repo = None
 
-    from repository import ensure_tables, get_repo
-    ensure_tables()
+    ensure_unified_schema()
+    from repository import get_repo
     # Run init seed for config tables (best-effort; may fail in test envs)
     try:
         get_repo().init_config_seed()
     except Exception as _e:
-        # Config seed is non-essential for schema tests; skip on failure.
         import logging
         logging.getLogger(__name__).warning(f"init_config_seed skipped: {_e}")
 

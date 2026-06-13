@@ -1,6 +1,6 @@
 # Novel Agent — AI 长篇网文写作系统
 
-AI-assisted Chinese web novel writing system (1M-3M words). Flask + React portal with multi-agent architecture, unified database, and MySQL support.
+AI-assisted Chinese web novel writing system (1M-3M words). Flask + React portal with multi-agent architecture, MySQL backend, and unified data access layer.
 
 ## 快速启动
 
@@ -8,21 +8,23 @@ AI-assisted Chinese web novel writing system (1M-3M words). Flask + React portal
 cd portal
 pip install -r ../requirements.txt
 
-# SQLite (开发)
+# MySQL (only supported backend since v3.4)
+export DATABASE_URL='mysql+pymysql://user:pass@host:3306/novel_agent'
 python run_v2.py
 # → http://127.0.0.1:35001
-
-# MySQL (生产)
-DATABASE_URL=mysql+pymysql://user:pass@host:3306/novel_agent python run_v2.py
 ```
 
-## 架构概览 (v3.3)
+The portal refuses to start without a `DATABASE_URL` set to a MySQL URL
+(or with `TESTING=1` set, in which case it uses the test suite's
+in-memory SQLite — see `tests/conftest.py`).
+
+## 架构概览 (v3.4)
 
 | 层 | 技术 |
 |------|------|
 | 前端 | React 18 + TypeScript, Ant Design 5, Vite, Zustand, TanStack Query |
 | 后端 | Python Flask, SQLAlchemy ORM, httpx |
-| 数据库 | SQLite (dev) / MySQL (prod) — 通过 `DATABASE_URL` 切换 |
+| 数据库 | **MySQL only** (mandatory `DATABASE_URL`) |
 | AI | DeepSeek API (chat + SSE streaming) |
 | RAG | ChromaDB + BAAI/bge-small-zh-v1.5 |
 | 端口 | 35001 |

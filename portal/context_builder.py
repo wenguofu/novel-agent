@@ -21,6 +21,7 @@ Architecture (P3-2 allocation table, total 9500 tok, 500 elastic):
 import os
 import sys
 import json
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 from token_budget import TokenBudget
@@ -62,12 +63,75 @@ def _get_core_instructions() -> str:
     return pm.render_or_default("core_instructions", _CORE_INSTRUCTIONS_FALLBACK)
 
 
+# Resolve the novels/ root directory used by file-system lookups
+# (current_status.md, style.md, characters.md). Falls back to walking up
+# from the portal/ module — same default as agent_executor.py uses.
+def _resolve_novels_root() -> str:
+    """Return the absolute path to the novels/ root directory.
+
+    Used by file-system layer builders (current_status, style, characters.md
+    fallback) so the project layout is consistent across portal subcommands.
+    """
+    return str((Path(__file__).resolve().parent.parent / "novels").resolve())
+
+
+def _chinese_numeral(n: int) -> str:
+    """Convert an integer 1–9999 to its Chinese 长字符串 form (e.g. 123 → 一百二十三).
+
+    Used by the chapter outline locator to match Chinese-numeral headings
+    (e.g. 第一百二十三章) that the digit-only regex would miss.
+    """
+    if not 1 <= n <= 9999:
+        return str(n)
+    digits = "零一二三四五六七八九"
+    units = ["", "十", "百", "千"]
+
+    s = str(n)
+    out = []
+    length = len(s)
+    for i, ch in enumerate(s):
+        d = int(ch)
+        unit = units[length - i - 1]
+        if d == 0:
+            # Skip zero unless it's a "middle" zero and the next digit is non-zero
+            if i < length - 1 and int(s[i + 1]) != 0:
+                if not out or out[-1] != "零":
+                    out.append("零")
+        else:
+            # 1 in the tens place reads as "一十" or just "十" by convention
+            if not (d == 1 and unit == "十" and i == 0):
+                out.append(digits[d])
+            out.append(unit)
+    result = "".join(out)
+    # Trailing "零" is invalid; e.g. 1020 should be 一千零二十 not 一千零二十零
+    if result.endswith("零"):
+        result = result[:-1]
+    return result
+
+
 def _count_tokens(text):
-    """Rough token estimation"""
-    import re
-    cn = len(re.findall(r'[\u4e00-\u9fff]', text))
-    en = len(re.findall(r'[a-zA-Z]+', text))
-    return int(cn * 1.5 + en * 1.3)
+    """Rough token estimation \u2014 must agree with `_truncate_to_tokens`.
+
+    Per-char rates (v2):
+      - Chinese (\u4e00-\u9fff): 1.5 tok
+      - ASCII alpha: 1.3 tok
+      - digit / punctuation / emoji / whitespace: 0.5 tok
+
+    The earlier version counted only Chinese and alpha and treated digits,
+    punctuation and emoji as 0 tok, which caused systematic undercounting
+    for prompts that contain many bullets, emoji, markdown markers, or
+    numeric ranges. Layer caps allocated from this estimate were then too
+    small, and `_truncate_to_tokens` would cut the layer content mid-section
+    (e.g. dropping the last genre_rules category). The two functions now
+    use the same per-char rates so allocation matches the truncation that
+    actually happens.
+    """
+    if not text:
+        return 0
+    cn = sum(1 for ch in text if '\u4e00' <= ch <= '\u9fff')
+    en = sum(1 for ch in text if ch.isalpha() and ord(ch) < 128)
+    other = len(text) - cn - en
+    return int(cn * 1.5 + en * 1.3 + other * 0.5)
 
 
 def _truncate_to_tokens(text, max_tokens):
@@ -112,81 +176,114 @@ def build_context(params):
     chapter_num = int(params.get("chapter_num", 1))
     style = params.get("style", "")
     instructions = params.get("instructions", "")
-    max_tokens = int(params.get("max_tokens", 10000))
+    # writing-prompt-v2: default ceiling lifted from 10_000 to 500_000. The
+    # LLM can ingest the full project state; per-layer internal sub-caps
+    # (style, characters, danger, ...) still protect against pathological
+    # inputs. See openspec/changes/writing-prompt-v2-optimization/proposal.md.
+    max_tokens = int(params.get("max_tokens", 500_000))
 
     budget = TokenBudget(max_tokens=max_tokens)
     layers = []
 
     # LAYER 0: Core Instructions (always included) — loaded from Jinja2
+    # v2: clamped to 500 tok so future j2 edits cannot blow other layers off-budget.
     core_text = _get_core_instructions()
     core_tokens = _count_tokens(core_text)
-    budget.allocate("核心指令", core_tokens)
-    layers.append({"name": "核心指令", "content": core_text, "tokens_used": core_tokens})
+    allocated_core = min(core_tokens, 500)
+    budget.allocate("核心指令", allocated_core)
+    layers.append({
+        "name": "核心指令",
+        "content": _truncate_to_tokens(core_text, allocated_core),
+        "tokens_used": allocated_core,
+    })
 
     # LAYER 1: Project Meta (novel row + full project_meta 14 keys)
+    # v2: cap raised 500 → 1000 tok.
     meta_text = _build_project_meta(novel_name)
     meta_tokens = _count_tokens(meta_text)
-    allocated = budget.allocate("项目元信息", min(meta_tokens, 500))
+    allocated = budget.allocate("项目元信息", min(meta_tokens, 1000))
     layers.append({"name": "项目元信息", "content": _truncate_to_tokens(meta_text, allocated), "tokens_used": allocated})
 
+    # LAYER 1.5 (NEW in v2): Current Status — novels/{name}/state/current_status.md
+    # Optional; omitted from the layers list when the file is absent.
+    cs_text = _build_current_status_context(novel_name)
+    if cs_text:
+        cs_tokens = _count_tokens(cs_text)
+        allocated = budget.allocate("当前状态", min(cs_tokens, 1000))
+        layers.append({
+            "name": "当前状态",
+            "content": _truncate_to_tokens(cs_text, allocated),
+            "tokens_used": allocated,
+        })
+
     # LAYER 2: Chapter Context (outline + danger + prev)
+    # v2: cap raised 800 → 2000 tok.
     ch_ctx = _build_chapter_context(novel_name, volume, chapter_num)
     ch_ctx_tokens = _count_tokens(ch_ctx)
-    allocated = budget.allocate("章节上下文", min(ch_ctx_tokens, 800))
+    allocated = budget.allocate("章节上下文", min(ch_ctx_tokens, 2000))
     layers.append({"name": "章节上下文", "content": _truncate_to_tokens(ch_ctx, allocated), "tokens_used": allocated})
 
     # LAYER 3: Characters (RAG top-3)
+    # v2: cap raised 2000 → 4000 tok.
     char_text = _build_character_context(novel_name, volume, chapter_num)
     char_tokens = _count_tokens(char_text)
-    allocated = budget.allocate("角色上下文", min(char_tokens, 2000))
+    allocated = budget.allocate("角色上下文", min(char_tokens, 4000))
     layers.append({"name": "角色上下文", "content": _truncate_to_tokens(char_text, allocated), "tokens_used": allocated})
 
     # LAYER 3.5: Genre Rules (type-level constraints — must-haves, pacing, reader expectations)
+    # v2: cap raised 500 → 1500 tok.
     gr_text = _build_genre_rules_context(novel_name)
     gr_tokens = _count_tokens(gr_text)
-    allocated = budget.allocate("类型规则", min(gr_tokens, 500))
+    allocated = budget.allocate("类型规则", min(gr_tokens, 1500))
     layers.append({"name": "类型规则", "content": _truncate_to_tokens(gr_text, allocated), "tokens_used": allocated})
 
     # LAYER 4: Foreshadowing (DB query)
+    # v2: cap raised 1000 → 2000 tok.
     fs_text = _build_foreshadowing_context(novel_name, volume)
     fs_tokens = _count_tokens(fs_text)
-    allocated = budget.allocate("伏笔待办", min(fs_tokens, 1000))
+    allocated = budget.allocate("伏笔待办", min(fs_tokens, 2000))
     layers.append({"name": "伏笔待办", "content": _truncate_to_tokens(fs_text, allocated), "tokens_used": allocated})
 
     # LAYER 5: World Building (RAG top-5)
+    # v2: cap raised 1500 → 3000 tok.
     wb_text = _build_world_context(novel_name, volume, chapter_num)
     wb_tokens = _count_tokens(wb_text)
-    allocated = budget.allocate("世界观", min(wb_tokens, 1500))
+    allocated = budget.allocate("世界观", min(wb_tokens, 3000))
     layers.append({"name": "世界观", "content": _truncate_to_tokens(wb_text, allocated), "tokens_used": allocated})
 
     # LAYER 6: Pacing/Emotion
+    # v2: cap raised 500 → 1000 tok.
     pace_text = _build_pacing_context(novel_name, volume, chapter_num)
     pace_tokens = _count_tokens(pace_text)
-    allocated = budget.allocate("节奏情感", min(pace_tokens, 500))
+    allocated = budget.allocate("节奏情感", min(pace_tokens, 1000))
     layers.append({"name": "节奏情感", "content": _truncate_to_tokens(pace_text, allocated), "tokens_used": allocated})
 
     # LAYER 7: Revelation
+    # v2: cap raised 500 → 1500 tok.
     rev_text = _build_revelation_context(novel_name, volume)
     rev_tokens = _count_tokens(rev_text)
-    allocated = budget.allocate("信息释放", min(rev_tokens, 500))
+    allocated = budget.allocate("信息释放", min(rev_tokens, 1500))
     layers.append({"name": "信息释放", "content": _truncate_to_tokens(rev_text, allocated), "tokens_used": allocated})
 
     # LAYER 8: Plot Arcs
+    # v2: cap raised 1000 → 2000 tok.
     arc_text = _build_plot_arc_context(novel_name, volume)
     arc_tokens = _count_tokens(arc_text)
-    allocated = budget.allocate("剧情弧线", min(arc_tokens, 1000))
+    allocated = budget.allocate("剧情弧线", min(arc_tokens, 2000))
     layers.append({"name": "剧情弧线", "content": _truncate_to_tokens(arc_text, allocated), "tokens_used": allocated})
 
     # LAYER 8.5: Banned Words + Compliance Rules (hard constraints from config DB)
+    # v2: cap raised 200 → 500 tok.
     bw_text = _build_banned_compliance_context()
     bw_tokens = _count_tokens(bw_text)
-    allocated = budget.allocate("禁用词与合规", min(bw_tokens, 200))
+    allocated = budget.allocate("禁用词与合规", min(bw_tokens, 500))
     layers.append({"name": "禁用词与合规", "content": _truncate_to_tokens(bw_text, allocated), "tokens_used": allocated})
 
     # LAYER 9: Style + Instructions
+    # v2: cap raised 500 → 3000 tok.
     style_text = _build_style_context(style, instructions, novel_name)
     style_tokens = _count_tokens(style_text)
-    allocated = budget.allocate("写作风格", min(style_tokens, 500))
+    allocated = budget.allocate("写作风格", min(style_tokens, 3000))
     layers.append({"name": "写作风格", "content": _truncate_to_tokens(style_text, allocated), "tokens_used": allocated})
 
     # Assemble system prompt
@@ -195,11 +292,22 @@ def build_context(params):
         if layer["content"].strip():
             prompt_parts.append(layer["content"])
 
-    # Add volume/chapter footer
-    footer = f"\n当前卷：第{volume}卷 第{chapter_num}章\n"
-    if style: footer += f"风格：{style}\n"
-    if instructions: footer += f"用户指示：{instructions}\n"
-    prompt_parts.append(footer)
+    # v2: footer is rendered from the chapter_context_footer.j2 template
+    # (single source of truth, no inline literal). Falls back to "" if the
+    # template fails to render — in which case the chapter-context block
+    # (Layer 2) already carries volume/chapter, so no info is lost.
+    from prompt_manager import get_prompt_manager
+    footer = get_prompt_manager().render(
+        "chapter_context_footer",
+        variables={
+            "volume": volume,
+            "chapter_num": chapter_num,
+            "style": style,
+            "instructions": instructions,
+        },
+    )
+    if footer and footer.strip():
+        prompt_parts.append(footer)
 
     system_prompt = "\n\n".join(prompt_parts)
     actual_total = _count_tokens(system_prompt)
@@ -257,23 +365,34 @@ def _build_chapter_context(novel_name, volume, chapter_num):
     outline = repo.get_outline(novel_name, vol_str)
     if outline:
         content = outline.get("content", "")
-        ch_padded_3 = str(chapter_num).zfill(3)
-        ch_padded_4 = str(chapter_num).zfill(4)
-        import re
-        pattern = re.compile(f'第\\s*({ch_padded_3}|{ch_padded_4}|{chapter_num})\\s*章')
-        m = pattern.search(content)
-        if m:
-            start = m.start()
-            next_ch = re.search(r'第\s*\d+\s*章', content[start+10:])
-            end = start + 10 + next_ch.start() if next_ch else min(start + 1500, len(content))
-            parts.append(f"## 卷纲要求\n{content[start:end]}")
+        # v2: robust chapter locator — try 4-digit / 3-digit / bare / Chinese
+        # numeral in order. On full miss, log a warning and return "" for the
+        # outline section (previously fell through to content[:1500], returning
+        # an unrelated part of the outline).
+        outline_section = _locate_outline_section(content, chapter_num)
+        if outline_section is not None:
+            # Strip trailing H2/H3 marker that may have been left at the end
+            # of the slice (the outline format is `## 第N章 标题\n...\n## 第N+1章`
+            # and the locator slices to just before the next chapter heading,
+            # sometimes leaving a trailing `## ` fragment).
+            import re as _re
+            outline_section = _re.sub(r'\n+\s*#+\s*$\n*', '\n', outline_section).rstrip()
+            if outline_section:
+                parts.append(f"## 卷纲要求\n{outline_section}")
         else:
-            parts.append(f"## 本卷大纲\n{content[:1500]}")
+            import logging
+            logging.warning(
+                f"[context_builder] chapter locator miss: vol-{volume:02d} ch-{chapter_num} "
+                f"(outline content length: {len(content)} chars, no heading matched any of "
+                f"4-digit / 3-digit / bare / Chinese-numeral pattern)"
+            )
 
     # Danger issue
     danger = repo.get_danger_issue(novel_name, vol_str, chapter_num)
     if danger:
-        parts.append(f"## 本章危机/关卡\n{danger.get('content', '')[:800]}")
+        # v2: boundary-aware trim to a sentence end (。/！/？/\n\n) at ≤1200 chars,
+        # not a hard char slice that could cut mid-sentence.
+        parts.append(f"## 本章危机/关卡\n{_trim_to_sentence(danger.get('content', ''), 1200)}")
 
     # Previous chapter ending (for continuity)
     if chapter_num > 1:
@@ -282,6 +401,143 @@ def _build_chapter_context(novel_name, volume, chapter_num):
             parts.append(f"## 上一章结尾（衔接）\n{prev_ch.get('content', '')[-2000:]}")
 
     return "\n\n".join(parts)
+
+
+def _locate_outline_section(content: str, chapter_num: int):
+    """Locate the chapter heading in outline content and slice to the next chapter.
+
+    Returns the slice text on success, or None if no pattern matches. Never
+    falls through to a blanket prefix slice — that produced the
+    "outline[:1500] returns wrong chapter" bug fixed in v2.
+    """
+    import re
+    cn_num = _chinese_numeral(chapter_num)
+    patterns = [
+        # 4-digit padded, e.g. 第0023章
+        rf"第\s*0*{chapter_num:04d}\s*章",
+        # 3-digit padded, e.g. 第023章
+        rf"第\s*0*{chapter_num:03d}\s*章",
+        # bare number, e.g. 第23章
+        rf"第\s*{chapter_num}\s*章",
+        # Chinese numeral, e.g. 第二十三章
+        rf"第\s*{re.escape(cn_num)}\s*章",
+    ]
+    for pat in patterns:
+        m = re.search(pat, content)
+        if m:
+            start = m.start()
+            # Slice to the NEXT chapter heading (any form: digit or Chinese).
+            # Backstop at 1500 chars so a malformed outline can't hang the
+            # LLM on a single chapter's prose.
+            next_pat = re.compile(r"第\s*(?:\d+|[一-鿿]+)\s*章")
+            next_m = next_pat.search(content, pos=m.end())
+            end = next_m.start() if next_m else min(start + 1500, len(content))
+            return content[start:end]
+    return None
+
+
+def _trim_to_sentence(text: str, max_chars: int) -> str:
+    """Trim text to ≤max_chars, backing up to the last sentence boundary.
+
+    Boundary chars: \\n\\n, 。, ！, ？. Used for danger_issue slicing so we
+    don't cut mid-sentence and leave the LLM with a partial instruction.
+    """
+    if not text or len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    best_idx = -1
+    for sep in ("\n\n", "。", "！", "？"):
+        idx = cut.rfind(sep)
+        if idx > best_idx:
+            best_idx = idx
+    if best_idx > max_chars * 0.5:
+        return cut[: best_idx + 1]
+    # No sentence boundary in the second half — return the hard slice rather
+    # than dropping everything.
+    return cut
+
+
+def _build_current_status_context(novel_name: str) -> str:
+    """Layer 1.5 — load the novel's running narrative state from the DB.
+
+    Source-of-truth order:
+      1. `current_status` table (CurrentStatus ORM model). Populated by
+         `repository.upsert_current_status`. This is the primary path.
+      2. `novels/{name}/state/current_status.md` file. Used only as a
+         one-time migration bootstrap: if the file exists and the DB row
+         is absent, the file content is read into `raw_md`, the file is
+         NOT auto-rewritten (migration is explicit), and the layer is
+         rendered from the file content so existing projects still work
+         until the migration script runs.
+      3. Both absent → return "" and the layer is omitted from the
+         layers list — never surfaces an empty placeholder to the LLM.
+
+    The rendered text combines structured fields (progress, protagonist
+    state, key tasks, current crisis) with the raw_md prose when present.
+    When `target_volume > 0` and differs from `current_volume`, the layer
+    ALSO emits a "⚠️ 本次任务重写" override note so the LLM knows the
+    writing target is NOT the real progress.
+    """
+    from repository import get_repo
+    repo = get_repo()
+    row = repo.get_current_status(novel_name)
+    if row:
+        return _render_current_status_row(row)
+
+    # Fallback: legacy .md file. Will be auto-migrated into the DB by the
+    # portal admin tool (see portal/scripts/migrate_current_status.py).
+    novels_root = _resolve_novels_root()
+    md_path = Path(novels_root) / novel_name / "state" / "current_status.md"
+    if md_path.exists():
+        try:
+            return md_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+    return ""
+
+
+def _render_current_status_row(row: dict) -> str:
+    """Render a CurrentStatus ORM row as Layer 1.5 markdown.
+
+    Combines the structured fields (progress, target override, protagonist
+    state, key tasks, current crisis) with the raw_md prose when present.
+    """
+    parts = ["# 当前状态"]
+    cur_v = row.get("current_volume") or 0
+    cur_ch = row.get("current_chapter") or 0
+    tgt_v = row.get("target_volume") or 0
+    tgt_ch = row.get("target_chapter") or 0
+    total = row.get("total_word_count") or 0
+
+    # Progress (real)
+    if cur_v and cur_ch:
+        parts.append(f"\n## 真实进度\n- 卷: {cur_v}\n- 章: {cur_ch}\n- 总字数: {total}")
+
+    # Target override (when user is rewriting earlier chapters)
+    if tgt_v and tgt_ch and (tgt_v != cur_v or tgt_ch != cur_ch):
+        parts.append(
+            f"\n## ⚠️ 本次任务重写\n"
+            f"目标章节: **第{tgt_v}卷 第{tgt_ch}章**\n"
+            f"⚠️ 这是重写任务,起点按目标章节,人物境界/异能/所在地点等请回到开篇状态。"
+        )
+
+    # Structured narrative state
+    proto = (row.get("protagonist_state") or "").strip()
+    if proto:
+        parts.append(f"\n## 主角状态\n{proto}")
+    tasks = (row.get("key_tasks") or "").strip()
+    if tasks:
+        parts.append(f"\n## 关键任务\n{tasks}")
+    crisis = (row.get("current_crisis") or "").strip()
+    if crisis:
+        parts.append(f"\n## 当前危机\n{crisis}")
+
+    # Free-form prose (from migrated .md file or future manual edits)
+    raw = (row.get("raw_md") or "").strip()
+    if raw:
+        parts.append(f"\n## 详细状态\n{raw}")
+
+    return "\n".join(parts).strip()
 
 
 def _load_character_from_md(novel_name, character_name):
@@ -354,8 +610,11 @@ def _build_character_context(novel_name, volume, chapter_num):
         if deep_fields_empty:
             md_section = _load_character_from_md(novel_name, c["name"])
             if md_section:
-                # Trim to fit per-character budget (~400 tokens)
-                trimmed = _truncate_to_tokens(md_section, 400)
+                # v2: cap raised 400 → 2000 tok so the LLM gets the full
+                # 成长弧线 / 核心特质 / 背景与身世 sections rather than a
+                # fragment. Layer 3 budget is 4000 tok; with 5 characters
+                # this allows ~800 tok/character after DB-row overhead.
+                trimmed = _truncate_to_tokens(md_section, 2000)
                 parts.append(f"#### 📜 档案补充（来自 characters.md）\n{trimmed}")
     return "\n\n".join(parts)
 
@@ -596,10 +855,10 @@ def _build_style_context(style, instructions, novel_name):
             pass
 
     if style_md_text:
-        # Cap at 150 so style_presets (prompt + fingerprint) has room within
-        # the 500-token Layer 9 budget. style.md is verbose (5KB); the LLM
-        # only needs the salient style summary here.
-        trimmed = _truncate_to_tokens(style_md_text, 150)
+        # v2: cap raised 150 → 2000 tok. The Layer 9 budget was raised to
+        # 3000, so style.md has room to carry the full style guide rather
+        # than a 150-tok digest that the LLM had to guess at.
+        trimmed = _truncate_to_tokens(style_md_text, 2000)
         parts.append(f"## 本书专属风格（来自 style.md）\n{trimmed}")
 
     # ── 2. Resolve preset names → prompt content + fingerprint ──
@@ -622,6 +881,13 @@ def _build_style_context(style, instructions, novel_name):
             else:
                 name, weight = token.strip(), 100
             preset = repo.get_style_preset_by_name(name)
+            # Fallback: DB stores presets with the conventional 风 suffix
+            # (e.g. "金庸风", "辰东风") but the frontend sends the bare
+            # author name (e.g. "金庸", "辰东"). Try the suffixed form
+            # before declaring the preset missing — same normalization
+            # that _load_style_fingerprint uses for the JSON files.
+            if not preset:
+                preset = repo.get_style_preset_by_name(name + "风")
             prompt_block = ""
             if preset and preset.get("prompt"):
                 prompt_block = preset['prompt']
@@ -647,7 +913,7 @@ def _build_style_context(style, instructions, novel_name):
             else:
                 chunk = f"### {name}（权重 {weight}%）\n{prompt_block}"
             # Cap each chunk at 250 tok so 2 chunks + style.md fit in 500.
-            chunk = _truncate_to_tokens(chunk, 250)
+            chunk = _truncate_to_tokens(chunk, 1500)
             style_chunks.append(chunk)
 
         if style_chunks:

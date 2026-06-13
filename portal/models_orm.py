@@ -506,6 +506,39 @@ class StylePreset(Base):
     created_at = Column(Text, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 
+class CurrentStatus(Base):
+    """Per-novel running narrative state (Layer 1.5 of context_builder).
+
+    Replaces the file-based `novels/{name}/state/current_status.md` so the
+    state can be queried, versioned and updated transactionally. The old
+    file is kept as a read-only backup until manual cleanup.
+
+    Schema:
+      - `current_volume` / `current_chapter`: actual progress in the manuscript
+      - `target_volume` / `target_chapter`: override for the current writing
+        task (e.g. "重写第 1 章" while real progress is at vol 312)
+      - `protagonist_state`, `key_tasks`, `current_crisis`: structured
+        short fields the LLM can scan at a glance
+      - `raw_md`: full free-form prose (from the original .md file) — used
+        by Layer 1.5 when structured fields are empty
+    """
+    __tablename__ = "current_status"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    novel_id = Column(Integer, ForeignKey("novels.id", ondelete="CASCADE"),
+                       unique=True, nullable=False)
+    current_volume = Column(Integer, default=1)
+    current_chapter = Column(Integer, default=1)
+    target_volume = Column(Integer, default=0)   # 0 = no override
+    target_chapter = Column(Integer, default=0)
+    total_word_count = Column(Integer, default=0)
+    protagonist_state = Column(Text, default="")
+    key_tasks = Column(Text, default="")          # newline-separated
+    current_crisis = Column(Text, default="")
+    raw_md = Column(Text, default="")
+    updated_at = Column(Text, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
 class DeepSeekConfig(Base):
     __tablename__ = "deepseek_config"
 
@@ -566,17 +599,12 @@ def create_all(engine):
 
 
 def get_bind_urls():
-    """Return (content_url, config_url, usage_url) for multi-DB support.
-    In MySQL mode, all three return the same MySQL URL.
-    In SQLite mode, they return separate file paths.
+    """Return ``(content_url, config_url, usage_url)``.
+
+    In MySQL mode (the only supported mode), all three return the same
+    MySQL URL. SQLite side-DB support was removed in v3.4 — see
+    ``openspec/changes/remove-sqlite-use-mysql-only/``.
     """
     import os
     db_url = os.environ.get("DATABASE_URL", "")
-    if db_url and not db_url.startswith("sqlite"):
-        return db_url, db_url, db_url  # Single MySQL DB
-    portal_dir = os.path.dirname(os.path.abspath(__file__))
-    return (
-        f"sqlite:///{portal_dir}/content.db",
-        f"sqlite:///{portal_dir}/config.db",
-        f"sqlite:///{portal_dir}/usage.db",
-    )
+    return db_url, db_url, db_url  # Single MySQL DB

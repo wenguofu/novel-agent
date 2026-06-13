@@ -1,7 +1,8 @@
 """Alembic migration environment.
 
-Reads DATABASE_URL from environment (falls back to SQLite content.db).
-Auto-detects models from models_orm.Base.metadata.
+Reads ``DATABASE_URL`` from the environment. The portal is MySQL-only;
+Alembic migrations must point at the same MySQL instance. Auto-detects
+models from ``models_orm.Base.metadata``.
 """
 
 import os
@@ -19,8 +20,12 @@ config = context.config
 
 # Override sqlalchemy.url from environment
 db_url = os.environ.get("DATABASE_URL", "")
-if db_url:
-    config.set_main_option("sqlalchemy.url", db_url)
+if not db_url or not db_url.startswith("mysql"):
+    raise RuntimeError(
+        "DATABASE_URL must be set to a MySQL URL for Alembic migrations. "
+        f"Got: {db_url!r}"
+    )
+config.set_main_option("sqlalchemy.url", db_url)
 
 # Set up logging
 if config.config_file_name is not None:

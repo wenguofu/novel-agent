@@ -8,6 +8,12 @@ The fixture spins up an isolated SQLite file in ``tmp_path``, points
 ``DATABASE_URL`` at it, then forces a clean re-import of the modules
 that cache the engine/session factory at import time. Snapshots and
 restores ``sys.modules`` so the dance does not leak across test files.
+
+Note: production code now requires MySQL via ``DATABASE_URL``. The
+``TESTING=1`` env var (set in this conftest at module load time, below)
+opts the runtime into a permissive mode that allows the in-memory
+SQLite path used by the test suite. The portal refuses to start
+without ``TESTING=1`` if ``DATABASE_URL`` is empty or non-MySQL.
 """
 import os
 import sys
@@ -19,6 +25,18 @@ import pytest
 PORTAL_DIR = Path(__file__).resolve().parent.parent.parent / "portal"
 if str(PORTAL_DIR) not in sys.path:
     sys.path.insert(0, str(PORTAL_DIR))
+
+# Set TESTING=1 at module import time so portal.db.validate_database_url()
+# (called at portal.db import time) sees the permissive mode. The
+# autouse fixture below is for tests that mutate the env mid-run.
+os.environ.setdefault("TESTING", "1")
+
+
+@pytest.fixture(autouse=True)
+def _keep_testing_set(monkeypatch):
+    """Make sure TESTING=1 stays set even if a test mutates the env."""
+    monkeypatch.setenv("TESTING", "1")
+    yield
 
 
 @pytest.fixture
@@ -41,6 +59,7 @@ def tmp_db(tmp_path, monkeypatch):
             os.rename(str(path), str(hidden_path))
             hidden.append((path, hidden_path))
     monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("TESTING", "1")
     from db import ensure_unified_schema
     from repository import get_repo
     ensure_unified_schema()

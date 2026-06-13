@@ -1,22 +1,25 @@
-# Current Architecture (v3.3)
+# Current Architecture (v3.4)
 
-> Last updated: 2026-05-30
+> Last updated: 2026-06-13
 
 ## Overview
-Novel Agent v3.3 is a Flask + React web portal for AI-assisted Chinese web novel writing (1M-3M words). It connects directly to DeepSeek API, manages novels via filesystem + unified database, and provides writing/review/optimization workflows with a multi-agent architecture.
+Novel Agent v3.4 is a Flask + React web portal for AI-assisted Chinese web novel writing (1M-3M words). It connects directly to DeepSeek API, manages novels via filesystem + a single MySQL database, and provides writing/review/optimization workflows with a multi-agent architecture.
 
 ## Stack
 - **Backend**: Python 3.9+, Flask + Flask-CORS, SQLAlchemy ORM, httpx
-- **Database**: SQLite (dev) / MySQL (production) via `DATABASE_URL` env var, pymysql driver
+- **Database**: MySQL only (`DATABASE_URL=mysql+pymysql://...`), pymysql driver
 - **Frontend**: React 18 + TypeScript, Vite, Ant Design 5, Zustand, TanStack Query, react-markdown
 - **AI**: DeepSeek API (chat completions + SSE streaming)
 - **RAG**: chromadb + sentence-transformers (BAAI/bge-small-zh-v1.5)
 - **Port**: 35001
 
-## Database Architecture (v3.3)
+## Database Architecture (v3.4)
 
-### Unified Single Database
-All tables consolidated into one database (`DATABASE_URL`). Replaces the old 3-file SQLite architecture.
+### Single MySQL Backend
+All tables live in one MySQL database bound by `DATABASE_URL`. The
+SQLite support that v3.3 carried was removed in v3.4 — see
+`openspec/changes/archive/2026-06-13-remove-sqlite-use-mysql-only/`
+for the migration story.
 
 ```
 novels, outlines, chapters, reviews, danger_issues,
@@ -26,23 +29,24 @@ genre_rules, story_volumes, volume_plans, alias_names, project_meta,
 banned_words, compliance_rules, alias_registry, style_presets, deepseek_config,
 usage, daily_stats
 ```
-**24 tables total** — no FTS5 virtual tables. Full-text search uses LIKE with substring matching.
+**24 tables total** — no FTS5 virtual tables. Full-text search uses LIKE with substring matching (MySQL-compatible).
 
 ### Data Access Layer
-- **`db.py`** — SQLAlchemy engine/session factory, reads `DATABASE_URL`, auto-configures SQLite PRAGMA or MySQL connection pooling
-- **`models_orm.py`** — 26 ORM models (SQLAlchemy declarative base), dialect-agnostic
-- **`repository.py`** — Repository pattern with dict-based API, 110+ methods covering all CRUD operations
-- **`content_db.py`** — Compatibility layer: all public functions delegate to `repository.get_repo()`
-- **`run_v2.py`** — Launcher: initializes schema, seeds config, patches context builder for volume-scoping, starts Flask
+- **`db.py`** — SQLAlchemy engine/session factory, reads `DATABASE_URL`, configures MySQL connection pooling (pool_size=10, max_overflow=20, pool_recycle=3600, pool_pre_ping=True). Validates that `DATABASE_URL` is a MySQL URL at import time.
+- **`models_orm.py`** — 26 ORM models (SQLAlchemy declarative base), MySQL type patches (`VARCHAR(255)` for unindexed strings, `LONGTEXT` for `Text`)
+- **`repository.py`** — Repository pattern with dict-based API, 110+ methods covering all CRUD operations. No raw DB-API access.
+- **`content_db.py`** — Backward-compat shim: legacy `init_db()` / `get_db()` helpers for the test suite only. The runtime never calls them.
+- **`run_v2.py`** — Launcher: validates `DATABASE_URL`, runs `ensure_unified_schema()`, seeds config, starts Flask
 
-### MySQL Migration
+### Database Bootstrap
 ```bash
-DATABASE_URL=mysql+pymysql://user:pass@host:3306/novel_agent python run_v2.py
+export DATABASE_URL='mysql+pymysql://user:pass@host:3306/novel_agent'
+python run_v2.py  # idempotent: CREATE TABLE IF NOT EXISTS for all models
 ```
-- Auto-detects engine type from URL
-- SQLite: PRAGMA WAL + foreign_keys, NullPool
-- MySQL: pymysql driver, QueuePool (pool_size=5, max_overflow=10, pool_recycle=3600)
-- Data migration: `scripts/migrate_sqlite_to_mysql.py`
+- One-time data backfill from any legacy SQLite files:
+  `python scripts/migrate_sqlite_to_mysql.py`
+- Snapshots of the pre-migration SQLite files live under
+  `migration_backup/sqlite_snapshot_<ts>/` (read-only).
 
 ## API Endpoints
 

@@ -20,26 +20,41 @@ guarantees:
 
 These tests pin the new contract.
 """
+import importlib
+import sys
+from urllib.parse import urlparse
+
 import pytest
 
-from content_db import (
-    upsert_chapter_outline,
-    upsert_danger_issue,
-    upsert_story_tracking,
-    get_chapter_outline,
-    get_danger_issues,
-    get_story_tracking,
-)
+# Note: we deliberately do NOT ``from content_db import ...`` at module
+# scope. The ``tmp_db`` fixture (tests/functional/conftest.py) deletes
+# ``content_db`` from ``sys.modules`` and reimports it against a fresh
+# SQLite file, so the test functions must look the symbols up at call
+# time. See the autouse fixture below for the reload step.
 
 
 NOVEL = "atomic-writes-test-novel"
 
 
 @pytest.fixture(autouse=True)
-def _ensure_test_novel():
-    """Create a throwaway novel so _get_novel_id() resolves."""
-    from content_db import get_db
-    conn = get_db()
+def _ensure_test_novel(tmp_db):
+    """Reload ``content_db`` against the tmp DB and seed a test novel.
+
+    The legacy ``get_db()`` (and the ``upsert_*`` helpers that use it)
+    read the module-level ``DB_PATH`` constant, not ``DATABASE_URL``.
+    After ``tmp_db`` reimports ``content_db`` with a fresh path, we
+    sync ``DB_PATH`` to that same file so ``get_db()`` and the
+    repository see the same database.
+    """
+    parsed = urlparse(tmp_db)
+    db_file = parsed.path
+    # Force a fresh import of content_db against the tmp file.
+    if "content_db" in sys.modules:
+        del sys.modules["content_db"]
+    import content_db  # noqa: F401  (re-imported below)
+    content_db.DB_PATH = db_file
+
+    conn = content_db.get_db()
     try:
         conn.execute(
             "INSERT OR IGNORE INTO novels (name, title) VALUES (?, ?)",
@@ -55,7 +70,10 @@ class TestUpsertChapterOutlineAtomicity:
     """upsert_chapter_outline must use a transaction boundary."""
 
     def test_happy_path_writes_row(self):
-        upsert_chapter_outline(NOVEL, "vol-01", 1, {
+        # Re-resolve at call time — ``tmp_db`` reimports ``content_db``
+        # so module-level imports at the top of this file are stale.
+        import content_db
+        content_db.upsert_chapter_outline(NOVEL, "vol-01", 1, {
             "title": "Test",
             "function": ["setup"],
             "core_events": "evt",
@@ -64,7 +82,7 @@ class TestUpsertChapterOutlineAtomicity:
             "is_danger_scene": False,
             "word_count": 100,
         })
-        row = get_chapter_outline(NOVEL, "vol-01", 1)
+        row = content_db.get_chapter_outline(NOVEL, "vol-01", 1)
         assert row is not None
         assert row["title"] == "Test"
         assert row["word_count"] == 100
@@ -74,6 +92,8 @@ class TestUpsertChapterOutlineAtomicity:
         write must be rolled back — the next read should not see
         a half-applied mutation."""
         import content_db
+        upsert_chapter_outline = content_db.upsert_chapter_outline
+        get_chapter_outline = content_db.get_chapter_outline
 
         # First, seed a baseline row that we can compare against
         upsert_chapter_outline(NOVEL, "vol-01", 1, {
@@ -93,7 +113,6 @@ class TestUpsertChapterOutlineAtomicity:
         # ``execute`` method explodes on the INSERT. We delegate
         # to the original sqlite3 connection so reads still work.
         real_get_db = content_db.get_db
-        original_execute = None  # captured per-connection below
 
         class ExplodingConn:
             def __init__(self, real):
@@ -134,15 +153,15 @@ class TestUpsertChapterOutlineAtomicity:
 
 class TestUpsertDangerIssueAtomicity:
     def test_happy_path_writes_row(self):
-        import json
-        upsert_danger_issue(NOVEL, "vol-01", 1, {
+        import content_db
+        content_db.upsert_danger_issue(NOVEL, "vol-01", 1, {
             "danger_level": "high",
             "core_danger": "x",
             "content": "y",
             "rhythm_data": {"k": "v"},
             "foreshadowing_data": ["seed"],
         })
-        rows = get_danger_issues(NOVEL, "vol-01")
+        rows = content_db.get_danger_issues(NOVEL, "vol-01")
         assert len(rows) == 1
         assert rows[0]["danger_level"] == "high"
         assert rows[0]["foreshadowing_data"] == ["seed"]
@@ -150,9 +169,10 @@ class TestUpsertDangerIssueAtomicity:
 
 class TestUpsertStoryTrackingAtomicity:
     def test_happy_path_writes_row(self):
-        upsert_story_tracking(NOVEL, "character", "lin_feng", "alive")
-        upsert_story_tracking(NOVEL, "character", "lin_feng", "wounded")
-        rows = get_story_tracking(NOVEL, "character")
+        import content_db
+        content_db.upsert_story_tracking(NOVEL, "character", "lin_feng", "alive")
+        content_db.upsert_story_tracking(NOVEL, "character", "lin_feng", "wounded")
+        rows = content_db.get_story_tracking(NOVEL, "character")
         assert len(rows) == 1
         assert rows[0]["record_value"] == "wounded", (
             "upsert should overwrite on conflict"

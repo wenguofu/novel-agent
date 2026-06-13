@@ -1,8 +1,10 @@
 """
 Repository Layer — thin wrapper around SQLAlchemy ORM models.
 
-Provides dict-based API for backward compatibility with content_db.py callers.
-All DB operations go through here; no raw sqlite3 anywhere else.
+Provides dict-based API for backward compatibility with content_db.py
+callers. All DB operations go through here; no raw DB-API access
+anywhere else (the portal is MySQL-only since v3.4 — see
+``openspec/changes/remove-sqlite-use-mysql-only/``).
 
 Usage:
     from repository import get_repo
@@ -24,7 +26,8 @@ from models_orm import (
     Foreshadowing, Character, CharacterEvent, WorldBuilding,
     PlotArc, PacingControl, RevelationSchedule, GenreRule,
     StoryVolume, VolumePlan, AliasName, ProjectMeta,
-    BannedWord, ComplianceRule, AliasRegistry, StylePreset, DeepSeekConfig,
+    BannedWord, ComplianceRule, AliasRegistry, StylePreset,
+    CurrentStatus, DeepSeekConfig,
     UsageRecord, DailyStat,
 )
 
@@ -1322,6 +1325,66 @@ class Repository:
     def delete_style_preset(self, sid: int):
         with repo_session() as s:
             s.query(StylePreset).filter(StylePreset.id == sid).delete()
+
+    # ── CurrentStatus (Layer 1.5 state, replaces current_status.md file) ─
+
+    def get_current_status(self, novel_name: str) -> Optional[Dict]:
+        """Return the current status row for the novel, or None if absent.
+
+        Replaces the file-based read of `novels/{name}/state/current_status.md`.
+        Callers should fall back to the file only when this returns None and
+        then upsert the file content into the DB so the next read goes through
+        the DB path.
+        """
+        with repo_session() as s:
+            nid = self._get_novel_id(s, novel_name)
+            if not nid:
+                return None
+            row = s.query(CurrentStatus).filter(CurrentStatus.novel_id == nid).first()
+            return _row_to_dict(row) if row else None
+
+    def upsert_current_status(self, novel_name: str, **kwargs) -> bool:
+        """Insert or update the novel's current status row.
+
+        Accepted kwargs (all optional):
+            current_volume, current_chapter, target_volume, target_chapter,
+            total_word_count, protagonist_state, key_tasks, current_crisis,
+            raw_md, updated_at.
+        """
+        allowed = {
+            "current_volume", "current_chapter", "target_volume", "target_chapter",
+            "total_word_count", "protagonist_state", "key_tasks",
+            "current_crisis", "raw_md", "updated_at",
+        }
+        with repo_session() as s:
+            nid = self._get_novel_id(s, novel_name)
+            if not nid:
+                return False
+            row = s.query(CurrentStatus).filter(CurrentStatus.novel_id == nid).first()
+            if row is None:
+                row = CurrentStatus(novel_id=nid)
+                s.add(row)
+            for k, v in kwargs.items():
+                if k in allowed:
+                    setattr(row, k, v)
+            if "updated_at" not in kwargs:
+                row.updated_at = _now()
+            return True
+
+    def reset_current_status(self, novel_name: str, volume: int, chapter: int) -> bool:
+        """Set ONLY the target override (target_volume / target_chapter).
+
+        Used when the user is rewriting earlier chapters and the real
+        progress (current_volume / current_chapter, set during migration)
+        is much later. Preserves the real progress so the LLM still
+        knows the manuscript state, but adds a "本次任务重写" note via
+        the override.
+        """
+        return self.upsert_current_status(
+            novel_name,
+            target_volume=volume,
+            target_chapter=chapter,
+        )
 
     def list_alias_registry(self) -> List[Dict]:
         with repo_session() as s:

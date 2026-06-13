@@ -38,10 +38,12 @@ def get_sqlite_data():
     portal_dir = str(PORTAL_DIR)
     dbs = {
         "content.db": [
-            "novels", "outlines", "chapters", "reviews", "danger_issues",
-            "foreshadowing", "characters", "character_events", "world_building",
-            "plot_arcs", "pacing_control", "revelation_schedule", "genre_rules",
-            "story_volumes", "volume_plans", "alias_names", "project_meta",
+            "novels", "outlines", "chapters", "chapter_outlines", "reviews",
+            "danger_issues", "foreshadowing", "characters", "character_events",
+            "world_building", "plot_arcs", "pacing_control",
+            "revelation_schedule", "genre_rules", "story_volumes",
+            "volume_plans", "alias_names", "project_meta", "story_tracking",
+            "current_status",
         ],
         "config.db": [
             "banned_words", "compliance_rules", "alias_registry",
@@ -105,6 +107,10 @@ def import_to_mysql(data):
 
     # Create all tables
     from models_orm import Base
+    # MySQL compat: pad unlengthed String columns to VARCHAR(255) before
+    # DDL. SQLite accepts String without length; MySQL doesn't.
+    from db import _patch_unlengthed_strings_for_mysql
+    _patch_unlengthed_strings_for_mysql(Base.metadata)
     Base.metadata.create_all(engine)
     print("✅ Tables created")
 
@@ -113,10 +119,12 @@ def import_to_mysql(data):
     # Import order respects FK dependencies
     import_order = [
         # content.db tables
-        "novels", "outlines", "chapters", "reviews", "danger_issues",
-        "foreshadowing", "characters", "character_events", "world_building",
-        "plot_arcs", "pacing_control", "revelation_schedule", "genre_rules",
-        "story_volumes", "volume_plans", "alias_names", "project_meta",
+        "novels", "outlines", "chapters", "chapter_outlines", "reviews",
+        "danger_issues", "foreshadowing", "characters", "character_events",
+        "world_building", "plot_arcs", "pacing_control",
+        "revelation_schedule", "genre_rules", "story_volumes",
+        "volume_plans", "alias_names", "project_meta", "story_tracking",
+        "current_status",
         # config.db tables (no FK to novels)
         "banned_words", "compliance_rules", "alias_registry",
         "style_presets", "deepseek_config",
@@ -126,16 +134,18 @@ def import_to_mysql(data):
 
     # Map table name to model class
     from models_orm import (
-        Novel, Outline, Chapter, Review, DangerIssue,
+        Novel, Outline, Chapter, ChapterOutline, Review, DangerIssue,
         Foreshadowing, Character, CharacterEvent, WorldBuilding,
         PlotArc, PacingControl, RevelationSchedule, GenreRule,
-        StoryVolume, VolumePlan, AliasName, ProjectMeta,
+        StoryVolume, VolumePlan, AliasName, ProjectMeta, StoryTracking,
+        CurrentStatus,
         BannedWord, ComplianceRule, AliasRegistry, StylePreset, DeepSeekConfig,
         UsageRecord, DailyStat,
     )
 
     model_map = {
         "novels": Novel, "outlines": Outline, "chapters": Chapter,
+        "chapter_outlines": ChapterOutline,
         "reviews": Review, "danger_issues": DangerIssue,
         "foreshadowing": Foreshadowing, "characters": Character,
         "character_events": CharacterEvent, "world_building": WorldBuilding,
@@ -143,7 +153,8 @@ def import_to_mysql(data):
         "revelation_schedule": RevelationSchedule,
         "genre_rules": GenreRule, "story_volumes": StoryVolume,
         "volume_plans": VolumePlan, "alias_names": AliasName,
-        "project_meta": ProjectMeta,
+        "project_meta": ProjectMeta, "story_tracking": StoryTracking,
+        "current_status": CurrentStatus,
         "banned_words": BannedWord, "compliance_rules": ComplianceRule,
         "alias_registry": AliasRegistry, "style_presets": StylePreset,
         "deepseek_config": DeepSeekConfig,
@@ -151,6 +162,7 @@ def import_to_mysql(data):
     }
 
     total_imported = 0
+    total_skipped = 0
     session = Session()
     try:
         for table in import_order:
@@ -161,11 +173,31 @@ def import_to_mysql(data):
                 print(f"  ⚠️  No model for table: {table}")
                 continue
 
+            # Build a set of existing primary keys in MySQL so we can
+            # skip rows that were already imported by a prior partial
+            # migration (idempotent re-run).
+            existing_pks = set()
+            pk_cols = [c.name for c in model.__table__.primary_key.columns]
+            try:
+                for r in session.query(*[getattr(model, c) for c in pk_cols]).all():
+                    existing_pks.add(tuple(r))
+            except Exception:
+                pass  # table may not exist yet on first run; that's fine
+
             rows = data[table]
             count = 0
+            skipped = 0
             for row in rows:
-                # Remove 'id' to let MySQL auto-increment
-                row_copy = {k: v for k, v in row.items() if k != "id"}
+                # Keep the original `id` so child tables' FKs to parent
+                # tables still resolve (novels.id=131, outlines.novel_id=131
+                # etc). Dropping `id` and letting MySQL auto-increment
+                # would re-number parents and break every child row.
+                row_copy = dict(row)
+                # Skip rows that already exist in MySQL (idempotent re-run).
+                pk_values = tuple(row_copy.get(c) for c in pk_cols)
+                if pk_values in existing_pks:
+                    skipped += 1
+                    continue
                 try:
                     obj = model(**row_copy)
                     session.add(obj)
@@ -176,10 +208,13 @@ def import_to_mysql(data):
 
             session.flush()
             total_imported += count
-            print(f"  ✅ {table}: {count}/{len(rows)} rows imported")
+            total_skipped += skipped
+            skip_msg = f" ({skipped} already present)" if skipped else ""
+            print(f"  ✅ {table}: {count}/{len(rows)} rows imported{skip_msg}")
 
         session.commit()
-        print(f"\n🎉 Import complete: {total_imported} total rows imported to MySQL")
+        print(f"\n🎉 Import complete: {total_imported} rows imported, "
+              f"{total_skipped} already present (idempotent skip)")
     except Exception as e:
         session.rollback()
         print(f"\n❌ Import failed: {e}")

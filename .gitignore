@@ -24,6 +24,14 @@ __pycache__/
 .idea/
 .vscode/
 
+# AI tooling (local config, not part of repo)
+.claude/    # Claude Code
+.codex/     # Codex CLI
+.cursor/    # Cursor IDE
+.aider*     # Aider
+.hermes/    # 旧调度器
+.superpowers/  # 已有规则
+
 # Agent system artifacts (not part of the novel)
 agent-system/workflows/*.md
 
@@ -31,11 +39,15 @@ agent-system/workflows/*.md
 novels/
 
 # RAG database
+# (portal/*.db was the v3 SQLite path; the portal is MySQL-only since
+# v3.4. Snapshots of the last pre-migration SQLite files live under
+# migration_backup/sqlite_snapshot_*/.)
+chroma_db/
 *.db
 *.db-shm
 *.db-wal
 *.db.bak
-chroma_db/
+*.db.testhidden
 
 # Portal runtime artifacts
 portal/.encryption_key
